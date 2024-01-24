@@ -1,8 +1,0 @@
-# ninja log v5
-4	33	0	C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/cmake.verify_globs	ae20abbdc9c6aa11
-1	512	7278493984781847	ExpertPlayback_autogen/timestamp	51770269055f1f71
-1	512	7278493984781847	C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/ExpertPlayback_autogen/mocs_compilation.cpp	51770269055f1f71
-524	1799	7278493998187715	CMakeFiles/ExpertPlayback.dir/mainwindow.cpp.obj	959d1a59abed43f5
-1	512	7278493984781847	ExpertPlayback_autogen/mocs_compilation.cpp	51770269055f1f71
-517	1805	7278493998187715	CMakeFiles/ExpertPlayback.dir/main.cpp.obj	726af6f9941288c7
-1	512	7278493984781847	C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/ExpertPlayback_autogen/timestamp	51770269055f1f71

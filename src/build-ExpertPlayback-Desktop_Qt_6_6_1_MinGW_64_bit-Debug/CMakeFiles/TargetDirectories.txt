@@ -1,9 +1,0 @@
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/ExpertPlayback.dir
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/edit_cache.dir
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/rebuild_cache.dir
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/list_install_components.dir
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/install.dir
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/install/local.dir
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/install/strip.dir
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/ExpertPlayback_autogen_timestamp_deps.dir
-C:/Users/alexa/OneDrive/Documents/UBC_Thesis/Code/ExpertDemonstration_Project/ExpertPlaybackApp/src/build-ExpertPlayback-Desktop_Qt_6_6_1_MinGW_64_bit-Debug/CMakeFiles/ExpertPlayback_autogen.dir
