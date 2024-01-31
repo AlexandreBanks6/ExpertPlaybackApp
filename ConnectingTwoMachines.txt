@@ -1,0 +1,21 @@
+Go to wired IPv4 settings of both computers and set the unique IP address (should be unique compared to other devices put in hub)
+
+dvrkpc-XPS-8940: main computer for interfacing with robot (192.168.0.13)
+
+dvrkpc2: computer publishing frames (192.168.0.11)
+
+
+On the frame publisher (dvrkpc2) write: 
+roscore
+
+open a new terminal and write:
+export ROS_MASTER_URI=http://192.168.0.11:11311 
+export ROS_IP=192.168.0.11
+
+and then run the roslaunch file: roslaunch dvrk_robot jhu_daVinci_video.launch rig_name:=ubc_dVRK_ECM
+
+On the main computer (dvrkpc-XPS-8940) write:
+export ROS_MASTER_URI=http://192.168.0.11:11311 
+export ROS_IP=192.168.0.11
+
+and then any commands we have
