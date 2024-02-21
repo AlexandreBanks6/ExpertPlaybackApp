@@ -1,4 +1,8 @@
 import pygame as pg
+
+#Use pyglet instead of pygame as we can create multiple windows
+import pyglet
+
 import moderngl as mgl
 import sys
 from include import Model as mdl
@@ -8,9 +12,9 @@ from include import mesh
 from include import scene
 import glm
 
+
 import math
 import numpy as np
-
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
@@ -62,8 +66,14 @@ start_pose=glm.mat4(glm.vec4(1,0,0,0),
                 glm.vec4(0,0,1,0),
                 glm.vec4(0,0,-10,1))
 
+
+##################Init Parameters for Grabbing Frames###################
+RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
+LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
+
 class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
+        '''
         #Init pygame modules
         pg.init()
 
@@ -77,15 +87,20 @@ class Renderer:
 
         #Create the opengl context
         pg.display.set_mode(self.WIN_SIZE,flags=pg.OPENGL | pg.DOUBLEBUF)
+        '''
+        window=pyglet.window.Window(width=CONSOLE_VIEWPORT_WIDTH,heigh=CONSOLE_VIEWPORT_HEIGHT)
 
         #Detect and use opengl context
         self.ctx=mgl.create_context()
 
+
         #Enable Depth Testing 
         self.ctx.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
 
+     
         #Object to track time
-        self.clock=pg.time.Clock()
+        #self.clock=pg.time.Clock()
+        
         self.time=0
         self.delta_time=0
 
@@ -230,11 +245,22 @@ class Renderer:
         return inverted_transform
     
 
-    def rightFrameGrabber(self):s
-    def leftFrameGrabber(self):
+    #def rightFrameGrabber(self):
+
+    #def leftFrameGrabber(self):
     
     ############ Main Render Loop
-    def run(self):
+    def updateWindow(self,delay=60):
+        self.get_time()
+        self.check_events()
+        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose)
+        self.move_objects()
+        self.camera.update()
+        self.render()
+        self.delta_time=self.clock.tick(delay)
+        
+        
+        '''
         #Used to start the application
         while True:
             self.get_time()
@@ -244,3 +270,4 @@ class Renderer:
             self.camera.update()
             self.render()
             self.delta_time=self.clock.tick(60)
+        '''
