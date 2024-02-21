@@ -1,22 +1,30 @@
 import rospy
 from sensor_msgs.msg import CompressedImage
 from include import ECM 
+from include import Renderer
 
-ECM=ECM.ECM_Class()
+#We implement gamma correction and mipmap correction
+
+#ECM=ECM.ECM_Class()
 
 if __name__ == '__main__':
     
+
+    #Initialize the Renderer Class
+    tool_renderer=Renderer.Renderer()
+    tool_renderer.run()
+
     #rate=rospy.Rate(140)  
 
     #########Initialize ROS events############
 
     #Left ECM
-    rospy.Subscriber('ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed', CompressedImage, ECM.frameCallback)
-    rospy.init_node('ExpertPlayback')
+    #rospy.Subscriber('ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed', CompressedImage, ECM.frameCallback)
+    #rospy.init_node('ExpertPlayback')
 
 
     #Instrument Renderings
-    print("Entering")
+    #print("Entering")
     #ECM.renderScene()
 
-    rospy.spin()
+    #rospy.spin()
