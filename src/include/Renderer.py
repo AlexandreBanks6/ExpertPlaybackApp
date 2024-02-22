@@ -66,7 +66,7 @@ obj_names=['shaft','body','jaw_right','jaw_left']
 start_pose=glm.mat4(glm.vec4(1,0,0,0),
                 glm.vec4(0,1,0,0),
                 glm.vec4(0,0,1,0),
-                glm.vec4(0,0,-10,1))
+                glm.vec4(0,0,-30,1))
 
 
 ##################Init Parameters for Grabbing Frames###################
@@ -101,20 +101,30 @@ class Renderer:
         self.window1=glfwCreateWindow(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT,"First Window",None,None) #This is where we can set the monitor
         glfwMakeContextCurrent(self.window1)
         '''
-
+        self.move_rads=0
         self.WIN_SIZE=win_size
 
         #Creates the pyglet window
         config=Config(major_version=3,minor_version=3,depth_size=3,double_buffer=True)
-        self.window = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config)
-
-        #Initialize keyboard handling
-        self.keys=key.KeyStateHandler()
-        self.window.push_handlers(self.keys)
+        self.window = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Left Eye')
+        #self.window_right = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Right Eye')
 
         #Initializing mouse handling:
 
         self.window.on_mouse_motion=self.on_mouse_motion
+
+        #Initializing Key Handling
+        self.window.on_key_press=self.on_key_press
+        self.window.on_key_release=self.on_key_release
+
+        self.key_dict={
+            'W': False,
+            'S': False,
+            'A': False,
+            'D': False,
+            'Q': False,
+            'E': False
+        }
 
         print("Done Window Constructor")
 
@@ -140,7 +150,7 @@ class Renderer:
         self.light=Light.Light()
         print("Done Light Constructor")
 
-        #Create an instance of the camera clas
+        #Create an instance of the camera class
         self.camera=Camera.Camera(self)
         print("Done Camera Constructor")
 
@@ -153,16 +163,56 @@ class Renderer:
         print("Done Scene Constructor")
 
     def on_mouse_motion(self,x,y,dx,dy):
+        #print("Mouse Motion, x: "+str(x)+"y: "+str(y))
         self.camera.mouse_x=x
         self.camera.mouse_y=y
+    
+    def on_key_press(self,symbol,modifiers):
+        #print("Key Pressed")
+        if symbol==key.ESCAPE: #Close app when escape key is pressed
+            print("Escape Pressed")
+            self.window.close()
+            self.ctx.release()
+
+        #Update dict  that key is down
+        if symbol==key.W:
+            self.key_dict['W']=True
+        if symbol==key.S:
+            self.key_dict['S']=True
+        if symbol==key.A:
+            self.key_dict['A']=True
+        if symbol==key.D:
+            self.key_dict['D']=True
+        if symbol==key.Q:
+            self.key_dict['Q']=True
+        if symbol==key.E:
+            self.key_dict['E']=True
+    
+    def on_key_release(self,symbol,modifiers):
+
+        #Update dict  that key is released
+        if symbol==key.W:
+            self.key_dict['W']=False
+        if symbol==key.S:
+            self.key_dict['S']=False
+        if symbol==key.A:
+            self.key_dict['A']=False
+        if symbol==key.D:
+            self.key_dict['D']=False
+        if symbol==key.Q:
+            self.key_dict['Q']=False
+        if symbol==key.E:
+            self.key_dict['E']=False
+
 
 
     def check_events(self):
         #if(glfwGetKey(self.window1,GLFW_KEY_ESCAPE)==GLFW_PRESS):
          #   glfwTerminate()
           #  sys.exit()
-        
+        #print("Key Pressed")
         if self.keys[key.ESCAPE]:
+            print("Escape Pressed")
             self.window.close()
             sys.exit()
 
@@ -175,21 +225,24 @@ class Renderer:
         
 
     def render(self,dt):
-        print('Renderer')
-        self.get_time() #Solved
+        #print('Renderer')
+        self.get_time() 
 
-        self.check_events() #Solved
+        #self.check_events() 
+        #self.move_rads+=0.01
+        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,0],start_pose) 
+        self.move_objects() 
 
-        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose) #Solved
-        self.move_objects() #solved
-
-        self.camera.update() #solved
+        #print("Update Called")
+        self.camera.update() 
         #This method renders the screen
 
         self.ctx.clear(color=(0.08,0.16,0.18))
 
         #Render the scene
         self.scene.render()
+        pyglet.gl.glFlush()
+
         #Swap the buffers
         #pg.display.flip()
         #glfwSwapBuffers(self.window1)
@@ -197,7 +250,6 @@ class Renderer:
         #Time in seconds (float)
         #self.time=pg.time.get_ticks()*0.001
         self.delta_time=self.clock.update_time()
-        self.time=self.clock.time
 
     ########### Methods to position instrument/camera
     def move_objects(self):
