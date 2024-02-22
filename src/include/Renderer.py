@@ -106,16 +106,20 @@ class Renderer:
 
         #Creates the pyglet window
         config=Config(major_version=3,minor_version=3,depth_size=3,double_buffer=True)
-        self.window = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Left Eye')
-        #self.window_right = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Right Eye')
-
+        self.window_left = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Left Eye')
+        self.window_right = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Right Eye')
         #Initializing mouse handling:
 
-        self.window.on_mouse_motion=self.on_mouse_motion
+        self.window_left.on_mouse_motion=self.on_mouse_motion
+        self.window_right.on_mouse_motion=self.on_mouse_motion
+
 
         #Initializing Key Handling
-        self.window.on_key_press=self.on_key_press
-        self.window.on_key_release=self.on_key_release
+        self.window_right.on_key_press=self.on_key_press
+        self.window_right.on_key_release=self.on_key_release
+
+        self.window_left.on_key_press=self.on_key_press
+        self.window_right.on_key_release=self.on_key_release
 
         self.key_dict={
             'W': False,
