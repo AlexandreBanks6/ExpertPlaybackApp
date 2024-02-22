@@ -110,8 +110,8 @@ class Renderer:
         self.window_right = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Right Eye')
         #Initializing mouse handling:
 
-        self.window_left.on_mouse_motion=self.on_mouse_motion
-        self.window_right.on_mouse_motion=self.on_mouse_motion
+        self.window_left.on_mouse_motion=self.on_mouse_motion_left
+        self.window_right.on_mouse_motion=self.on_mouse_motion_right
 
 
         #Initializing Key Handling
@@ -119,7 +119,7 @@ class Renderer:
         self.window_right.on_key_release=self.on_key_release
 
         self.window_left.on_key_press=self.on_key_press
-        self.window_right.on_key_release=self.on_key_release
+        self.window_left.on_key_release=self.on_key_release
 
         self.key_dict={
             'W': False,
@@ -133,11 +133,14 @@ class Renderer:
         print("Done Window Constructor")
 
         #Detect and use opengl context
-        self.ctx=mgl.create_context(require=330)
+        self.ctx_right=mgl.create_context(require=330,standalone=True)
+        self.ctx_left=mgl.create_context(require=330,standalone=True)
+
 
 
         #Enable Depth Testing 
-        self.ctx.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
+        self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
+        self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
 
      
         #Object to track timemouse
@@ -155,7 +158,8 @@ class Renderer:
         print("Done Light Constructor")
 
         #Create an instance of the camera class
-        self.camera=Camera.Camera(self)
+        self.camera_left=Camera.Camera(self)
+        self.camera_right=Camera.Camera(self)
         print("Done Camera Constructor")
 
         #Mesh instance:
@@ -166,17 +170,25 @@ class Renderer:
         self.scene=scene.Scene(self)
         print("Done Scene Constructor")
 
-    def on_mouse_motion(self,x,y,dx,dy):
+    def on_mouse_motion_right(self,x,y,dx,dy):
         #print("Mouse Motion, x: "+str(x)+"y: "+str(y))
-        self.camera.mouse_x=x
-        self.camera.mouse_y=y
+        self.camera_right.mouse_x=x
+        self.camera_right.mouse_y=y
+    def on_mouse_motion_left(self,x,y,dx,dy):
+        #print("Mouse Motion, x: "+str(x)+"y: "+str(y))
+        self.camera_left.mouse_x=x
+        self.camera_left.mouse_y=y
+    
     
     def on_key_press(self,symbol,modifiers):
         #print("Key Pressed")
         if symbol==key.ESCAPE: #Close app when escape key is pressed
             print("Escape Pressed")
-            self.window.close()
-            self.ctx.release()
+            self.mesh.destroy()
+            self.window_left.close()
+            self.window_right.close()
+            self.ctx_right.release()
+            self.ctx_left.release()
 
         #Update dict  that key is down
         if symbol==key.W:
@@ -230,22 +242,44 @@ class Renderer:
 
     def render(self,dt):
         #print('Renderer')
-        self.get_time() 
+        
 
         #self.check_events() 
         #self.move_rads+=0.01
-        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,0],start_pose) 
-        self.move_objects() 
 
-        #print("Update Called")
-        self.camera.update() 
+
         #This method renders the screen
 
-        self.ctx.clear(color=(0.08,0.16,0.18))
+        #self.ctx.clear(color=(0.08,0.16,0.18))
+        #pyglet.gl.glFlush()
 
-        #Render the scene
-        self.scene.render()
+        #Get Time
+        self.get_time() 
+
+        #Move Instruments
+        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose)
+        self.move_objects() #Look into this as well
+        
+        ####Render Left Window
+        self.window_left.switch_to()
+        self.ctx_left.clear(color=(0.08,0.16,0.18))
+        self.camera_left.update() 
+        self.scene.render(self.ctx_left)
+        #self.window_left.flip()
+
+
+
+        ####Render the Right Window
+        self.window_right.switch_to()
+        #self.window_right.flip()
+        self.ctx_right.clear(color=(0.08,0.16,0.18))
+        self.camera_right.update()
+        self.scene.render(self.ctx_right)
+
         pyglet.gl.glFlush()
+
+
+
 
         #Swap the buffers
         #pg.display.flip()

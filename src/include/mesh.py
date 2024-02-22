@@ -4,9 +4,21 @@ from include import texture
 class Mesh:
     def __init__(self,app):
         self.app=app
-        self.vao=vao.VAO(app.ctx)
-        self.texture=texture.Texture(app.ctx)
+
+        #Two instances of textures and VAOs (for right/left screens)
+
+
+        #Right
+        self.vao_right=vao.VAO(app.ctx_right)
+        self.texture_right=texture.Texture(app.ctx_right)
+
+        #Left
+        self.vao_left=vao.VAO(app.ctx_left)
+        self.texture_left=texture.Texture(app.ctx_left)
 
     def destroy(self):
-        self.vao.destroy()
-        self.texture.destroy()
+        self.vao_left.destroy()
+        self.texture_left.destroy()
+
+        self.vao_right.destroy()
+        self.texture_right.destroy()

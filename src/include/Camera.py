@@ -1,6 +1,4 @@
 import glm
-import pygame as pg
-from pyglet.window import key
 #from glfw.GLFW import *
 #from glfw import _GLFWwindow as GLFWwindow
 
@@ -26,7 +24,7 @@ class Camera:
         self.old_mouse_x=0
         self.old_mouse_y=0
 
-        #View Matrix
+        #View Matrixc
         self.m_view=self.get_view_matrix()
 
         #Projection matrix
