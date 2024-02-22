@@ -30,18 +30,19 @@ if __name__ == '__main__':
     
 
     #Initialize the Renderer Class for both right and left eyes
-    tool_renderer_right=Renderer.Renderer()
-    tool_renderer_left=Renderer.Renderer()
+    tool_renderer=Renderer.Renderer()
+    tool_renderer.run(delay=60)
+    #tool_renderer_left=Renderer.Renderer()
     #Windows=MainClass()
 
     #Main Render loop
-    while True:
-        p1=multiprocessing.Process(target=tool_renderer_right.updateWindow(delay=60))
-        p2=multiprocessing.Process(target=tool_renderer_left.updateWindow(delay=60))
-        p1.start()
-        p2.start()
-        p1.join()
-        p2.join() 
+    #while True:
+     #   p1=multiprocessing.Process(target=tool_renderer_right.updateWindow(delay=60))
+      #  p2=multiprocessing.Process(target=tool_renderer_left.updateWindow(delay=60))
+       # p1.start()
+        #p2.start()
+        #p1.join()
+        #p2.join() 
         #tool_renderer_left.updateWindow(delay=60)
 
     #rate=rospy.Rate(140)  

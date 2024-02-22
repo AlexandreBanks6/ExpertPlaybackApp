@@ -1,8 +1,8 @@
 import pygame as pg
 
-#Use pyglet instead of pygame as we can create multiple windows
-import pyglet
-
+#Use GLFW instead of pygame as we can create multiple windows
+#from glfw.GLFW import *
+#from glfw import _GLFWwindow as GLFWwindow
 import moderngl as mgl
 import sys
 from include import Model as mdl
@@ -11,7 +11,9 @@ from include import Light
 from include import mesh
 from include import scene
 import glm
-
+import pyglet
+from pyglet.gl import Config, Context
+from pyglet.window import key
 
 import math
 import numpy as np
@@ -73,8 +75,8 @@ LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 
 class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
-        '''
         #Init pygame modules
+        '''
         pg.init()
 
         #Set the window size
@@ -88,19 +90,45 @@ class Renderer:
         #Create the opengl context
         pg.display.set_mode(self.WIN_SIZE,flags=pg.OPENGL | pg.DOUBLEBUF)
         '''
-        window=pyglet.window.Window(width=CONSOLE_VIEWPORT_WIDTH,heigh=CONSOLE_VIEWPORT_HEIGHT)
+        '''
+        self.WIN_SIZE=win_size
+        #INIT glfw
+        glfwInit()
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR,3)
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR,3)
+        glfwWindowHint(GLFW_OPENGL_PROFILE,GLFW_OPENGL_CORE_PROFILE)
+
+        self.window1=glfwCreateWindow(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT,"First Window",None,None) #This is where we can set the monitor
+        glfwMakeContextCurrent(self.window1)
+        '''
+
+        self.WIN_SIZE=win_size
+
+        #Creates the pyglet window
+        config=Config(major_version=3,minor_version=3,depth_size=3,double_buffer=True)
+        self.window = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config)
+
+        #Initialize keyboard handling
+        self.keys=key.KeyStateHandler()
+        self.window.push_handlers(self.keys)
+
+        #Initializing mouse handling:
+
+        self.window.on_mouse_motion=self.on_mouse_motion
+
+        print("Done Window Constructor")
 
         #Detect and use opengl context
-        self.ctx=mgl.create_context()
+        self.ctx=mgl.create_context(require=330)
 
 
         #Enable Depth Testing 
         self.ctx.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
 
      
-        #Object to track time
+        #Object to track timemouse
         #self.clock=pg.time.Clock()
-        
+        self.clock=pyglet.clock.Clock()
         self.time=0
         self.delta_time=0
 
@@ -110,24 +138,52 @@ class Renderer:
 
         #Lighting instance
         self.light=Light.Light()
+        print("Done Light Constructor")
 
         #Create an instance of the camera clas
         self.camera=Camera.Camera(self)
+        print("Done Camera Constructor")
 
         #Mesh instance:
         self.mesh=mesh.Mesh(self)
+        print("Done Mesh Constructor")
 
         #Scene
         self.scene=scene.Scene(self)
+        print("Done Scene Constructor")
+
+    def on_mouse_motion(self,x,y,dx,dy):
+        self.camera.mouse_x=x
+        self.camera.mouse_y=y
+
 
     def check_events(self):
-        for event in pg.event.get():
-            if event.type==pg.QUIT or (event.type==pg.KEYDOWN and event.key==pg.K_ESCAPE):
-                self.mesh.destroy()
-                pg.quit()
-                sys.exit()
+        #if(glfwGetKey(self.window1,GLFW_KEY_ESCAPE)==GLFW_PRESS):
+         #   glfwTerminate()
+          #  sys.exit()
+        
+        if self.keys[key.ESCAPE]:
+            self.window.close()
+            sys.exit()
 
-    def render(self):
+        
+        #for event in pg.event.get():
+         #   if event.type==pg.QUIT or (event.type==pg.KEYDOWN and event.key==pg.K_ESCAPE):
+          #      self.mesh.destroy()
+           #     pg.quit()
+            #    sys.exit()
+        
+
+    def render(self,dt):
+        print('Renderer')
+        self.get_time() #Solved
+
+        self.check_events() #Solved
+
+        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose) #Solved
+        self.move_objects() #solved
+
+        self.camera.update() #solved
         #This method renders the screen
 
         self.ctx.clear(color=(0.08,0.16,0.18))
@@ -135,10 +191,13 @@ class Renderer:
         #Render the scene
         self.scene.render()
         #Swap the buffers
-        pg.display.flip()
+        #pg.display.flip()
+        #glfwSwapBuffers(self.window1)
     def get_time(self):
         #Time in seconds (float)
-        self.time=pg.time.get_ticks()*0.001
+        #self.time=pg.time.get_ticks()*0.001
+        self.delta_time=self.clock.update_time()
+        self.time=self.clock.time
 
     ########### Methods to position instrument/camera
     def move_objects(self):
@@ -250,14 +309,17 @@ class Renderer:
     #def leftFrameGrabber(self):
     
     ############ Main Render Loop
-    def updateWindow(self,delay=60):
-        self.get_time()
-        self.check_events()
-        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose)
-        self.move_objects()
-        self.camera.update()
-        self.render()
-        self.delta_time=self.clock.tick(delay)
+    def run(self,delay=60):
+        #self.get_time()
+        #self.check_events()
+        #self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose)
+        #self.move_objects()
+        #self.camera.update()
+        #self.render()
+        pyglet.clock.schedule_interval(self.render,1/delay)
+        pyglet.app.run()
+        #glfwPollEvents()
+        #self.delta_time=self.clock.tick(delay)
         
         
         '''

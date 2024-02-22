@@ -1,5 +1,8 @@
 import glm
 import pygame as pg
+from pyglet.window import key
+#from glfw.GLFW import *
+#from glfw import _GLFWwindow as GLFWwindow
 
 FOV=50
 NEAR=0.1
@@ -18,6 +21,8 @@ class Camera:
         self.forward=glm.vec3(0,0,-1)
         self.yaw=yaw
         self.pitch=pitch
+        self.mouse_x=1
+        self.mouse_y=1
 
         #View Matrix
         self.m_view=self.get_view_matrix()
@@ -25,9 +30,8 @@ class Camera:
         #Projection matrix
         self.m_proj=self.get_projection_matrix()
     def rotate(self):
-        rel_x,rel_y=pg.mouse.get_rel()
-        self.yaw+=rel_x*SENSITIVITY
-        self.pitch-=rel_y*SENSITIVITY
+        #self.yaw+=self.mouse_x*SENSITIVITY
+        #self.pitch-=self.mouse_y*SENSITIVITY
         self.pitch=max(-89,min(89,self.pitch))
 
     def update_camera_vectors(self):
@@ -50,6 +54,26 @@ class Camera:
 
     def move(self):
         velocity=SPEED*self.app.delta_time
+        print("Move Entered")
+        keys=self.app.keys
+        
+        if keys[key.W]:
+            self.position+=self.forward*velocity
+        if keys[key.S]:
+            self.position-=self.forward*velocity
+        if keys[key.A]:
+            self.position+=self.right*velocity
+        if keys[key.D]:
+            self.position-=self.right*velocity
+        if keys[key.Q]:
+            self.position+=self.up*velocity
+        if keys[key.E]:
+            self.position-=self.up*velocity
+
+
+    '''
+    def move(self):
+        velocity=SPEED*self.app.delta_time
         keys=pg.key.get_pressed()
 
         if keys[pg.K_w]:
@@ -64,6 +88,27 @@ class Camera:
             self.position+=self.up*velocity
         if keys[pg.K_e]:
             self.position-=self.up*velocity
+    '''
+    
+
+    '''
+    def move(self):
+        velocity=SPEED*self.app.delta_time
+        #keys=glfwGetKey(self.app.window1)
+
+        if glfwGetKey(self.app.window1,GLFW_KEY_W)==GLFW_PRESS:
+            self.position+=self.forward*velocity
+        if glfwGetKey(self.app.window1,GLFW_KEY_S)==GLFW_PRESS:
+            self.position-=self.forward*velocity
+        if glfwGetKey(self.app.window1,GLFW_KEY_A)==GLFW_PRESS:
+            self.position+=self.right*velocity
+        if glfwGetKey(self.app.window1,GLFW_KEY_D)==GLFW_PRESS:
+            self.position-=self.right*velocity
+        if glfwGetKey(self.app.window1,GLFW_KEY_Q)==GLFW_PRESS:
+            self.position+=self.up*velocity
+        if glfwGetKey(self.app.window1,GLFW_KEY_E)==GLFW_PRESS:
+            self.position-=self.up*velocity
+    '''
 
     def get_view_matrix(self):
         return glm.lookAt(self.position,self.position+self.forward,self.up)

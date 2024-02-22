@@ -1,5 +1,9 @@
 import pygame as pg
 import moderngl as mgl
+from pyglet import image
+#import glfw
+from PIL import Image
+#import numpy as np
 
 
 class Texture:
@@ -13,11 +17,34 @@ class Texture:
         self.textures['jaw_left']=self.get_texture(path='textures/gray_texture_instruments.png')
 
     def get_texture(self, path):
-        texture = pg.image.load(path).convert()
-        texture = pg.transform.flip(texture, flip_x=False, flip_y=True)
-        texture = self.ctx.texture(size=texture.get_size(), components=3,
-                                   data=pg.image.tostring(texture, 'RGB'))
+        #img2=Image.open(path)
+        #h,w=img2.size
+        #image=image.convert('RGBA')
+        #image=image.transpose(Image.FLIP_TOP_BOTTOM)
+        #img_data=np.array(list(image.getdata()),np.uint8)
+        #h,w,=image.size
+        #texture = pg.image.load(path).convert()
+        #texture = pg.transform.flip(texture, flip_x=False, flip_y=True)
+        #texture = self.ctx.texture(size=(h,w), components=4,
+                                   #data=img_data)
+        
+        #texture = pg.image.load(path).convert()
+        #texture = pg.transform.flip(texture, flip_x=False, flip_y=True)
 
+        #Try loading texture with pyglet
+        img=image.load(path)
+        widht,height=img.width,img.height
+        raw_image=img.get_image_data()
+        format = 'RGB'
+        pitch = raw_image.width * len(format)
+        pixels = raw_image.get_data(format, pitch)
+        #img_data=
+        #texture=img.get_texture()
+        #texture=texture.get_transform(flip_y=False)
+        #texture=texture.get_image_data()
+        texture = self.ctx.texture(size=(height,widht), components=3,
+                                   data=pixels)       
+        
         #mipmaps
         texture.filter=(mgl.LINEAR_MIPMAP_LINEAR,mgl.LINEAR)
         texture.build_mipmaps()

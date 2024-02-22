@@ -195,5 +195,3 @@ class RightJaw(BaseModel):
         self.program['light.Ia'].write(self.app.light.Ia) #Ambient light component
         self.program['light.Id'].write(self.app.light.Id) #Diffuse Component
         self.program['light.Is'].write(self.app.light.Is) #Specular Intensity
-
-
