@@ -9,16 +9,21 @@ class Mesh:
 
 
         #Right
-        self.vao_right=vao.VAO(app.ctx_right)
-        self.texture_right=texture.Texture(app.ctx_right)
+        self.app.window_right.switch_to()
+        self.vao_right=vao.VAO(self.app.ctx_right)
+        self.texture_right=texture.Texture(self.app.ctx_right)
 
         #Left
-        self.vao_left=vao.VAO(app.ctx_left)
-        self.texture_left=texture.Texture(app.ctx_left)
+        self.app.window_left.switch_to()
+        self.vao_left=vao.VAO(self.app.ctx_left)
+        self.texture_left=texture.Texture(self.app.ctx_left)
 
     def destroy(self):
+        self.app.window_left.switch_to()
         self.vao_left.destroy()
         self.texture_left.destroy()
 
+
+        self.app.window_right.switch_to()
         self.vao_right.destroy()
         self.texture_right.destroy()

@@ -1,6 +1,4 @@
-import numpy as np
 import glm
-import pygame as pg
 
 class BaseModel:
     def __init__(self,app,vao_name,tex_id,pos=(0,0,0),rot=(0,0,0),scale=(1,1,1)):
@@ -11,12 +9,15 @@ class BaseModel:
         self.m_model=self.get_model_matrix()
         self.tex_id=tex_id
         #print(app.mesh.vao.vaos)
-        self.vao_left=app.mesh.vao_left.vaos[vao_name]
-        self.vao_right=app.mesh.vao_right.vaos[vao_name]
-        self.program_left=self.vao_left.program
-        self.program_right=self.vao_right.program
+        self.app.window_left.switch_to()
+        self.vao_left=app.mesh.vao_left.vaos[vao_name]        
+        self.program_left=self.vao_left.program        
         self.camera_left=self.app.camera_left
+
+        self.app.window_right.switch_to()
+        self.vao_right=app.mesh.vao_right.vaos[vao_name]
         self.camera_right=self.app.camera_right
+        self.program_right=self.vao_right.program
     def update(self,left_right):...
 
     def get_model_matrix(self):
@@ -39,9 +40,11 @@ class BaseModel:
         self.m_model=new_model
     def render(self,ctx):
         if ctx==self.app.ctx_left:
+            #print("Left Render")
             self.update('left')
             self.vao_left.render()
         elif ctx==self.app.ctx_right:
+           #print("Right Render")
             self.update('right')
             self.vao_right.render()
 
@@ -56,15 +59,20 @@ class Cube(BaseModel):
 
 
     def update(self,left_right):
+        print("Update Called")
         if left_right=='left':
-            self.texture_left.use()
+            self.texture_left.use(location=0)
             self.program_left['m_model'].write(self.m_model)
+            print("\nLeft: ")
+            print(self.m_model)
             self.program_left['m_view'].write(self.camera_left.m_view)
             self.program_left['camPos'].write(self.camera_left.position)
 
         elif left_right=='right':    
-            self.texture_right.use()
+            self.texture_right.use(location=0)
             self.program_right['m_model'].write(self.m_model)
+            print("\nRight: ")
+            print(self.m_model)
             self.program_right['m_view'].write(self.camera_right.m_view)
             self.program_right['camPos'].write(self.camera_right.position)
 
@@ -72,28 +80,34 @@ class Cube(BaseModel):
     def on_init(self):
 
         #Specify the name of the texture variable
+        self.app.window_left.switch_to()
         self.texture_left=self.app.mesh.texture_left.textures[self.tex_id]
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]
-
         self.program_left['u_texture_0']=0
-        self.program_right['u_texture_0']=0
-
-        self.texture_left.use()
-        self.texture_right.use()
+        self.texture_left.use(location=0)
 
         #Pass the projection matrix
         self.program_left['m_proj'].write(self.camera_left.m_proj)
         self.program_left['m_view'].write(self.camera_left.m_view)
         self.program_left['m_model'].write(self.m_model)
-        self.program_right['m_proj'].write(self.camera_right.m_proj)
-        self.program_right['m_view'].write(self.camera_right.m_view)
-        self.program_right['m_model'].write(self.m_model)
 
         #Light Source
         self.program_left['light.position'].write(self.app.light.position) #Light Position
         self.program_left['light.Ia'].write(self.app.light.Ia) #Ambient light component
         self.program_left['light.Id'].write(self.app.light.Id) #Diffuse Component
         self.program_left['light.Is'].write(self.app.light.Is) #Specular Intensity
+
+        
+        self.app.window_right.switch_to()
+        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.program_right['u_texture_0']=0        
+        self.texture_right.use(location=0)
+
+
+        self.program_right['m_proj'].write(self.camera_right.m_proj)
+        self.program_right['m_view'].write(self.camera_right.m_view)
+        self.program_right['m_model'].write(self.m_model)
+
+
 
         self.program_right['light.position'].write(self.app.light.position) #Light Position
         self.program_right['light.Ia'].write(self.app.light.Ia) #Ambient light component
@@ -109,13 +123,13 @@ class Shaft(BaseModel):
 
     def update(self,left_right):
         if left_right=='left':
-            self.texture_left.use()
+            self.texture_left.use(location=0)
             self.program_left['m_model'].write(self.m_model)
             self.program_left['m_view'].write(self.camera_left.m_view)
             self.program_left['camPos'].write(self.camera_left.position)
 
         elif left_right=='right':    
-            self.texture_right.use()
+            self.texture_right.use(location=0)
             self.program_right['m_model'].write(self.m_model)
             self.program_right['m_view'].write(self.camera_right.m_view)
             self.program_right['camPos'].write(self.camera_right.position)
@@ -124,28 +138,34 @@ class Shaft(BaseModel):
     def on_init(self):
 
         #Specify the name of the texture variable
+        self.app.window_left.switch_to()
         self.texture_left=self.app.mesh.texture_left.textures[self.tex_id]
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]
-
         self.program_left['u_texture_0']=0
-        self.program_right['u_texture_0']=0
-
-        self.texture_left.use()
-        self.texture_right.use()
+        self.texture_left.use(location=0)
 
         #Pass the projection matrix
         self.program_left['m_proj'].write(self.camera_left.m_proj)
         self.program_left['m_view'].write(self.camera_left.m_view)
         self.program_left['m_model'].write(self.m_model)
-        self.program_right['m_proj'].write(self.camera_right.m_proj)
-        self.program_right['m_view'].write(self.camera_right.m_view)
-        self.program_right['m_model'].write(self.m_model)
 
         #Light Source
         self.program_left['light.position'].write(self.app.light.position) #Light Position
         self.program_left['light.Ia'].write(self.app.light.Ia) #Ambient light component
         self.program_left['light.Id'].write(self.app.light.Id) #Diffuse Component
         self.program_left['light.Is'].write(self.app.light.Is) #Specular Intensity
+
+        
+        self.app.window_right.switch_to()
+        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.program_right['u_texture_0']=0        
+        self.texture_right.use(location=0)
+
+
+        self.program_right['m_proj'].write(self.camera_right.m_proj)
+        self.program_right['m_view'].write(self.camera_right.m_view)
+        self.program_right['m_model'].write(self.m_model)
+
+
 
         self.program_right['light.position'].write(self.app.light.position) #Light Position
         self.program_right['light.Ia'].write(self.app.light.Ia) #Ambient light component
@@ -161,13 +181,13 @@ class Body(BaseModel):
 
     def update(self,left_right):
         if left_right=='left':
-            self.texture_left.use()
+            self.texture_left.use(location=0)
             self.program_left['m_model'].write(self.m_model)
             self.program_left['m_view'].write(self.camera_left.m_view)
             self.program_left['camPos'].write(self.camera_left.position)
 
         elif left_right=='right':    
-            self.texture_right.use()
+            self.texture_right.use(location=0)
             self.program_right['m_model'].write(self.m_model)
             self.program_right['m_view'].write(self.camera_right.m_view)
             self.program_right['camPos'].write(self.camera_right.position)
@@ -176,28 +196,34 @@ class Body(BaseModel):
     def on_init(self):
 
         #Specify the name of the texture variable
+        self.app.window_left.switch_to()
         self.texture_left=self.app.mesh.texture_left.textures[self.tex_id]
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]
-
         self.program_left['u_texture_0']=0
-        self.program_right['u_texture_0']=0
-
-        self.texture_left.use()
-        self.texture_right.use()
+        self.texture_left.use(location=0)
 
         #Pass the projection matrix
         self.program_left['m_proj'].write(self.camera_left.m_proj)
         self.program_left['m_view'].write(self.camera_left.m_view)
         self.program_left['m_model'].write(self.m_model)
-        self.program_right['m_proj'].write(self.camera_right.m_proj)
-        self.program_right['m_view'].write(self.camera_right.m_view)
-        self.program_right['m_model'].write(self.m_model)
 
         #Light Source
         self.program_left['light.position'].write(self.app.light.position) #Light Position
         self.program_left['light.Ia'].write(self.app.light.Ia) #Ambient light component
         self.program_left['light.Id'].write(self.app.light.Id) #Diffuse Component
         self.program_left['light.Is'].write(self.app.light.Is) #Specular Intensity
+
+        
+        self.app.window_right.switch_to()
+        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.program_right['u_texture_0']=0        
+        self.texture_right.use(location=0)
+
+
+        self.program_right['m_proj'].write(self.camera_right.m_proj)
+        self.program_right['m_view'].write(self.camera_right.m_view)
+        self.program_right['m_model'].write(self.m_model)
+
+
 
         self.program_right['light.position'].write(self.app.light.position) #Light Position
         self.program_right['light.Ia'].write(self.app.light.Ia) #Ambient light component
@@ -213,13 +239,13 @@ class LeftJaw(BaseModel):
 
     def update(self,left_right):
         if left_right=='left':
-            self.texture_left.use()
+            self.texture_left.use(location=0)
             self.program_left['m_model'].write(self.m_model)
             self.program_left['m_view'].write(self.camera_left.m_view)
             self.program_left['camPos'].write(self.camera_left.position)
 
         elif left_right=='right':    
-            self.texture_right.use()
+            self.texture_right.use(location=0)
             self.program_right['m_model'].write(self.m_model)
             self.program_right['m_view'].write(self.camera_right.m_view)
             self.program_right['camPos'].write(self.camera_right.position)
@@ -228,22 +254,15 @@ class LeftJaw(BaseModel):
     def on_init(self):
 
         #Specify the name of the texture variable
+        self.app.window_left.switch_to()
         self.texture_left=self.app.mesh.texture_left.textures[self.tex_id]
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]
-
         self.program_left['u_texture_0']=0
-        self.program_right['u_texture_0']=0
-
-        self.texture_left.use()
-        self.texture_right.use()
+        self.texture_left.use(location=0)
 
         #Pass the projection matrix
         self.program_left['m_proj'].write(self.camera_left.m_proj)
         self.program_left['m_view'].write(self.camera_left.m_view)
         self.program_left['m_model'].write(self.m_model)
-        self.program_right['m_proj'].write(self.camera_right.m_proj)
-        self.program_right['m_view'].write(self.camera_right.m_view)
-        self.program_right['m_model'].write(self.m_model)
 
         #Light Source
         self.program_left['light.position'].write(self.app.light.position) #Light Position
@@ -251,11 +270,23 @@ class LeftJaw(BaseModel):
         self.program_left['light.Id'].write(self.app.light.Id) #Diffuse Component
         self.program_left['light.Is'].write(self.app.light.Is) #Specular Intensity
 
+        
+        self.app.window_right.switch_to()
+        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.program_right['u_texture_0']=0        
+        self.texture_right.use(location=0)
+
+
+        self.program_right['m_proj'].write(self.camera_right.m_proj)
+        self.program_right['m_view'].write(self.camera_right.m_view)
+        self.program_right['m_model'].write(self.m_model)
+
+
+
         self.program_right['light.position'].write(self.app.light.position) #Light Position
         self.program_right['light.Ia'].write(self.app.light.Ia) #Ambient light component
         self.program_right['light.Id'].write(self.app.light.Id) #Diffuse Component
         self.program_right['light.Is'].write(self.app.light.Is) #Specular Intensity
-
 
 class RightJaw(BaseModel):
     def __init__(self,app,vao_name='jaw_right',tex_id='jaw_right',pos=(0,0,0),rot=(0,0,0),scale=(1,1,1)):
@@ -265,13 +296,13 @@ class RightJaw(BaseModel):
 
     def update(self,left_right):
         if left_right=='left':
-            self.texture_left.use()
+            self.texture_left.use(location=0)
             self.program_left['m_model'].write(self.m_model)
             self.program_left['m_view'].write(self.camera_left.m_view)
             self.program_left['camPos'].write(self.camera_left.position)
 
         elif left_right=='right':    
-            self.texture_right.use()
+            self.texture_right.use(location=0)
             self.program_right['m_model'].write(self.m_model)
             self.program_right['m_view'].write(self.camera_right.m_view)
             self.program_right['camPos'].write(self.camera_right.position)
@@ -280,28 +311,34 @@ class RightJaw(BaseModel):
     def on_init(self):
 
         #Specify the name of the texture variable
+        self.app.window_left.switch_to()
         self.texture_left=self.app.mesh.texture_left.textures[self.tex_id]
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]
-
         self.program_left['u_texture_0']=0
-        self.program_right['u_texture_0']=0
-
-        self.texture_left.use()
-        self.texture_right.use()
+        self.texture_left.use(location=0)
 
         #Pass the projection matrix
         self.program_left['m_proj'].write(self.camera_left.m_proj)
         self.program_left['m_view'].write(self.camera_left.m_view)
         self.program_left['m_model'].write(self.m_model)
-        self.program_right['m_proj'].write(self.camera_right.m_proj)
-        self.program_right['m_view'].write(self.camera_right.m_view)
-        self.program_right['m_model'].write(self.m_model)
 
         #Light Source
         self.program_left['light.position'].write(self.app.light.position) #Light Position
         self.program_left['light.Ia'].write(self.app.light.Ia) #Ambient light component
         self.program_left['light.Id'].write(self.app.light.Id) #Diffuse Component
         self.program_left['light.Is'].write(self.app.light.Is) #Specular Intensity
+
+        
+        self.app.window_right.switch_to()
+        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.program_right['u_texture_0']=0        
+        self.texture_right.use(location=0)
+
+
+        self.program_right['m_proj'].write(self.camera_right.m_proj)
+        self.program_right['m_view'].write(self.camera_right.m_view)
+        self.program_right['m_model'].write(self.m_model)
+
+
 
         self.program_right['light.position'].write(self.app.light.position) #Light Position
         self.program_right['light.Ia'].write(self.app.light.Ia) #Ambient light component

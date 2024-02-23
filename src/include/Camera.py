@@ -60,7 +60,7 @@ class Camera:
 
     def move(self):
         velocity=SPEED*self.app.delta_time
-        print(self.app.delta_time)
+        #print(self.app.delta_time)
         key_dict=self.app.key_dict
         if key_dict['W']:
             self.position+=self.forward*velocity

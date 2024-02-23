@@ -108,16 +108,21 @@ class Renderer:
         config=Config(major_version=3,minor_version=3,depth_size=3,double_buffer=True)
         self.window_left = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Left Eye')
         self.window_right = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Right Eye')
-        #Initializing mouse handling:
 
+
+        #Initializing mouse handling:
+        self.window_left.switch_to()
         self.window_left.on_mouse_motion=self.on_mouse_motion_left
+        self.window_right.switch_to()
         self.window_right.on_mouse_motion=self.on_mouse_motion_right
 
 
         #Initializing Key Handling
+        self.window_right.switch_to()
         self.window_right.on_key_press=self.on_key_press
         self.window_right.on_key_release=self.on_key_release
 
+        self.window_left.switch_to()
         self.window_left.on_key_press=self.on_key_press
         self.window_left.on_key_release=self.on_key_release
 
@@ -133,13 +138,17 @@ class Renderer:
         print("Done Window Constructor")
 
         #Detect and use opengl context
-        self.ctx_right=mgl.create_context(require=330,standalone=True)
-        self.ctx_left=mgl.create_context(require=330,standalone=True)
+        self.window_right.switch_to()
+        self.ctx_right=mgl.create_context(require=330,standalone=False)
+        self.window_left.switch_to()
+        self.ctx_left=mgl.create_context(require=330,standalone=False)
 
 
 
         #Enable Depth Testing 
+        self.window_right.switch_to()
         self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
+        self.window_left.switch_to()
         self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
 
      
@@ -158,7 +167,9 @@ class Renderer:
         print("Done Light Constructor")
 
         #Create an instance of the camera class
+        self.window_left.switch_to()
         self.camera_left=Camera.Camera(self)
+        self.window_right.switch_to()
         self.camera_right=Camera.Camera(self)
         print("Done Camera Constructor")
 
@@ -171,10 +182,12 @@ class Renderer:
         print("Done Scene Constructor")
 
     def on_mouse_motion_right(self,x,y,dx,dy):
+        #print("Test")
         #print("Mouse Motion, x: "+str(x)+"y: "+str(y))
         self.camera_right.mouse_x=x
         self.camera_right.mouse_y=y
     def on_mouse_motion_left(self,x,y,dx,dy):
+        #print("Left Mouse")
         #print("Mouse Motion, x: "+str(x)+"y: "+str(y))
         self.camera_left.mouse_x=x
         self.camera_left.mouse_y=y
@@ -229,7 +242,7 @@ class Renderer:
         #print("Key Pressed")
         if self.keys[key.ESCAPE]:
             print("Escape Pressed")
-            self.window.close()
+           # self.window.close()
             sys.exit()
 
         
@@ -245,7 +258,7 @@ class Renderer:
         
 
         #self.check_events() 
-        #self.move_rads+=0.01
+        self.move_rads+=0.01
 
 
         #This method renders the screen
@@ -257,26 +270,32 @@ class Renderer:
         self.get_time() 
 
         #Move Instruments
-        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose)
+        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,self.move_rads],start_pose)
         self.move_objects() #Look into this as well
         
         ####Render Left Window
-        self.window_left.switch_to()
+        #self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
+        self.window_left.switch_to()       
         self.ctx_left.clear(color=(0.08,0.16,0.18))
         self.camera_left.update() 
         self.scene.render(self.ctx_left)
+        #print(self.ctx_left.error)
+        
         #self.window_left.flip()
 
 
 
         ####Render the Right Window
+        #self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
         self.window_right.switch_to()
         #self.window_right.flip()
+        #self.ctx_right.screen.use()
         self.ctx_right.clear(color=(0.08,0.16,0.18))
         self.camera_right.update()
         self.scene.render(self.ctx_right)
-
-        pyglet.gl.glFlush()
+        #print(self.ctx_right.error)
+        
+        #pyglet.gl.glFlush()
 
 
 
