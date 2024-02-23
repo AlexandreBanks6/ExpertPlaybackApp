@@ -1,5 +1,6 @@
 import glm
-
+from include import texture
+from pyglet import image
 class BaseModel:
     def __init__(self,app,vao_name,tex_id,pos=(0,0,0),rot=(0,0,0),scale=(1,1,1)):
         self.app=app
@@ -72,11 +73,28 @@ class BackgroundModel:
         self.texture_right.use()
     
     def update(self,left_right):
+        self.update_texture_data(left_right)
         if left_right=='left':
             self.texture_left.use()
-
         elif left_right=='right':    
             self.texture_right.use()
+    def update_texture_data(self,left_right):
+        if left_right=='left':
+            img=image.load('textures/texture_test.png')
+            raw_image=img.get_image_data()
+            format = 'RGB'
+            pitch = raw_image.width * len(format)
+            pixels = raw_image.get_data(format, pitch)
+            self.texture_left.write(pixels)
+
+        elif left_right=='right':
+            img=image.load('textures/texture_test.png')
+            raw_image=img.get_image_data()
+            format = 'RGB'
+            pitch = raw_image.width * len(format)
+            pixels = raw_image.get_data(format, pitch)
+            self.texture_right.write(pixels)
+        
 
     def render(self,ctx):
         if ctx==self.app.ctx_left:

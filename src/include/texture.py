@@ -55,6 +55,29 @@ class Texture:
         texture.anisotropy=32.0 #elminate aliasing on surfaces
 
         return texture
+    def get_background_texture(self):
+
+        img=image.load('textures/texture_test.png')
+        widht,height=img.width,img.height
+        raw_image=img.get_image_data()
+        format = 'RGB'
+        pitch = raw_image.width * len(format)
+        pixels = raw_image.get_data(format, pitch)
+        #img_data=
+        #texture=img.get_texture()
+        #texture=texture.get_transform(flip_y=False)
+        #texture=texture.get_image_data()
+        texture = self.ctx.texture(size=(height,widht), components=3,
+                                   data=pixels)       
+        
+        #mipmaps
+        texture.filter=(mgl.LINEAR_MIPMAP_LINEAR,mgl.LINEAR)
+        texture.build_mipmaps()
+
+        #AF
+        texture.anisotropy=32.0 #elminate aliasing on surfaces
+
+        return texture
 
     def destroy(self):
         [tex.release() for tex in self.textures.values()]
