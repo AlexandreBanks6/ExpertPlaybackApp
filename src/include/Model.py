@@ -49,8 +49,44 @@ class BaseModel:
             self.vao_right.render()
 
 
+class BackgroundModel:
+    def __init__(self,app,vao_name='background',tex_id='background'):
+        self.app=app
+        self.tex_id=tex_id
+        self.app.window_left.switch_to()
+        self.vao_left=app.mesh.vao_left.vaos[vao_name]        
+        self.program_left=self.vao_left.program        
 
+        self.app.window_right.switch_to()
+        self.vao_right=app.mesh.vao_right.vaos[vao_name]
+        self.program_right=self.vao_right.program
 
+        self.app.window_left.switch_to()
+        self.texture_left=self.app.mesh.texture_left.textures[self.tex_id]
+        self.program_left['u_texture_0']=0
+        self.texture_left.use()
+
+        self.app.window_right.switch_to()
+        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.program_right['u_texture_0']=0        
+        self.texture_right.use()
+    
+    def update(self,left_right):
+        if left_right=='left':
+            self.texture_left.use()
+
+        elif left_right=='right':    
+            self.texture_right.use()
+
+    def render(self,ctx):
+        if ctx==self.app.ctx_left:
+            #print("Left Render")
+            self.update('left')
+            self.vao_left.render()
+        elif ctx==self.app.ctx_right:
+           #print("Right Render")
+            self.update('right')
+            self.vao_right.render()
 
 class Cube(BaseModel):
     def __init__(self,app,vao_name='cube',tex_id=0,pos=(0,0,0),rot=(0,0,0),scale=(1,1,1)):

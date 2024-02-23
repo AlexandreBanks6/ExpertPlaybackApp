@@ -11,10 +11,12 @@ class Texture:
         self.ctx = ctx
         self.textures = {}
         #self.textures[0] = self.get_texture(path='textures/texture_test.png')
+        self.textures['background']=self.get_texture(path='textures/texture_test.png')
         self.textures['shaft']=self.get_texture(path='textures/gray_texture_instruments.png')
         self.textures['body']=self.get_texture(path='textures/gray_texture_instruments.png')
         self.textures['jaw_right']=self.get_texture(path='textures/gray_texture_instruments.png')
         self.textures['jaw_left']=self.get_texture(path='textures/gray_texture_instruments.png')
+
 
     def get_texture(self, path):
         #img2=Image.open(path)

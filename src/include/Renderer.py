@@ -14,6 +14,7 @@ import glm
 import pyglet
 from pyglet.gl import Config, Context
 from pyglet.window import key
+from PIL import Image
 
 import math
 import numpy as np

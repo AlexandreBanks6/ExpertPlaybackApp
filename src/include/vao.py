@@ -9,6 +9,11 @@ class VAO:
         self.program = shader_program.ShaderProgram(ctx)
         self.vaos = {}
         
+
+        #Background vao
+        self.vaos['background'] = self.get_vao(
+            program=self.program.programs['background'],
+            vbo = self.vbo.vbos['background'],isbackground=True)
         # shaft vao
         self.vaos['shaft'] = self.get_vao(
             program=self.program.programs['default'],
@@ -28,8 +33,12 @@ class VAO:
         self.vaos['jaw_left'] = self.get_vao(
             program=self.program.programs['default'],
             vbo = self.vbo.vbos['jaw_left'])
+
         
-    def get_vao(self, program, vbo):
+    def get_vao(self, program,vbo,isbackground=False):
+
+        print([(vbo.vbo, vbo.format, *vbo.attribs)])
+
         vao = self.ctx.vertex_array(program, [(vbo.vbo, vbo.format, *vbo.attribs)], skip_errors=True)
         return vao
 

@@ -13,10 +13,12 @@ LEFT_JAW_FILE='../resources/instrument_models/NewOrigin_Models/Decimated_OBJ/Jaw
 class VBO:
     def __init__(self, ctx):
         self.vbos = {}
+        self.vbos['background']=BackgroundVBO(ctx)
         self.vbos['shaft']= ShaftVBO(ctx)
         self.vbos['body']=BodyVBO(ctx)
         self.vbos['jaw_right']=RightJawVBO(ctx)
         self.vbos['jaw_left']=LeftJawVBO(ctx)
+
 
     def destroy(self):
         [vbo.destroy() for vbo in self.vbos.values()]
@@ -131,6 +133,42 @@ class LeftJawVBO(BaseVBO):
         obj=objs.materials.popitem()[1]
         vertex_data=obj.vertices
         vertex_data=np.array(vertex_data,dtype='f4')
+        return vertex_data
+    
+
+class BackgroundVBO(BaseVBO):
+    def __init__(self,app):
+        super().__init__(app)
+        self.format='2f 2f'
+        self.attribs=['in_texcoord_0', 'in_position']
+    def get_vertex_data(self):   
+        vertex_data = np.array([
+            # Bottom Left
+            0.0, 0.0,  # Texture Coords
+            -1.0, -1.0,  # Position Coords
+
+            # Bottom Right
+            1.0, 0.0, 
+            1.0, -1.0,
+
+            # Top Right
+            1.0, 1.0,
+            1.0, 1.0,
+
+            # Top Left
+            0.0, 1.0,
+            -1.0, 1.0,
+            
+            #Bottom Left
+            0.0,0.0,
+            -1.0,-1.0,
+
+            # Top Right
+            1.0, 1.0,
+            1.0, 1.0            
+            ], dtype='f4')
+        
+
         return vertex_data
 
 
