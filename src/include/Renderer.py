@@ -19,6 +19,13 @@ from PIL import Image
 import math
 import numpy as np
 
+#Ros and frame grabber imports
+import rospy
+from sensor_msgs.msg import CompressedImage
+import cv2
+from cv_bridge import CvBridge
+import os
+
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
 
@@ -149,9 +156,10 @@ class Renderer:
         #Enable Depth Testing 
         self.window_right.switch_to()
         self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
+        self.ctx_right.enable(mgl.BLEND)
         self.window_left.switch_to()
         self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
-
+        self.ctx_right.enable(mgl.BLEND)
      
         #Object to track timemouse
         #self.clock=pg.time.Clock()
@@ -182,6 +190,84 @@ class Renderer:
         self.scene=scene.Scene(self)
         print("Done Scene Constructor")
 
+
+        #Background Vertex Program
+        vertex_source,fragment_source=self.get_program_background('background')
+
+        #Background Image
+        self.test_image=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
+
+        #Initializing left background rendering
+        self.window_left.switch_to()
+        self.background_program_left=self.ctx_left.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
+        self.background_program_left['texture0']=0
+        self.vertex_array_left=self.init_vertex_array(self.ctx_left,self.background_program_left)
+
+        #self.texture_left=self.ctx_left.texture(self.test_image.size,3,data=self.test_image.tobytes())
+        self.texture_left=self.ctx_left.texture(size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT),components=3)
+        self.texture_left.use()
+
+        #Initializing right background rendering
+        self.window_right.switch_to()
+        self.background_program_right=self.ctx_right.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
+        self.background_program_right['texture0']=0
+        self.vertex_array_right=self.init_vertex_array(self.ctx_right,self.background_program_right)
+
+        #self.texture_right=self.ctx_right.texture(self.test_image.size,3,data=self.test_image.tobytes())
+        self.texture_right=self.ctx_right.texture(size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT),components=3)
+        self.texture_right.use()
+
+
+
+        #Frames passed by endoscope
+        self.frame_right=None
+        self.frame_left=None
+        self.bridge=CvBridge()
+
+
+
+
+
+
+    def get_program_background(self,shader_program_name):
+        try:
+            print("Shader Entered")
+            with open(f'shaders/{shader_program_name}.vert') as file:
+                vertex_shader_source = file.read()
+
+            with open(f'shaders/{shader_program_name}.frag') as file:
+                fragment_shader_source = file.read()
+
+            return vertex_shader_source,fragment_shader_source
+
+        except Exception as e:
+            print(f"Error creating shader program '{shader_program_name}': {e}")
+            return None
+        
+    def init_vertex_array(self, context: mgl.Context, program: mgl.Program) -> mgl.VertexArray:
+        vertices_xy = self.get_vertices_for_quad_2d(size=(2.0, 2.0), bottom_left_corner=(-1.0, -1.0))
+        vertex_buffer_xy = context.buffer(vertices_xy.tobytes())
+
+        vertices_uv = self.get_vertices_for_quad_2d(size=(1.0, 1.0), bottom_left_corner=(0.0, 0.0))
+        vertex_buffer_uv = context.buffer(vertices_uv.tobytes())
+
+        vertex_array = context.vertex_array(program, [(vertex_buffer_xy, "2f", "vertex_xy"),
+                                                      (vertex_buffer_uv, "2f", "vertex_uv")])
+        return vertex_array
+
+    def get_vertices_for_quad_2d(self, size=(2.0, 2.0), bottom_left_corner=(-1.0, -1.0)) -> np.array:
+        # A quad is composed of 2 triangles: https://en.wikipedia.org/wiki/Polygon_mesh
+        w, h = size
+        x_bl, y_bl = bottom_left_corner
+        vertices = np.array([x_bl,     y_bl + h,
+                             x_bl,     y_bl,
+                             x_bl + w, y_bl,
+
+                             x_bl,     y_bl + h,
+                             x_bl + w, y_bl,
+                             x_bl + w, y_bl + h], dtype=np.float32)
+        return vertices
+
     def on_mouse_motion_right(self,x,y,dx,dy):
         #print("Test")
         #print("Mouse Motion, x: "+str(x)+"y: "+str(y))
@@ -203,6 +289,8 @@ class Renderer:
             self.window_right.close()
             self.ctx_right.release()
             self.ctx_left.release()
+            self.vertex_array_left.release()
+            self.texture_left.release()
 
         #Update dict  that key is down
         if symbol==key.W:
@@ -255,17 +343,9 @@ class Renderer:
         
 
     def render(self,dt):
-        #print('Renderer')
-        
+        print(self.delta_time)
 
-        #self.check_events() 
         self.move_rads+=0.01
-
-
-        #This method renders the screen
-
-        #self.ctx.clear(color=(0.08,0.16,0.18))
-        #pyglet.gl.glFlush()
 
         #Get Time
         self.get_time() 
@@ -274,36 +354,44 @@ class Renderer:
         self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,self.move_rads],start_pose)
         self.move_objects() #Look into this as well
         
+
+
         ####Render Left Window
-        #self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
         self.window_left.switch_to()       
-        self.ctx_left.clear(color=(0.08,0.16,0.18))
+        self.ctx_left.clear()
+
+        #Updating Background Image
+        if self.frame_left is not None:
+            self.ctx_left.disable(mgl.DEPTH_TEST)
+            #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
+            self.texture_left.write(self.frame_left)
+            self.texture_left.use()
+            self.vertex_array_left.render()
+            self.ctx_left.enable(mgl.DEPTH_TEST)
+
+        #Rendering Left Instruments
         self.camera_left.update() 
         self.scene.render(self.ctx_left)
-        #print(self.ctx_left.error)
         
-        #self.window_left.flip()
 
 
 
         ####Render the Right Window
-        #self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
         self.window_right.switch_to()
-        #self.window_right.flip()
-        #self.ctx_right.screen.use()
-        self.ctx_right.clear(color=(0.08,0.16,0.18))
+        self.ctx_right.clear()
+
+        #Updating Background Image
+        if self.frame_right is not None:
+            self.ctx_right.disable(mgl.DEPTH_TEST)
+            #background_image_right=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
+            self.texture_right.write(self.frame_right)
+            self.texture_right.use()
+            self.vertex_array_right.render()
+            self.ctx_right.enable(mgl.DEPTH_TEST)
+
         self.camera_right.update()
         self.scene.render(self.ctx_right)
-        #print(self.ctx_right.error)
-        
-        #pyglet.gl.glFlush()
 
-
-
-
-        #Swap the buffers
-        #pg.display.flip()
-        #glfwSwapBuffers(self.window1)
     def get_time(self):
         #Time in seconds (float)
         #self.time=pg.time.get_ticks()*0.001
@@ -414,12 +502,16 @@ class Renderer:
         return inverted_transform
     
 
-    #def rightFrameGrabber(self):
+    def frameCallbackRight(self,data):
+        self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        print('right')
 
-    #def leftFrameGrabber(self):
+    def frameCallbackLeft(self,data):
+        self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        print('left')
     
     ############ Main Render Loop
-    def run(self,delay=60):
+    def run(self,delay=100):
         #self.get_time()
         #self.check_events()
         #self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose)

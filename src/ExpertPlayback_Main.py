@@ -6,24 +6,18 @@ import os
 from include import Renderer
 import multiprocessing
 
-#We implement gamma correction and mipmap correction
+#Ros and frame grabber imports
+import rospy
+from sensor_msgs.msg import CompressedImage
+import cv2
+from cv_bridge import CvBridge
+import os
 
-#ECM=ECM.ECM_Class()
 
-class MainClass():
-    def __init__(self):
-        self.tool_renderer_right=None
-        self.tool_renderer_left=None
-        p1=multiprocessing.Process(target=self.initRightRenderer)
-        p2=multiprocessing.Process(target=self.initLeftRenderer)
-        p1.start()
-        p2.start()
-        p1.join()
-        p2.join()
-    def initRightRenderer(self):
-        self.tool_renderer_right=Renderer.Renderer()
-    def initLeftRenderer(self):
-        self.tool_renderer_left=Renderer.Renderer()
+RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
+LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
+
+
 
 
 if __name__ == '__main__':
@@ -31,31 +25,14 @@ if __name__ == '__main__':
 
     #Initialize the Renderer Class for both right and left eyes
     tool_renderer=Renderer.Renderer()
-    tool_renderer.run(delay=60)
-    #tool_renderer_left=Renderer.Renderer()
-    #Windows=MainClass()
 
-    #Main Render loop
-    #while True:
-     #   p1=multiprocessing.Process(target=tool_renderer_right.updateWindow(delay=60))
-      #  p2=multiprocessing.Process(target=tool_renderer_left.updateWindow(delay=60))
-       # p1.start()
-        #p2.start()
-        #p1.join()
-        #p2.join() 
-        #tool_renderer_left.updateWindow(delay=60)
+    #Initializing rospy subscriber
 
-    #rate=rospy.Rate(140)  
+    rospy.init_node('ExperPlayback')
+    rospy.Rate(10000)
 
-    #########Initialize ROS events############
+    rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackRight,queue_size=1,buff_size=2**18)
+    rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackLeft,queue_size=1,buff_size=2**18)
 
-    #Left ECM
-    #rospy.Subscriber('ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed', CompressedImage, ECM.frameCallback)
-    #rospy.init_node('ExpertPlayback')
-
-
-    #Instrument Renderings
-    #print("Entering")
-    #ECM.renderScene()
-
-    #rospy.spin()
+    #Running Application
+    tool_renderer.run(delay=100)

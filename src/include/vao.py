@@ -11,9 +11,9 @@ class VAO:
         
 
         #Background vao
-        self.vaos['background'] = self.get_vao(
-            program=self.program.programs['background'],
-            vbo = self.vbo.vbos['background'],isbackground=True)
+        #self.vaos['background'] = self.get_vao(
+         #   program=self.program.programs['background'],
+          #  vbo = self.vbo.vbos['background'],isbackground=True)
         # shaft vao
         self.vaos['shaft'] = self.get_vao(
             program=self.program.programs['default'],

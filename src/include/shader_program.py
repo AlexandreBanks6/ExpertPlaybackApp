@@ -2,7 +2,7 @@ class ShaderProgram:
     def __init__(self, ctx):
         self.ctx = ctx
         self.programs = {}
-        self.programs['background']=self.get_program('background')
+        #self.programs['background']=self.get_program('background')
         self.programs['default'] = self.get_program('default')
 
     def get_program(self, shader_program_name):

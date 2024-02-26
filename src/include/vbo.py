@@ -13,7 +13,7 @@ LEFT_JAW_FILE='../resources/instrument_models/NewOrigin_Models/Decimated_OBJ/Jaw
 class VBO:
     def __init__(self, ctx):
         self.vbos = {}
-        self.vbos['background']=BackgroundVBO(ctx)
+        #self.vbos['background']=BackgroundVBO(ctx)
         self.vbos['shaft']= ShaftVBO(ctx)
         self.vbos['body']=BodyVBO(ctx)
         self.vbos['jaw_right']=RightJawVBO(ctx)
@@ -136,6 +136,7 @@ class LeftJawVBO(BaseVBO):
         return vertex_data
     
 
+'''
 class BackgroundVBO(BaseVBO):
     def __init__(self,app):
         super().__init__(app)
@@ -170,6 +171,8 @@ class BackgroundVBO(BaseVBO):
         
 
         return vertex_data
+
+'''
 
 
 

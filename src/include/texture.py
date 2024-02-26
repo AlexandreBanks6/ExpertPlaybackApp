@@ -11,7 +11,7 @@ class Texture:
         self.ctx = ctx
         self.textures = {}
         #self.textures[0] = self.get_texture(path='textures/texture_test.png')
-        self.textures['background']=self.get_texture(path='textures/texture_test.png')
+        #self.textures['background']=self.get_texture(path='textures/texture_test.png')
         self.textures['shaft']=self.get_texture(path='textures/gray_texture_instruments.png')
         self.textures['body']=self.get_texture(path='textures/gray_texture_instruments.png')
         self.textures['jaw_right']=self.get_texture(path='textures/gray_texture_instruments.png')
@@ -55,6 +55,7 @@ class Texture:
         texture.anisotropy=32.0 #elminate aliasing on surfaces
 
         return texture
+    '''
     def get_background_texture(self):
 
         img=image.load('textures/texture_test.png')
@@ -78,6 +79,7 @@ class Texture:
         texture.anisotropy=32.0 #elminate aliasing on surfaces
 
         return texture
+    '''
 
     def destroy(self):
         [tex.release() for tex in self.textures.values()]

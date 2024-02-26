@@ -1,13 +1,11 @@
 #version 330 core
 
-layout (location=0) in vec2 in_texcoord_0;
-layout (location=1) in vec2 in_position;
+layout (location=0) in vec2 vertex_xy;
+layout (location=1) in vec2 vertex_uv;
 
-
-
-out vec2 texcoord;
+out vec2 fragment_uv;
 
 void main() {
-    texcoord=in_texcoord_0;
-    gl_Position=vec4(in_position,0.0,1.0);
+    fragment_uv=vertex_uv;
+    gl_Position=vec4(vertex_xy,0.0,1.0);
 }

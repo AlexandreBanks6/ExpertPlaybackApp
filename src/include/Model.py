@@ -50,6 +50,7 @@ class BaseModel:
             self.vao_right.render()
 
 
+'''
 class BackgroundModel:
     def __init__(self,app,vao_name='background',tex_id='background'):
         self.app=app
@@ -105,6 +106,7 @@ class BackgroundModel:
            #print("Right Render")
             self.update('right')
             self.vao_right.render()
+'''
 
 class Cube(BaseModel):
     def __init__(self,app,vao_name='cube',tex_id=0,pos=(0,0,0),rot=(0,0,0),scale=(1,1,1)):
