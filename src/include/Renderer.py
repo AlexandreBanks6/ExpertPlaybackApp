@@ -10,21 +10,24 @@ from include import Camera
 from include import Light
 from include import mesh
 from include import scene
+from include import ArucoTracker
 import glm
 import pyglet
+
+
 from pyglet.gl import Config, Context
 from pyglet.window import key
 from PIL import Image
 
 import math
 import numpy as np
-
+import os
 #Ros and frame grabber imports
-import rospy
-from sensor_msgs.msg import CompressedImage
 import cv2
 from cv_bridge import CvBridge
-import os
+
+#TKinter importer
+import tkinter as tk
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
@@ -116,23 +119,52 @@ class Renderer:
         config=Config(major_version=3,minor_version=3,depth_size=3,double_buffer=True)
         self.window_left = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Left Eye')
         self.window_right = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Right Eye')
-
-
-        #Initializing mouse handling:
+        
+        #Background Texture Things:
+        #Background Vertex Program
+        vertex_source,fragment_source=self.get_program_background('background')
+        
+        
+        
+        ############Left Window Initialization
         self.window_left.switch_to()
         self.window_left.on_mouse_motion=self.on_mouse_motion_left
-        self.window_right.switch_to()
-        self.window_right.on_mouse_motion=self.on_mouse_motion_right
-
-
-        #Initializing Key Handling
-        self.window_right.switch_to()
-        self.window_right.on_key_press=self.on_key_press
-        self.window_right.on_key_release=self.on_key_release
-
-        self.window_left.switch_to()
         self.window_left.on_key_press=self.on_key_press
         self.window_left.on_key_release=self.on_key_release
+        self.ctx_left=mgl.create_context(require=330,standalone=False)
+        self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
+        self.ctx_left.enable(mgl.BLEND)
+        self.camera_left=Camera.Camera(self)
+
+        #Background Image
+        self.background_program_left=self.ctx_left.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
+        self.background_program_left['texture0']=0
+        self.vertex_array_left=self.init_vertex_array(self.ctx_left,self.background_program_left)
+
+        #self.texture_left=self.ctx_left.texture(self.test_image.size,3,data=self.test_image.tobytes())
+        self.texture_left=self.ctx_left.texture(size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT),components=3)
+        self.texture_left.use()
+
+
+        #############Right Window Initialization
+        self.window_right.switch_to()
+        self.window_right.on_mouse_motion=self.on_mouse_motion_right
+        self.window_right.on_key_press=self.on_key_press
+        self.window_right.on_key_release=self.on_key_release
+        self.ctx_right=mgl.create_context(require=330,standalone=False)
+        self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
+        self.ctx_right.enable(mgl.BLEND)
+        self.camera_right=Camera.Camera(self)
+
+        #Initializing right background
+        self.window_right.switch_to()
+        self.background_program_right=self.ctx_right.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
+        self.background_program_right['texture0']=0
+        self.vertex_array_right=self.init_vertex_array(self.ctx_right,self.background_program_right)
+
+        #self.texture_right=self.ctx_right.texture(self.test_image.size,3,data=self.test_image.tobytes())
+        self.texture_right=self.ctx_right.texture(size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT),components=3)
+        self.texture_right.use()
 
         self.key_dict={
             'W': False,
@@ -143,23 +175,10 @@ class Renderer:
             'E': False
         }
 
-        print("Done Window Constructor")
-
-        #Detect and use opengl context
-        self.window_right.switch_to()
-        self.ctx_right=mgl.create_context(require=330,standalone=False)
-        self.window_left.switch_to()
-        self.ctx_left=mgl.create_context(require=330,standalone=False)
+        print("Done Window and Light Constructor")
 
 
 
-        #Enable Depth Testing 
-        self.window_right.switch_to()
-        self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
-        self.ctx_right.enable(mgl.BLEND)
-        self.window_left.switch_to()
-        self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
-        self.ctx_right.enable(mgl.BLEND)
      
         #Object to track timemouse
         #self.clock=pg.time.Clock()
@@ -175,12 +194,6 @@ class Renderer:
         self.light=Light.Light()
         print("Done Light Constructor")
 
-        #Create an instance of the camera class
-        self.window_left.switch_to()
-        self.camera_left=Camera.Camera(self)
-        self.window_right.switch_to()
-        self.camera_right=Camera.Camera(self)
-        print("Done Camera Constructor")
 
         #Mesh instance:
         self.mesh=mesh.Mesh(self)
@@ -190,43 +203,45 @@ class Renderer:
         self.scene=scene.Scene(self)
         print("Done Scene Constructor")
 
-
-        #Background Vertex Program
-        vertex_source,fragment_source=self.get_program_background('background')
-
-        #Background Image
-        self.test_image=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
-
-        #Initializing left background rendering
-        self.window_left.switch_to()
-        self.background_program_left=self.ctx_left.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
-        self.background_program_left['texture0']=0
-        self.vertex_array_left=self.init_vertex_array(self.ctx_left,self.background_program_left)
-
-        #self.texture_left=self.ctx_left.texture(self.test_image.size,3,data=self.test_image.tobytes())
-        self.texture_left=self.ctx_left.texture(size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT),components=3)
-        self.texture_left.use()
-
-        #Initializing right background rendering
-        self.window_right.switch_to()
-        self.background_program_right=self.ctx_right.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
-        self.background_program_right['texture0']=0
-        self.vertex_array_right=self.init_vertex_array(self.ctx_right,self.background_program_right)
-
-        #self.texture_right=self.ctx_right.texture(self.test_image.size,3,data=self.test_image.tobytes())
-        self.texture_right=self.ctx_right.texture(size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT),components=3)
-        self.texture_right.use()
-
-
-
         #Frames passed by endoscope
-        self.frame_right=None
+        self.frame_right=None #Updated by the callback in rospy
         self.frame_left=None
+
+        self.frame_right_converted=None
+        self.frame_left_converted=None
+
         self.bridge=CvBridge()
 
+        #####GUI Setup
+        self.gui_window=tk.Tk()
+        self.gui_window.title("Expert Playback App")
+
+        self.gui_window.rowconfigure([0,1,2,3],weight=1)
+        self.gui_window.columnconfigure([0,1],weight=1)
+
+        #Button to start/stop aruco markers
+        self.render_button=tk.Button(text="Start/Stop Rendering",width=20,command=self.renderButtonPressCallback)
+        self.render_button.grid(row=0,column=0,sticky="nsew")
+
+        #Button to start/top aruco tracking
+        self.aruco_toggle_button=tk.Button(text="Start/Stop Aurco Tracking",width=20,command=self.arucoToggleCallback)
+        self.aruco_toggle_button.grid(row=1,column=0,sticky="nsew")
+
+        self.render_on=False
+        self.aruco_on=False #Whether we show and update aruco poses
 
 
 
+        ####Aruco Tracking Setup
+        self.aruco_tracker=ArucoTracker.ArucoTracker(self)
+
+
+
+    def arucoToggleCallback(self):
+        self.aruco_on=not self.aruco_on
+    
+    def renderButtonPressCallback(self):
+        self.render_on=not self.render_on
 
 
     def get_program_background(self,shader_program_name):
@@ -291,6 +306,9 @@ class Renderer:
             self.ctx_left.release()
             self.vertex_array_left.release()
             self.texture_left.release()
+            self.render_button.destroy()
+            self.gui_window.destroy()
+
 
         #Update dict  that key is down
         if symbol==key.W:
@@ -364,18 +382,19 @@ class Renderer:
         if self.frame_left is not None:
             self.ctx_left.disable(mgl.DEPTH_TEST)
             #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
-            self.texture_left.write(self.frame_left)
+            self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
+            if self.aruco_on:
+                self.aruco_tracker.arucoTracking('left')
+            self.texture_left.write(self.frame_left_converted)
             self.texture_left.use()
             self.vertex_array_left.render()
             self.ctx_left.enable(mgl.DEPTH_TEST)
 
         #Rendering Left Instruments
-        self.camera_left.update() 
-        self.scene.render(self.ctx_left)
+        if self.render_on:
+            self.camera_left.update() 
+            self.scene.render(self.ctx_left)
         
-
-
-
         ####Render the Right Window
         self.window_right.switch_to()
         self.ctx_right.clear()
@@ -384,13 +403,29 @@ class Renderer:
         if self.frame_right is not None:
             self.ctx_right.disable(mgl.DEPTH_TEST)
             #background_image_right=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
-            self.texture_right.write(self.frame_right)
+            self.frame_right_converted=self.cvFrame2Gl(self.frame_right)
+            if self.aruco_on:
+                self.aruco_tracker.arucoTracking('right')
+            self.texture_right.write(self.frame_right_converted)
             self.texture_right.use()
             self.vertex_array_right.render()
             self.ctx_right.enable(mgl.DEPTH_TEST)
 
-        self.camera_right.update()
-        self.scene.render(self.ctx_right)
+        if self.render_on:
+            self.camera_right.update()
+            self.scene.render(self.ctx_right)
+
+        
+        ####Gui Updates
+
+        self.gui_window.update()
+
+    def cvFrame2Gl(self,frame):
+        #Flips the frame vertically
+        frame=cv2.flip(frame,0)
+        #Converts the frame to RGB
+        frame=cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
+        return frame
 
     def get_time(self):
         #Time in seconds (float)
@@ -504,11 +539,12 @@ class Renderer:
 
     def frameCallbackRight(self,data):
         self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-        print('right')
 
     def frameCallbackLeft(self,data):
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-        print('left')
+
+
+
     
     ############ Main Render Loop
     def run(self,delay=100):
