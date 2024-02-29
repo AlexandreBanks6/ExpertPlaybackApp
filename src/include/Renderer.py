@@ -361,7 +361,6 @@ class Renderer:
         
 
     def render(self,dt):
-        print(self.delta_time)
 
         self.move_rads+=0.01
 
@@ -421,6 +420,7 @@ class Renderer:
         self.gui_window.update()
 
     def cvFrame2Gl(self,frame):
+        print('frame conversion')
         #Flips the frame vertically
         frame=cv2.flip(frame,0)
         #Converts the frame to RGB
