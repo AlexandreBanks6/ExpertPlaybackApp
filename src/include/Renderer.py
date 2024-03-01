@@ -388,12 +388,15 @@ class Renderer:
         if self.frame_left is not None:
             self.ctx_left.disable(mgl.DEPTH_TEST)
             #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
-            self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
+            
             if self.aruco_on:
                 self.aruco_tracker.arucoTrackingScene()
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+            else:
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
 
-                if self.calibrate_on: #Sets Scene Base Frame
-                    base_frame=self.aruco_tracker.calibrateScene()
+                #if self.calibrate_on: #Sets Scene Base Frame
+                 #   base_frame=self.aruco_tracker.calibrateScene()
 
             self.texture_left.write(self.frame_left_converted)
             self.texture_left.use()
@@ -429,7 +432,7 @@ class Renderer:
         self.gui_window.update()
 
     def cvFrame2Gl(self,frame):
-        print('frame conversion')
+        #print('frame conversion')
         #Flips the frame vertically
         frame_new=cv2.flip(frame,0)
         #Converts the frame to RGB
@@ -550,8 +553,10 @@ class Renderer:
         self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
 
     def frameCallbackLeft(self,data):
+        
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-
+        #cv2.imshow('Frame Callback',self.frame_left)
+        #cv2.waitKey(1)
 
 
     
