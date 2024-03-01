@@ -227,8 +227,13 @@ class Renderer:
         self.aruco_toggle_button=tk.Button(text="Start/Stop Aurco Tracking",width=20,command=self.arucoToggleCallback)
         self.aruco_toggle_button.grid(row=1,column=0,sticky="nsew")
 
+        #Button to "calibrate" (a.k.a. find the scene)
+        self.calibrate_scene_button=tk.Button(text="Calibrate Scene",width=20,command=self.calibrateToggleCallback)
+        self.calibrate_scene_button.grid(row=2,column=0,sticky="nsew")
+
         self.render_on=False
         self.aruco_on=False #Whether we show and update aruco poses
+        self.calibrate_on=False
 
 
 
@@ -236,6 +241,8 @@ class Renderer:
         self.aruco_tracker=ArucoTracker.ArucoTracker(self)
 
 
+    def calibrateToggleCallback(self):
+        self.calibrate_on=not self.calibrate_on
 
     def arucoToggleCallback(self):
         self.aruco_on=not self.aruco_on
@@ -373,7 +380,7 @@ class Renderer:
         
 
 
-        ####Render Left Window
+        ####Render Left Window (only track "scene" arucos for left window)
         self.window_left.switch_to()       
         self.ctx_left.clear()
 
@@ -383,7 +390,11 @@ class Renderer:
             #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
             self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
             if self.aruco_on:
-                self.aruco_tracker.arucoTracking('left')
+                self.aruco_tracker.arucoTrackingScene()
+
+                if self.calibrate_on: #Sets Scene Base Frame
+                    base_frame=self.aruco_tracker.calibrateScene()
+
             self.texture_left.write(self.frame_left_converted)
             self.texture_left.use()
             self.vertex_array_left.render()
@@ -403,8 +414,6 @@ class Renderer:
             self.ctx_right.disable(mgl.DEPTH_TEST)
             #background_image_right=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
             self.frame_right_converted=self.cvFrame2Gl(self.frame_right)
-            if self.aruco_on:
-                self.aruco_tracker.arucoTracking('right')
             self.texture_right.write(self.frame_right_converted)
             self.texture_right.use()
             self.vertex_array_right.render()
@@ -422,10 +431,10 @@ class Renderer:
     def cvFrame2Gl(self,frame):
         print('frame conversion')
         #Flips the frame vertically
-        frame=cv2.flip(frame,0)
+        frame_new=cv2.flip(frame,0)
         #Converts the frame to RGB
-        frame=cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
-        return frame
+        frame_new=cv2.cvtColor(frame_new,cv2.COLOR_BGR2RGB)
+        return frame_new
 
     def get_time(self):
         #Time in seconds (float)

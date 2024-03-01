@@ -3,9 +3,14 @@ import cv2.aruco as aruco
 import yaml
 import numpy as np
 
+#Note: We only track aruco markers for one camera for the scene "calibration" but need to track for both camera for the hand-eye calibration
 
 DEFAULT_CAMCALIB_DIR='../resources/Calib/'
+ARUCO_IDs=[4,5,6,7] #List containing the IDs of the aruco markers that we are tracking
+NUM_FRAME_DETECTIONS=1 #How many sets of aruco "frames" need to be detected, ToDo for later
 
+#Rigid Body of Frame with ArUcos
+OBJECT_POINTS=np.array([])
 
 class ArucoTracker:
 
@@ -35,30 +40,47 @@ class ArucoTracker:
 
         self.font=cv2.FONT_HERSHEY_SIMPLEX
 
+        self.corners_scene=[]
+        self.ids_scene=[]
+
+        self.corner_scene_list=[] #List of list containing corners for each detection (each frame)
+        self.ids_scene_list=[]
 
     
-    def arucoTracking(self,left_right):
-        if left_right=='left':
-            print('left tracked')
-            #Converts frame to grayscale
-            frame_gray=cv2.cvtColor(self.app.frame_left_converted,cv2.COLOR_RGB2GRAY)
+    def arucoTrackingScene(self):
+        #We only do aruco tracking of the scene for one video stream (only need to know scene w.r.t. one camera)
 
-            corners,ids,rejected=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
+        #Use Left Camera
+        #print('left tracked')
+        #Converts frame to grayscale
+        frame_gray=cv2.cvtColor(self.app.frame_left_converted,cv2.COLOR_RGB2GRAY)
 
-            if np.all(ids != None) > 0:
+        corners,ids,rejected=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
 
-                frame_gray=aruco.drawDetectedMarkers(frame_gray,corners,ids)
-            cv2.imshow("Frame Left",frame_gray)
-            cv2.waitKey(1)
+        #Check if any of the IDs are valid
+        if bool(set(ARUCO_IDs)&set(ids)): #Enters if we have a match with our IDs
+            for id,corner in zip(ids,corners):
+                if id in ARUCO_IDs:
+                    frame_gray=aruco.drawDetectedMarkers(frame_gray,corners=corner,ids=id)
+                    self.corners_scene.append(corner)
+                    self.ids_scene.append(id)
+        cv2.imshow("Frame Left",frame_gray)
+        cv2.waitKey(1)
 
-        if left_right=='right':
-            frame_gray=cv2.cvtColor(self.app.frame_right_converted,cv2.COLOR_RGB2GRAY)
-            corners,ids,rejected=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
 
-            if np.all(ids != None):
-                frame_gray=aruco.drawDetectedMarkers(frame_gray,corners,ids)
-            
-            cv2.imshow("Frame Right",frame_gray)
-            cv2.waitKey(1)
+    def calibrateScene(self):
+        base_frame=None
+        self.corner_scene_list.append(self.corners_scene)
+        self.ids_scene_list.append(self.ids_scene)
+
+        if len(self.ids_scene_list)>NUM_FRAME_DETECTIONS:           
+
+            cv2.solvePnPRansac(flags=cv2.USAC_MAGSAC)
+            #Clearing the buffer
+            self.corner_scene_list=[]
+            self.ids_scene_list=[]
+
+        
+    
 
 
