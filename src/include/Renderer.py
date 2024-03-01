@@ -84,6 +84,23 @@ start_pose=glm.mat4(glm.vec4(1,0,0,0),
 RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 
+#Standalone function to take inverse of homogeneous transform with glm
+def invHomogenous(transform):
+    #Function to take inverse of homogenous transform
+    R=glm.mat3(transform[0,0],transform[0,1],transform[0,2],
+                transform[1,0],transform[1,1],transform[1,2],
+                transform[2,0],transform[2,1],transform[2,2],)
+
+    R_trans=glm.transpose(R)
+
+    d=glm.vec3(transform[3,0],transform[3,1],transform[3,2])
+    neg_R_trans_d=-R_trans*d
+    inverted_transform=glm.mat4(glm.vec4(R_trans[0,0],R_trans[0,1],R_trans[0,2],0),
+                                glm.vec4(R_trans[1,0],R_trans[1,1],R_trans[1,2],0),
+                                glm.vec4(R_trans[2,0],R_trans[2,1],R_trans[2,2],0),
+                                glm.vec4(neg_R_trans_d,1))
+    return inverted_transform
+
 class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
         #Init pygame modules
@@ -241,6 +258,15 @@ class Renderer:
         self.aruco_tracker=ArucoTracker.ArucoTracker(self)
 
 
+
+        #################Frame Transformations#####################
+        ##The 'base frame'
+        self.si_T_lci=None #The left camera w.r.t. scene base frame
+        self.lci_T_si=None #Scene base frame w.r.t. to left camera
+        self.rvec_scene=None #How PnP returns rotation (for printing coordinate to scene)
+        self.tvec_scene=None #How PnP returns translation (for printing coordinate to scene)
+
+
     def calibrateToggleCallback(self):
         self.calibrate_on=not self.calibrate_on
 
@@ -392,11 +418,17 @@ class Renderer:
             if self.aruco_on:
                 self.aruco_tracker.arucoTrackingScene()
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+                if self.calibrate_on: #Sets Scene Base Frame
+                    self.aruco_tracker.calibrateScene()
+                    self.calibrate_on=False
+                if self.si_T_lci is not None: #We show the base frame when we have aruco_on
+                    self.frame_left_converted=cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker.mtx_left,\
+                                                                self.aruco_tracker.dist_left,self.rvec_scene,self.tvec_scene,0.01)
+
             else:
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
 
-                #if self.calibrate_on: #Sets Scene Base Frame
-                 #   base_frame=self.aruco_tracker.calibrateScene()
+
 
             self.texture_left.write(self.frame_left_converted)
             self.texture_left.use()
@@ -531,23 +563,7 @@ class Renderer:
                          glm.vec4(-glm.sin(theta),glm.cos(theta),0,0),
                          glm.vec4(0,0,1,0),
                          glm.vec4(0,0,0,1))
-        return rot_mat
-    def invHomogenous(self,transform):
-        #Function to take inverse of homogenous transform
-        R=glm.mat3(transform[0,0],transform[0,1],transform[0,2],
-                   transform[1,0],transform[1,1],transform[1,2],
-                   transform[2,0],transform[2,1],transform[2,2],)
-
-        R_trans=glm.transpose(R)
-
-        d=glm.vec3(transform[3,0],transform[3,1],transform[3,2])
-        neg_R_trans_d=-R_trans*d
-        inverted_transform=glm.mat4(glm.vec4(R_trans[0,0],R_trans[0,1],R_trans[0,2],0),
-                                    glm.vec4(R_trans[1,0],R_trans[1,1],R_trans[1,2],0),
-                                    glm.vec4(R_trans[2,0],R_trans[2,1],R_trans[2,2],0),
-                                    glm.vec4(neg_R_trans_d,1))
-        return inverted_transform
-    
+        return rot_mat    
 
     def frameCallbackRight(self,data):
         self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
