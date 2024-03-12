@@ -13,7 +13,7 @@ import yaml
 CHECKERBOARD_DIM=(8,8) #Number of inner corners in the checkerboard (corners height, corners width)
 REQUIRED_CHECKERBOARD_NUM=4 #Number of checkerboard images needed for the calibration
 #Where the images for the calibration are saved
-CALIBRATION_DIR="../resources/Calib1" #Where we store calibration parameters
+CALIBRATION_DIR="../resources/Calib" #Where we store calibration parameters
 
 
 
@@ -170,9 +170,9 @@ class CameraCalibGUI:
         print("Calibration Started")
         #Camera Calibration params
         criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-        objp = np.zeros((1, CHECKERBOARD_DIM[0] * CHECKERBOARD_DIM[1], 3), np.float32)
-        objp[0,:,:2] = np.mgrid[0:CHECKERBOARD_DIM[0], 0:CHECKERBOARD_DIM[1]].T.reshape(-1, 2)
-
+        objp = np.zeros((CHECKERBOARD_DIM[0]*CHECKERBOARD_DIM[1],3), np.float32)
+        objp[:,:2] = np.mgrid[0:CHECKERBOARD_DIM[0], 0:CHECKERBOARD_DIM[1]].T.reshape(-1, 2)*0.0079248
+        print("object points: "+str(objp))
         objpoints=[]
         imgpoints=[]
         found=0

@@ -262,9 +262,11 @@ class Renderer:
         #################Frame Transformations#####################
         ##The 'base frame'
         self.si_T_lci=None #The left camera w.r.t. scene base frame
-        self.lci_T_si=None #Scene base frame w.r.t. to left camera
+        #self.lci_T_si=None #Scene base frame w.r.t. to left camera
         self.rvec_scene=None #How PnP returns rotation (for printing coordinate to scene)
         self.tvec_scene=None #How PnP returns translation (for printing coordinate to scene)
+
+        self.display_axis=np.float32([[1,0,0], [0,1,0], [0,0,-1]])
 
 
     def calibrateToggleCallback(self):
@@ -416,15 +418,16 @@ class Renderer:
             #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
             
             if self.aruco_on:
-                self.aruco_tracker.arucoTrackingScene()
-                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+                self.aruco_tracker.arucoTrackingScene()                
                 if self.calibrate_on: #Sets Scene Base Frame
                     self.aruco_tracker.calibrateScene()
-                    self.calibrate_on=False
+                    #self.calibrate_on=False
                 if self.si_T_lci is not None: #We show the base frame when we have aruco_on
-                    self.frame_left_converted=cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker.mtx_left,\
-                                                                self.aruco_tracker.dist_left,self.rvec_scene,self.tvec_scene,0.01)
-
+                    cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker.mtx_left,\
+                                      self.aruco_tracker.dist_left,self.rvec_scene,self.tvec_scene,0.05)
+                  
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+            
             else:
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
 
@@ -463,6 +466,19 @@ class Renderer:
 
         self.gui_window.update()
 
+    '''
+    def drawAxes(self,img,corners,imgpts):
+        print("Corners: "+str(corners))
+        corner=tuple(int(x) for x in corners)
+        def tupleOfInts(arr):
+            return tuple(int(x) for x in arr)
+        print("Corner new: "+str(corner))
+        #corner = tupleOfInts(corners.ravel())
+        img = cv2.line(img,corner,tupleOfInts(imgpts[0].ravel()),(255,0,0),5)
+        img = cv2.line(img,corner,tupleOfInts(imgpts[1].ravel()),(0,255,0),5)
+        img = cv2.line(img,corner,tupleOfInts(imgpts[2].ravel()),(0,0,255),5)
+        return img
+    '''
     def cvFrame2Gl(self,frame):
         #print('frame conversion')
         #Flips the frame vertically
