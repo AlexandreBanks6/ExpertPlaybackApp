@@ -194,10 +194,12 @@ class ArucoTracker:
     
     def convertRvecTvectoHomo(self,rvec,tvec):
         Rot,_=cv2.Rodrigues(rvec)
+        #print("Rotation: "+str(Rot))
         transform=glm.mat4(glm.vec4(Rot[0,0],Rot[1,0],Rot[2,0],0),
                            glm.vec4(Rot[0,1],Rot[1,1],Rot[2,1],0),
                            glm.vec4(Rot[0,2],Rot[1,2],Rot[2,2],0),
                            glm.vec4(tvec[0],tvec[1],tvec[2],1))
+        #print("Transform: "+str(transform))
         return transform
 
         

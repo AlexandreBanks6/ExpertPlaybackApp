@@ -29,11 +29,25 @@ from cv_bridge import CvBridge
 #TKinter importer
 import tkinter as tk
 
+#NDI Tracker Stuff
+from sksurgerynditracker.nditracker import NDITracker
+import time
+from datetime import datetime
+import csv
+
+
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
 
 MOVE_SPEED=0.5
 METERS_TO_RENDER_SCALE=1000
+
+##########Parameters for NDI Validation##########
+
+
+#Path of apple 3 ROM file
+PATH_TO_NDI_APPLE3='../resources/NDI_DRF_Models/APPLE03.rom' 
+PATH_TO_VALIDATION_CSV='../resources/validation/'
 
 #DH Parameter things (we directly substitute the DH parameters in the operations to save computation)
 
@@ -233,7 +247,7 @@ class Renderer:
         self.gui_window=tk.Tk()
         self.gui_window.title("Expert Playback App")
 
-        self.gui_window.rowconfigure([0,1,2,3],weight=1)
+        self.gui_window.rowconfigure([0,1,2,3,4],weight=1)
         self.gui_window.columnconfigure([0,1],weight=1)
 
         #Button to start/stop aruco markers
@@ -248,9 +262,33 @@ class Renderer:
         self.calibrate_scene_button=tk.Button(text="Calibrate Scene",width=20,command=self.calibrateToggleCallback)
         self.calibrate_scene_button.grid(row=2,column=0,sticky="nsew")
 
+
+        #Button to start ndi tracker
+        self.ndi_toggle_button=tk.Button(text="Start NDI Tracker",width=20,command=self.ToggleTrackerCallback)
+        self.ndi_toggle_button.grid(row=3,column=0,sticky="nsew")
+
+        #Label to show that the tracker is running
+        self.ndi_toggle_text=tk.Label(text="NDI Tracker Is Off",width=20)
+        self.ndi_toggle_text.grid(row=3,column=1,sticky='nsew')
+
+        #Button to run ndi tracking validation
+        #self.validation_start=tk.Button(text="Run NDI Validation",width=20,command=self.ValidationCallback)
+        #self.validation_start.grid(row=4,column=0,sticky="nsew")
+
+
+        #Label for validation
+        #self.validation_text=tk.Label(text="",width=20)
+        #self.validation_text.grid(row=4,column=1,sticky='nsew')
+
         self.render_on=False
         self.aruco_on=False #Whether we show and update aruco poses
         self.calibrate_on=False
+
+        #Params for validating the calibration
+        self.NDI_TrackerToggle=False #Whether the NDI tracker is on and we want to validate, validation is started with the calibration button
+        self.validation_trial_count=None
+        self.csv_name=None
+        #self.Pose_Validation=False
 
 
 
@@ -269,8 +307,78 @@ class Renderer:
         self.display_axis=np.float32([[1,0,0], [0,1,0], [0,0,-1]])
 
 
+
+
+
+
+    def ToggleTrackerCallback(self):
+        if not self.NDI_TrackerToggle: #Tracker is not running, so we toggle on
+            ##########NDI Tracker Setup
+            #print("Path To Tracker: "+str(PATH_TO_NDI_APPLE3))
+            settings={
+                    "tracker type": "polaris",
+                    "romfiles": [PATH_TO_NDI_APPLE3]
+                }
+            self.ndi_tracker=NDITracker(settings)
+            self.ndi_tracker.use_quaternions=True
+            self.ndi_tracker.start_tracking()
+            self.ndi_toggle_text.config(text='Started NDI Tracker')
+
+            #Create csv to store data
+            now=datetime.now()
+            dt_string=now.strftime("%d-%m-%Y_%H-%M-%S")
+            self.csv_name=PATH_TO_VALIDATION_CSV+'validation_'+dt_string+'_.csv'
+
+        else:   #Tracker is running so we toggle off
+            self.ndi_tracker.stop_tracking()
+            self.ndi_tracker.close()
+            self.ndi_toggle_text.config(text='Stopped NDI Tracker')
+            self.csv_name=None
+
+
+
+        self.NDI_TrackerToggle=not self.NDI_TrackerToggle
+    '''
+    def ValidationCallback(self):
+        #Initialize the csv if it does not exist
+        if not os.path.isfile(PATH_TO_VALIDATION_CSV):
+            self.validation_trial_count=1
+            with open(PATH_TO_VALIDATION_CSV,'w',newline='') as file_object:
+                writer_object=csv.writer(file_object)
+                writer_object.writerow(["Timestamp","Trial #","NDI_Tracker",\
+                                        "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
+                                        "Visual_Tracking","Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality"])
+        else:
+            self.validation_trial_count+=1
+            with open(PATH_TO_VALIDATION_CSV,'a',newline='') as file_object:
+                writer_object=csv.writer(file_object)
+                writer_object.writerow("\n")
+
+        
+        self.Pose_Validation=not self.Pose_Validation
+        self.validation_text.config(text='Validation Started')
+    '''
+
     def calibrateToggleCallback(self):
         self.calibrate_on=not self.calibrate_on
+
+        if self.NDI_TrackerToggle and self.calibrate_on: #We want to validate the pose estimates
+
+            if not os.path.isfile(self.csv_name):
+                self.validation_trial_count=1
+                with open(self.csv_name,'w',newline='') as file_object:
+                    writer_object=csv.writer(file_object)
+                    writer_object.writerow(["Timestamp","Trial #","NDI_Tracker",\
+                                            "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
+                                            "Visual_Tracking","Tx","Ty","Tz","Q0","Qx","Qy","Qz"])
+                    file_object.close()
+            else:
+                self.validation_trial_count+=1
+                with open(self.csv_name,'a',newline='') as file_object:
+                    writer_object=csv.writer(file_object)
+                    writer_object.writerow("\n")
+                    file_object.close()
+
 
     def arucoToggleCallback(self):
         self.aruco_on=not self.aruco_on
@@ -420,9 +528,39 @@ class Renderer:
             if self.aruco_on:
                 self.aruco_tracker.arucoTrackingScene()                
                 if self.calibrate_on: #Sets Scene Base Frame
+                    print("Calibration Entered")
+                    self.si_T_lci=None
                     self.aruco_tracker.calibrateScene()
-                    #self.calibrate_on=False
-                if self.si_T_lci is not None: #We show the base frame when we have aruco_on
+
+                    #Writing to CSV For Validation
+                    if self.NDI_TrackerToggle:
+                        NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
+                        
+                        timestamp=NDI_dat[1]    #Timestamp
+                        quat_list=NDI_dat[3] #quaternion
+                        quality=NDI_dat[4]  #Tracking Quality
+
+                        data_list=[" "]*19 #Initializes the list of data as empty spaces
+
+                        data_list[0]=timestamp
+                        data_list[1]=self.validation_trial_count
+
+                        if len(quat_list)>0: #Quaternion is found                            
+                            quat_list=quat_list[0][0].tolist()
+                            data_list[3:9]=quat_list
+                            data_list[10]=quality[0]
+                        if self.si_T_lci is not None: #We got the calibrated frame
+                            translation=[self.si_T_lci[3,0],self.si_T_lci[3,1],self.si_T_lci[3,2]]
+                            rotation=glm.mat3(self.si_T_lci) #Takes top left of transform matrix
+                            quaternion=glm.quat_cast(rotation)
+                            data_list[12:14]=translation
+                            data_list[15:18]=quaternion
+                        with open(self.csv_name,'a',newline='') as file_object:
+                            writer_object=csv.writer(file_object)
+                            writer_object.writerow(data_list)
+                            file_object.close()
+      
+                if self.si_T_lci is not None: #We show the base frame
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker.mtx_left,\
                                       self.aruco_tracker.dist_left,self.rvec_scene,self.tvec_scene,0.05)
                   
