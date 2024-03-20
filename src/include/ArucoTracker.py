@@ -18,7 +18,7 @@ RANSAC_SCENE_ITERATIONS=40 #Number of iterations for scene localization RANSAC
 #Marker corners are defined clockwise from top left
 #3D model origin is the top left of AruCO ID 6
 ARUCO_SIDELENGTH=0.025527 #in meters
-ARUCO_SEPERATION=0.1022858 #From closest edges, in meters
+ARUCO_SEPERATION=0.1022477 #From closest edges, in meters
 RINGOWIRE_MODELPOINTS={
     "6":np.array([
     [0.0,0.0,0.0],
