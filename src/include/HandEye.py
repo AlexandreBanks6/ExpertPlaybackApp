@@ -10,20 +10,37 @@ class HandEye:
 
     #def __init__(self):
 
-    #def ComputeHandEye(A,B):
+    def ComputeHandEye(self,A,B):
         #Takes in B and A (B is tool tip to camera, A is tool tip to endoscope)
-        #B and A are an N list of 4 matrix where N is the number of transforms
+        #B and A are an N array of 4x4 matrix where N is the number of transforms collected
         #Returns: X the transform from camera to endoscope
 
-        #Note that A and B are lists of lists, N=length of outer list=number of transformations
+        #Note that A and B are arrays of arrays, N=length of outer array=number of transformations
         #A and B must be the same lengths (N)
 
-     #   N=len(A)
+        N=len(A)
+        if N>=2:
+            print("A: "+str(A[0]))
+            a,a_prime=self.HomoToDualQuat(A[0])
+            b,b_prime=self.HomoToDualQuat(B[0])
+            L=self.contructK(a,b) #Starts the "L" matrix
+            L_prime=self.contructK(a_prime,b_prime)
 
-        ############Solving for rotation part
+            #Construct the L matrix for SVD decomposition to solve for 
+            for i in range(1,N):
+                a,a_prime=self.HomoToDualQuat(A[i])
+                b,b_prime=self.HomoToDualQuat(B[i])
+                L=np.append(L,self.contructK(a,b))
+                L_prime=np.append(L_prime,self.contructK(a_prime,b_prime))
+            print("L: "+str(L))
+            print("L_prime: "+str(L_prime))
 
-        #Construct the L matrix for SVD decomposition to solve for 
-      #  for i in range(0,N):
+        else:
+            print("Not Enough Transforms")
+            return None
+
+
+                
 
 
 
@@ -52,6 +69,41 @@ class HandEye:
 
 
         return K_mat
+    
+    def HomoToDualQuat(self,A):
+        #Takes in a homogenous transform matrix, A, and converts it to a dual quaternion
+        #A is a 4x4 numpy array (homogeneous transform)
+        #Returns: a,a'(the real/dual parts of the dual quaternion)
+        col_ind=[0,1,2]
+        tolerance=0.05
+
+
+        RA=A[0:3,0:3] #Rotation of A
+        tA=A[0:3,3] #Translation of A
+        
+        #Enforce orthogonality
+        RA=self.EnforceOrthogonality(RA)
+        print("RA: "+str(RA))
+        #########Find the real part of the dual quaternion
+
+        #Extract axis and angle of rotation (we use eigenvector/eigenvalue decomposition)
+        eigvals,eigvecs=np.linalg.eig(RA)
+        print("eigvals"+str(eigvals))
+        ind_axis = np.where(np.logical_and(np.real(eigvals) < (1 + tolerance), np.real(eigvals) > (1 - tolerance)))
+        rotation_axis=np.real(eigvecs[:,ind_axis[0][0]])
+        del col_ind[ind_axis[0][0]]
+        rotation_angle=np.angle(eigvals[col_ind[0]]) #Look at this, not quite right
+
+        #Real part of dual quaternion
+        a=np.hstack([np.sin(rotation_angle/2),np.cos(rotation_angle/2)*rotation_axis])
+
+        ############Find the dual part of the dual quaternion
+        m=0.5*(np.cross(tA,rotation_axis)+(1/np.tan(rotation_angle/2))*np.cross(rotation_axis,np.cross(tA,rotation_axis)))
+        d=np.dot(tA,rotation_axis)
+        a_prime=np.hstack([-(d/2)*np.sin(rotation_angle/2),np.sin(rotation_angle/2)*m+(d/2)*np.cos(rotation_angle/2)*rotation_axis])
+
+
+        return a,a_prime
 
     def SkewSymmetricMatrix(self,v):
         #Takes the skew symmetric matrix of a vector
@@ -60,55 +112,6 @@ class HandEye:
                           [-v[1],v[0],0]])       
         
         return skew_mat
-
-
-        
-
-    def HomoToDualQuat(self,A):
-        #Takes in a homogenous transform matrix, A, and converts it to a dual quaternion
-        #A is a 4x4 numpy array (homogeneous transform)
-        #Returns: a,a'(the real/dual parts of the dual quaternion)
-        row_ind=[1,2,3]
-        tolerance=0.05
-
-
-        RA=A[0:3,0:3] #Rotation of A
-        print("RA: "+str(RA))
-        tA=A[0:3,3] #Translation of A
-        print("tA: "+str(tA))
-        
-        #Enforce orthogonality
-        RA=self.EnforceOrthogonality(RA)
-        print("RA_New: "+str(RA))
-
-        #########Find the real part of the dual quaternion
-
-        #Extract axis and angle of rotationb (we use eigenvector/eigenvalue decomposition)
-        eigvals,eigvecs=np.linalg.eig(RA)
-        print("eigvals: "+str(eigvals))
-        ind_axis = np.where(np.logical_and(np.real(eigvals) < (1 + tolerance), np.real(eigvals) > (1 - tolerance)))
-        print("ind_axis: "+str(ind_axis[0]))
-        rotation_axis=np.real(eigvecs[ind_axis[0][0]])
-        print("rotation_axis: "+str(rotation_axis))
-        del row_ind[ind_axis[0][0]]
-        print("row_ind: "+str(row_ind))
-        rotation_angle=np.angle(eigvecs[row_ind[0]]) #Look at this, not quite right
-        print("rotation angle: "+str(rotation_angle))
-
-        #Real part of dual quaternion
-        a=np.hstack([np.sin(rotation_angle/2),np.cos(rotation_angle/2)*rotation_axis])
-
-        print("a: "+str(a))
-
-        ############Find the dual part of the dual quaternion
-        m=0.5*(np.cross(tA,rotation_axis)+(1/np.tan(rotation_angle/2))*np.cross(rotation_axis,np.cross(tA,rotation_axis)))
-        d=np.dot(tA,rotation_axis)
-        a_prime=np.hstack([-(d/2)*np.sin(rotation_angle/2),np.sin(rotation_angle/2)*m+(d/2)*np.cos(rotation_angle/2)*rotation_axis])
-
-        return a,a_prime
-
-
-
 
 
     def EnforceOrthogonality(self,R):
