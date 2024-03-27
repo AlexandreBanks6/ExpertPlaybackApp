@@ -92,6 +92,10 @@ start_pose=glm.mat4(glm.vec4(1,0,0,0),
                 glm.vec4(0,1,0,0),
                 glm.vec4(0,0,1,0),
                 glm.vec4(0,0,-30,1))
+start_pose2=glm.mat4(glm.vec4(1,0,0,0),
+                glm.vec4(0,1,0,0),
+                glm.vec4(0,0,1,0),
+                glm.vec4(10,-10,-30,1))
 
 
 ##################Init Parameters for Grabbing Frames###################
@@ -218,8 +222,10 @@ class Renderer:
         self.delta_time=0
 
         #Initialize the instrument frames
-        self.instrument_dict=None
-        self.instrument_kinematics([0,0,0,0],start_pose)
+        self.instrument_dict_PSM1=None
+        self.instrument_dict_PSM3=None
+        self.instrument_kinematics([0,0,0,0],start_pose,'PSM1')
+        self.instrument_kinematics([0,0,0,0],start_pose2,'PSM3')
 
         #Lighting instance
         self.light=Light.Light()
@@ -231,7 +237,9 @@ class Renderer:
         print("Done Mesh Constructor")
 
         #Scene
-        self.scene=scene.Scene(self)
+        #self.scene=scene.Scene(self)
+        self.scene_PSM1=scene.Scene(self) #Scene for PSM1
+        self.scene_PSM3=scene.Scene(self) #Scene for PSM2
         print("Done Scene Constructor")
 
         #Frames passed by endoscope
@@ -247,12 +255,20 @@ class Renderer:
         self.gui_window=tk.Tk()
         self.gui_window.title("Expert Playback App")
 
-        self.gui_window.rowconfigure([0,1,2,3,4],weight=1)
-        self.gui_window.columnconfigure([0,1],weight=1)
+        self.gui_window.rowconfigure([0,1,2],weight=1)
+        self.gui_window.columnconfigure([0,1,3,4],weight=1)
 
         #Button to start/stop aruco markers
         self.render_button=tk.Button(text="Start/Stop Rendering",width=20,command=self.renderButtonPressCallback)
         self.render_button.grid(row=0,column=0,sticky="nsew")
+
+        #CheckButtons to Render PSM1 and PSM2 
+        self.checkbox_PSM1=tk.Checkbutton(text="PSM1",width=10,onvalue=1,offvalue=0,command=self.psm1Checkbox)
+        self.checkbox_PSM1.grid(row=0,column=1,sticky='nsew')
+
+        self.checkbox_PSM3=tk.Checkbutton(text="PSM3",width=10,onvalue=1,offvalue=0,command=self.psm3Checkbox)
+        self.checkbox_PSM3.grid(row=0,column=2,sticky='nsew')
+
 
         #Button to start/top aruco tracking
         self.aruco_toggle_button=tk.Button(text="Start/Stop Aurco Tracking",width=20,command=self.arucoToggleCallback)
@@ -290,6 +306,9 @@ class Renderer:
         self.csv_name=None
         #self.Pose_Validation=False
 
+        #Selecting PSM buttons
+        self.PSM1_on=False
+        self.PSM3_on=False
 
 
         ####Aruco Tracking Setup
@@ -298,17 +317,33 @@ class Renderer:
 
 
         #################Frame Transformations#####################
-        ##The 'base frame'
-        self.si_T_lci=None #The left camera w.r.t. scene base frame
+        
+        self.world_base=glm.mat4() #This is the world base frame (set to be the corner of scene)
+        self.si_T_lci=None #The left camera w.r.t. scene base frame (calibrated origin)
+        self.si_T_rci=None #The right camera w.r.t. scene base frame (calibrated origin)
         #self.lci_T_si=None #Scene base frame w.r.t. to left camera
         self.rvec_scene=None #How PnP returns rotation (for printing coordinate to scene)
         self.tvec_scene=None #How PnP returns translation (for printing coordinate to scene)
 
-        self.display_axis=np.float32([[1,0,0], [0,1,0], [0,0,-1]])
+        self.lc_T_e=None #Hand-eye calibration for left camera to endoscope
+        self.rc_T_e=None #Hand-eye calibraiton for right camera to endoscope
+
+        self.ei_T_e=glm.mat4() #Transform between initial endoscope position and current position
+
+        #Camera pose:
+        self.cam_left_pose=None
+        self.cam_right_pose=None
+
+        
 
 
 
 
+    def psm1Checkbox(self):
+        self.PSM1_on=not self.PSM1_on
+
+    def psm3Checkbox(self):
+        self.PSM3_on=not self.PSM3_on
 
 
     def ToggleTrackerCallback(self):
@@ -510,9 +545,15 @@ class Renderer:
         #Get Time
         self.get_time() 
 
-        #Move Instruments
-        self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,self.move_rads],start_pose)
-        self.move_objects() #Look into this as well
+        ################Move Instruments
+        if self.PSM1_on:
+            #PSM1:
+            self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,self.move_rads],start_pose,'PSM1')
+        if self.PSM3_on:
+            #PSM3:
+            self.instrument_kinematics([glm.pi()/3,glm.pi()/3,glm.pi()/3,self.move_rads*2],start_pose2,'PSM3')
+
+        self.move_objects() 
         
 
 
@@ -528,37 +569,13 @@ class Renderer:
             if self.aruco_on:
                 self.aruco_tracker.arucoTrackingScene()                
                 if self.calibrate_on: #Sets Scene Base Frame
-                    print("Calibration Entered")
                     self.si_T_lci=None
                     self.aruco_tracker.calibrateScene()
 
                     #Writing to CSV For Validation
                     if self.NDI_TrackerToggle:
                         NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
-                        
-                        timestamp=NDI_dat[1]    #Timestamp
-                        quat_list=NDI_dat[3] #quaternion
-                        quality=NDI_dat[4]  #Tracking Quality
-
-                        data_list=[" "]*19 #Initializes the list of data as empty spaces
-
-                        data_list[0]=timestamp
-                        data_list[1]=self.validation_trial_count
-
-                        if len(quat_list)>0: #Quaternion is found                            
-                            quat_list=quat_list[0][0].tolist()
-                            data_list[3:9]=quat_list
-                            data_list[10]=quality[0]
-                        if self.si_T_lci is not None: #We got the calibrated frame
-                            translation=[self.si_T_lci[3,0],self.si_T_lci[3,1],self.si_T_lci[3,2]]
-                            rotation=glm.mat3(self.si_T_lci) #Takes top left of transform matrix
-                            quaternion=glm.quat_cast(rotation)
-                            data_list[12:14]=translation
-                            data_list[15:18]=quaternion
-                        with open(self.csv_name,'a',newline='') as file_object:
-                            writer_object=csv.writer(file_object)
-                            writer_object.writerow(data_list)
-                            file_object.close()
+                        self.writeToNDIVal(NDI_dat)
       
                 if self.si_T_lci is not None: #We show the base frame
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker.mtx_left,\
@@ -578,10 +595,17 @@ class Renderer:
 
         #Rendering Left Instruments
         if self.render_on:
-            self.camera_left.update() 
-            self.scene.render(self.ctx_left)
+            self.camera_left.update(None) 
+            #self.cam_left_pose=self.world_base*self.si_T_lci*self.lc_T_e*self.ei_T_e*glm.transpose(self.lc_T_e)
+            #self.camera_left.update(self.cam_left_pose)
+            #self.scene.render(self.ctx_left)
+            if self.PSM1_on:
+                self.scene_PSM1.render(self.ctx_left)
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_left)
+                
         
-        ####Render the Right Window
+        #########Render the Right Window
         self.window_right.switch_to()
         self.ctx_right.clear()
 
@@ -596,8 +620,14 @@ class Renderer:
             self.ctx_right.enable(mgl.DEPTH_TEST)
 
         if self.render_on:
-            self.camera_right.update()
-            self.scene.render(self.ctx_right)
+            self.camera_right.update(None)
+            #self.cam_right_pose=self.world_base*self.si_T_rci*self.rc_T_e*self.ei_T_e*glm.transpose(self.rc_T_e)
+            #                            self.camera_left.update(self.cam_left_pose)
+            #self.scene.render(self.ctx_right)
+            if self.PSM1_on:
+                self.scene_PSM1.render(self.ctx_right)
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_right)
 
         
         ####Gui Updates
@@ -617,6 +647,31 @@ class Renderer:
         img = cv2.line(img,corner,tupleOfInts(imgpts[2].ravel()),(0,0,255),5)
         return img
     '''
+    def writeToNDIVal(self,NDI_dat):
+        timestamp=NDI_dat[1]    #Timestamp
+        quat_list=NDI_dat[3] #quaternion
+        quality=NDI_dat[4]  #Tracking Quality
+
+        data_list=[" "]*19 #Initializes the list of data as empty spaces
+
+        data_list[0]=timestamp
+        data_list[1]=self.validation_trial_count
+
+        if len(quat_list)>0: #Quaternion is found                            
+            quat_list=quat_list[0][0].tolist()
+            data_list[3:9]=quat_list
+            data_list[10]=quality[0]
+        if self.si_T_lci is not None: #We got the calibrated frame
+            translation=[self.si_T_lci[3,0],self.si_T_lci[3,1],self.si_T_lci[3,2]]
+            rotation=glm.mat3(self.si_T_lci) #Takes top left of transform matrix
+            quaternion=glm.quat_cast(rotation)
+            data_list[12:14]=translation
+            data_list[15:18]=quaternion
+        with open(self.csv_name,'a',newline='') as file_object:
+            writer_object=csv.writer(file_object)
+            writer_object.writerow(data_list)
+            file_object.close()
+
     def cvFrame2Gl(self,frame):
         #print('frame conversion')
         #Flips the frame vertically
@@ -634,25 +689,34 @@ class Renderer:
     def move_objects(self):
         #This is the method where we pass the matrix to move_obj to move the object and also 
         #select which object to move: "shaft", "body","jaw_right","jaw_left"
+        if self.PSM1_on:
+            for obj_name in obj_names:
+                #if obj_name=='jaw_right' or obj_name=='jaw_left':
+                #   continue
+                #print(obj_name)
+                move_mat=self.instrument_dict_PSM1[obj_name]
 
-        for obj_name in obj_names:
-            #if obj_name=='jaw_right' or obj_name=='jaw_left':
-             #   continue
-            #print(obj_name)
-            move_mat=self.instrument_dict[obj_name]
+                self.scene_PSM1.move_obj(obj_name,move_mat)
 
-            self.scene.move_obj(obj_name,move_mat)
+        if self.PSM3_on:
+            for obj_name in obj_names:
+                #if obj_name=='jaw_right' or obj_name=='jaw_left':
+                #   continue
+                #print(obj_name)
+                move_mat=self.instrument_dict_PSM3[obj_name]
 
-    def instrument_kinematics(self,joint_angles,C4):
+                self.scene_PSM3.move_obj(obj_name,move_mat)
+
+    def instrument_kinematics(self,joint_angles,T4,PSM_Type):
         '''
         Input: 
         - list of angles of the intrument joints: shaft rotation (q5), body rotation (q6), jaw rotation (q7), jaw seperation (theta_j)
-        - Shaft Base Frame (C4)
+        - Shaft Base Frame (T4)
         Output: 
-        - Frames for each instrument segment: shaft frame (Cs), body frame (Cb), left jaw (Cl), right jaw (Cr)  
+        - Frames for each instrument segment: shaft frame (Ts), body frame (Tb), left jaw (Tl), right jaw (Tr)  
 
         !!!! Note, input "shaft base" should be a 4x4 frame matrix (orientation and pose)
-        Also note, C4 is the base of the instrument, and C5 is the shaft rotated frame, C6 is the body rotated frame, C7 is the jaw base (no seperation)
+        Also note, T4 is the base of the instrument, and T5 is the shaft rotated frame, T6 is the body rotated frame, T7 is the jaw base (no seperation)
         '''
         #Enforce >=0 jaw angle
         if joint_angles[3]<0:
@@ -660,25 +724,33 @@ class Renderer:
 
 
         #First get frames by applying forward kinematics using conventional DH coordinates frames
-        C5=C4*self.transform_4_T_5(joint_angles[0])
-        C6=C5*self.transform_5_T_6(joint_angles[1])
-        C7=C6*self.transform_6_T_7(joint_angles[2])
-        Cjl=C7*self.Rotz(-joint_angles[3]/2)
-        Cjr=C7*self.Rotz(joint_angles[3]/2)
+        T5=T4*self.transform_4_T_5(joint_angles[0])
+        T6=T5*self.transform_5_T_6(joint_angles[1])
+        T7=T6*self.transform_6_T_7(joint_angles[2])
+        Tjl=T7*self.Rotz(-joint_angles[3]/2)
+        Tjr=T7*self.Rotz(joint_angles[3]/2)
 
         #Next we convert these standard coordinates to the coordinates of our 3D objects (these are augmented)
         
-        Cs=C5*C_5_s
-        Cb=glm.translate(C6,glm.vec3(-T_6_a,0,0))*C_6_b #Brings back body frame to base of 3D model        
-        Cl=Cjl*C_l_jl
-        Cr=Cjr*C_r_jr
+        Ts=T5*C_5_s
+        Tb=glm.translate(T6,glm.vec3(-T_6_a,0,0))*C_6_b #Brings back body frame to base of 3D model        
+        Tl=Tjl*C_l_jl
+        Tr=Tjr*C_r_jr
+        if PSM_Type=='PSM1':
+            self.instrument_dict_PSM1={
+                'shaft': Ts,
+                'body': Tb,
+                'jaw_right': Tr,
+                'jaw_left':Tl
+            }
 
-        self.instrument_dict={
-            'shaft': Cs,
-            'body': Cb,
-            'jaw_right': Cr,
-            'jaw_left':Cl
-        }
+        elif PSM_Type=='PSM3':
+            self.instrument_dict_PSM3={
+                'shaft': Ts,
+                'body': Tb,
+                'jaw_right': Tr,
+                'jaw_left':Tl
+            }
         
 
 

@@ -31,9 +31,9 @@ hand_eye_obj=HandEye.HandEye()
 #a,a_prime=hand_eye_obj.HomoToDualQuat(A)
 
 transA=normalize_2d(np.random.randn(1,3))
-RA=generateRotation(random.uniform(0,1)*np.pi)
+RA=generateRotation(random.uniform(0,0.5)*np.pi)
 transB=normalize_2d(np.random.randn(1,3))
-RB=generateRotation(random.uniform(0,1)*np.pi)
+RB=generateRotation(random.uniform(0,0.5)*np.pi)
 A=np.identity(4)
 B=np.identity(4)
 A[0:3,0:3]=RA
@@ -42,8 +42,6 @@ B[0:3,0:3]=RB
 B[0:3,3]=transB
 A=[A]
 B=[B]
-print("A: "+str(A))
-print("B: "+str(B))
 for i in range(0,3):
     transA=normalize_2d(np.random.randn(1,3))
     RA=generateRotation(random.uniform(0,1)*np.pi)
@@ -56,14 +54,12 @@ for i in range(0,3):
     new_B[0:3,0:3]=RB
     new_B[0:3,3]=transB
 
-    A.append(normalize_2d(new_A))
-    B.append(normalize_2d(new_B))
+    A.append(new_A)
+    B.append(new_B)
 
 A = np.array(A)
 B = np.array(B)
-print("A: "+str(A))
-print("B: "+str(B))
-hand_eye_obj.ComputeHandEye(A,B)
+X=hand_eye_obj.ComputeHandEye(A,B)
 
 
 

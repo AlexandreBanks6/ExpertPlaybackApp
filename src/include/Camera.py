@@ -52,11 +52,28 @@ class Camera:
         self.forward=glm.normalize(self.forward)
         self.right=glm.normalize(glm.cross(self.forward,glm.vec3(0,1,0)))
         self.up=glm.normalize(glm.cross(self.right,self.forward))
-    def update(self):
-        self.move()
-        self.rotate()
-        self.update_camera_vectors()
-        self.m_view=self.get_view_matrix()
+    def update(self,camera_pos):
+        #input: camera_pos is a glm mat of the pose of the camera w.r.t. scene "world" origin
+        if camera_pos is None: #If we want to use mouse control over camera
+            self.move()
+            self.rotate()
+            self.update_camera_vectors()
+            self.m_view=self.get_view_matrix()
+        elif camera_pos is not None:    #if we want automatic camera control (playback)
+            #Convert camera_pose to opengl view matrix pose ([i_gl,j_gl,k_gl]=[i0,-j0,-k0])
+
+            #Negate second column of camera pos for view matrix (j)
+            camera_pos[0][1]=-camera_pos[0][1]
+            camera_pos[1][1]=-camera_pos[1][1]
+            camera_pos[2][1]=-camera_pos[2][1]
+
+            #Negate third column of camera pos for view matrix (k)
+            camera_pos[0][2]=-camera_pos[0][2]
+            camera_pos[1][2]=-camera_pos[1][2]
+            camera_pos[2][2]=-camera_pos[2][2]
+            self.m_view=camera_pos
+
+
 
     def move(self):
         velocity=SPEED*self.app.delta_time

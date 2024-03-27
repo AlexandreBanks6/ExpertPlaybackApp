@@ -1,5 +1,6 @@
 import numpy as np
 import math
+from scipy.spatial.transform import Rotation
 
 
 class HandEye:
@@ -11,16 +12,15 @@ class HandEye:
     #def __init__(self):
 
     def ComputeHandEye(self,A,B):
-        #Takes in B and A (B is tool tip to camera, A is tool tip to endoscope)
+        #Takes in A and B (A is camera w.r.t scene (or tool tip) and B is endoscope w.r.t. scene (tool tip touching same spot on scene) via API)
         #B and A are an N array of 4x4 matrix where N is the number of transforms collected
-        #Returns: X the transform from camera to endoscope
+        #Returns: X the homogeneous transform from camera to endoscope (l,c_T_e)
 
         #Note that A and B are arrays of arrays, N=length of outer array=number of transformations
         #A and B must be the same lengths (N)
 
         N=len(A)
         if N>=2:
-            print("A: "+str(A[0]))
             a,a_prime=self.HomoToDualQuat(A[0])
             b,b_prime=self.HomoToDualQuat(B[0])
             L=self.contructK(a,b) #Starts the "L" matrix
@@ -30,11 +30,34 @@ class HandEye:
             for i in range(1,N):
                 a,a_prime=self.HomoToDualQuat(A[i])
                 b,b_prime=self.HomoToDualQuat(B[i])
-                L=np.append(L,self.contructK(a,b))
-                L_prime=np.append(L_prime,self.contructK(a_prime,b_prime))
-            print("L: "+str(L))
-            print("L_prime: "+str(L_prime))
+                L=np.vstack((L,self.contructK(a,b)))
+                L_prime=np.vstack((L_prime,self.contructK(a_prime,b_prime)))
 
+            #Compute rotation part (real quaternion) of hand-eye transform using SVD decomposition
+            q=self.solveHomoSVD(L)
+
+            #Compute dual part of the dual quaternion
+            A=L
+            B=-1*np.matmul(A,q.T)
+            q_prime,residuals,_,_=np.linalg.lstsq(A,B,rcond=None)
+
+            #Solve translation part:
+            q_conj=np.array([q[0]]+list(-q[1:4]))
+            mult_res=self.quaternionMultiply(2*q_prime,q_conj)
+            trans=mult_res[1:4]
+
+            #Get the rotation part:
+            R=Rotation.from_quat(list(q))
+            R=R.as_matrix()
+
+            #Build the homogeneous transform matrix
+            X=np.identity(4)
+            X[0:3,0:3]=R
+            X[0:3,3]=trans
+
+            return X
+
+            
         else:
             print("Not Enough Transforms")
             return None
@@ -42,7 +65,19 @@ class HandEye:
 
                 
 
-
+    def quaternionMultiply(self,q1, q2):
+        w1, x1, y1, z1 = q1
+        w2, x2, y2, z2 = q2
+        w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+        x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+        y = w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2
+        z = w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2
+        return np.array([w, x, y, z])
+    def solveHomoSVD(self,L):
+        U,S,Vh=np.linalg.svd(L)
+        #The solutio n "S" or the singular values are sorted in decending order, so we just take the 
+        #final column of Vh
+        return Vh[-1]
 
     def contructK(self,a,b):
         #Takes the real part of two dual quaternions to contruct the K matrix to build the L matrix for SVD decomposition
@@ -83,27 +118,34 @@ class HandEye:
         
         #Enforce orthogonality
         RA=self.EnforceOrthogonality(RA)
-        print("RA: "+str(RA))
         #########Find the real part of the dual quaternion
 
         #Extract axis and angle of rotation (we use eigenvector/eigenvalue decomposition)
         eigvals,eigvecs=np.linalg.eig(RA)
-        print("eigvals"+str(eigvals))
-        ind_axis = np.where(np.logical_and(np.real(eigvals) < (1 + tolerance), np.real(eigvals) > (1 - tolerance)))
-        rotation_axis=np.real(eigvecs[:,ind_axis[0][0]])
-        del col_ind[ind_axis[0][0]]
-        rotation_angle=np.angle(eigvals[col_ind[0]]) #Look at this, not quite right
+        #Find index of eigenvector that is only real by finding imaginary parts and part that has zero imaginary part
+        imag_parts=np.imag(eigvals)
+        ind_only_real=np.where(np.logical_and(imag_parts<tolerance,imag_parts>-tolerance)) #Index of the column with only a real value
+        only_real=np.real(eigvals[ind_only_real[0][0]]) #Value of only real part
+        if (only_real < (1 + tolerance)) and (only_real > (1 - tolerance)): #Real part is 1
+            #ind_real=np.where(np.logical_and(real_parts)
+            #ind_axis = np.where(np.logical_and(np.real(eigvals) < (1 + tolerance), np.real(eigvals) > (1 - tolerance)))
+            rotation_axis=np.real(eigvecs[:,ind_only_real[0][0]])
+            del col_ind[ind_only_real[0][0]]
+            rotation_angle=np.angle(eigvals[col_ind[0]]) #Look at this, not quite right
 
-        #Real part of dual quaternion
-        a=np.hstack([np.sin(rotation_angle/2),np.cos(rotation_angle/2)*rotation_axis])
+            #Real part of dual quaternion
+            a=np.hstack([np.sin(rotation_angle/2),np.cos(rotation_angle/2)*rotation_axis])
 
-        ############Find the dual part of the dual quaternion
-        m=0.5*(np.cross(tA,rotation_axis)+(1/np.tan(rotation_angle/2))*np.cross(rotation_axis,np.cross(tA,rotation_axis)))
-        d=np.dot(tA,rotation_axis)
-        a_prime=np.hstack([-(d/2)*np.sin(rotation_angle/2),np.sin(rotation_angle/2)*m+(d/2)*np.cos(rotation_angle/2)*rotation_axis])
+            ############Find the dual part of the dual quaternion
+            m=0.5*(np.cross(tA,rotation_axis)+(1/np.tan(rotation_angle/2))*np.cross(rotation_axis,np.cross(tA,rotation_axis)))
+            d=np.dot(tA,rotation_axis)
+            a_prime=np.hstack([-(d/2)*np.sin(rotation_angle/2),np.sin(rotation_angle/2)*m+(d/2)*np.cos(rotation_angle/2)*rotation_axis])
+            return a,a_prime
+        else:
+            print("Not a Rotation Matrix")
+            return None,None
 
-
-        return a,a_prime
+        
 
     def SkewSymmetricMatrix(self,v):
         #Takes the skew symmetric matrix of a vector
