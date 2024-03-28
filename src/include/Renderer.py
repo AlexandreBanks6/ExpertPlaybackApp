@@ -255,8 +255,8 @@ class Renderer:
         self.gui_window=tk.Tk()
         self.gui_window.title("Expert Playback App")
 
-        self.gui_window.rowconfigure([0,1,2],weight=1)
-        self.gui_window.columnconfigure([0,1,3,4],weight=1)
+        self.gui_window.rowconfigure([0,1,2,3,4,5],weight=1)
+        self.gui_window.columnconfigure([0,1,2],weight=1)
 
         #Button to start/stop aruco markers
         self.render_button=tk.Button(text="Start/Stop Rendering",width=20,command=self.renderButtonPressCallback)
@@ -273,19 +273,36 @@ class Renderer:
         #Button to start/top aruco tracking
         self.aruco_toggle_button=tk.Button(text="Start/Stop Aurco Tracking",width=20,command=self.arucoToggleCallback)
         self.aruco_toggle_button.grid(row=1,column=0,sticky="nsew")
+        
 
-        #Button to "calibrate" (a.k.a. find the scene)
-        self.calibrate_scene_button=tk.Button(text="Calibrate Scene",width=20,command=self.calibrateToggleCallback)
+        #Button to "calibrate" the scene and perform hand-eye calibration (a.k.a. find the scene) => Press when camera is stable
+        self.calibrate_scene_button=tk.Button(text="Hand-Eye and Scene Calibration",width=20,command=self.calibrateToggleCallback)
         self.calibrate_scene_button.grid(row=2,column=0,sticky="nsew")
+
+        #Label to give directions for hand-eye calibration (and scene calibration)
+        self.calibrate_scene_text=tk.Label(text="Perform Hand-Eye/Scene Calibration when camera is stable",width=20)
+        self.calibrate_scene_text.grid(row=2,column=1,sticky='nsew')
+
+        #Button to capture points for hand-eye calibration
+        self.handeye_point_button=tk.Button(text="Capture Point for Hand-Eye",width=20,command=self.capturePointCallback)
+        self.handeye_point_button.grid(row=3,column=0,sticky="nsew")
+        
+        #Label to give directions for hand-eye calibration/scene calibration
+        self.point_capture_text=tk.Label(text="Move tool to indicated corners and then press capture point",width=20)
+        self.point_capture_text.grid(row=3,column=1,sticky='nsew')
+
+        #Label to count points for hand-eye calibration
+        self.num_points_text=tk.Label(text="",width=30)
+        self.ndi_toggle_text.grid(row=4,column=0,sticky='nsew')
 
 
         #Button to start ndi tracker
         self.ndi_toggle_button=tk.Button(text="Start NDI Tracker",width=20,command=self.ToggleTrackerCallback)
-        self.ndi_toggle_button.grid(row=3,column=0,sticky="nsew")
+        self.ndi_toggle_button.grid(row=5,column=0,sticky="nsew")
 
         #Label to show that the tracker is running
         self.ndi_toggle_text=tk.Label(text="NDI Tracker Is Off",width=20)
-        self.ndi_toggle_text.grid(row=3,column=1,sticky='nsew')
+        self.ndi_toggle_text.grid(row=5,column=1,sticky='nsew')
 
         #Button to run ndi tracking validation
         #self.validation_start=tk.Button(text="Run NDI Validation",width=20,command=self.ValidationCallback)
@@ -299,6 +316,7 @@ class Renderer:
         self.render_on=False
         self.aruco_on=False #Whether we show and update aruco poses
         self.calibrate_on=False
+        self.capture_point_toggle=False
 
         #Params for validating the calibration
         self.NDI_TrackerToggle=False #Whether the NDI tracker is on and we want to validate, validation is started with the calibration button
@@ -312,7 +330,8 @@ class Renderer:
 
 
         ####Aruco Tracking Setup
-        self.aruco_tracker=ArucoTracker.ArucoTracker(self)
+        self.aruco_tracker_left=ArucoTracker.ArucoTracker(self)
+        self.aruco_tracker_right=ArucoTracker.ArucoTracker(self)
 
 
 
@@ -338,7 +357,8 @@ class Renderer:
 
 
 
-
+    def capturePointCallback(self):
+        self.capture_point_toggle=not self.capture_point_toggle
     def psm1Checkbox(self):
         self.PSM1_on=not self.PSM1_on
 
