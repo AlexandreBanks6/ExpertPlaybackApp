@@ -55,7 +55,7 @@ marker_points = np.array([[0.0, 0.0, 0.0],
 
 class ArucoTracker:
 
-    def __init__(self,app):
+    def __init__(self,app,left_right):
         #Init Aruco Marker things
         self.aruco_dict=aruco.getPredefinedDictionary(aruco.DICT_4X4_1000) #using the 4x4 dictionary to find markers
         self.aruco_params=aruco.DetectorParameters()
@@ -65,39 +65,38 @@ class ArucoTracker:
 
         #Reading in camera calibration parameters
         #Right
-        with open(DEFAULT_CAMCALIB_DIR+'calibration_params_right/calibration_matrix.yaml','r') as file:
-            right_cam_info=yaml.load(file)
+        if left_right=='right':
+            with open(DEFAULT_CAMCALIB_DIR+'calibration_params_right/calibration_matrix.yaml','r') as file:
+                cam_info=yaml.load(file)
+        elif left_right=='left':
+            with open(DEFAULT_CAMCALIB_DIR+'calibration_params_left/calibration_matrix.yaml','r') as file:
+                cam_info=yaml.load(file)
 
-        self.mtx_right=right_cam_info['camera_matrix'] #Camera Matrix
-        self.mtx_right=np.array(self.mtx_right,dtype='float32')
-        self.dist_right=right_cam_info['dist_coeff']    #Distortion Coefficients
-        self.dist_right=np.array(self.dist_right,dtype='float32')
-
-        #Left
-
-        with open(DEFAULT_CAMCALIB_DIR+'calibration_params_left/calibration_matrix.yaml','r') as file:
-            left_cam_info=yaml.load(file)
-
-        self.mtx_left=left_cam_info['camera_matrix'] #Camera Matrix
-        self.mtx_left=np.array(self.mtx_left,dtype='float32')
-
-        self.dist_left=left_cam_info['dist_coeff']    #Distortion Coefficients
-        self.dist_left=np.array(self.dist_left,dtype='float32')
+        self.mtx=cam_info['camera_matrix'] #Camera Matrix
+        self.mtx=np.array(self.mtx,dtype='float32')
+        self.dist=cam_info['dist_coeff']    #Distortion Coefficients
+        self.dist=np.array(self.dist,dtype='float32')
 
         self.corners_scene=None
         self.ids_scene=None
+        self.calibrate_done=False #Returns true when the calibration is done
+
+        #Transformation matrices to return:
+        self.si_T_ci=None #Transformation from scene to camera coordinate system (initial)
+        self.rvec_scene=None
+        self.tvec_scene=None
+
         #self.corner_for_disp=None
 
         self.corner_scene_list=[] #List of list containing corners for each detection (each frame)
         self.ids_scene_list=[]
 
     
-    def arucoTrackingScene(self):
+    def arucoTrackingScene(self,frame):
         #We only do aruco tracking of the scene for one video stream (only need to know scene w.r.t. one camera)
 
         #Use Left Camera
 
-        frame=self.app.frame_left
         frame_gray=cv2.cvtColor(frame.copy(),cv2.COLOR_BGR2GRAY)
 
         corners,ids,rejected=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
@@ -114,9 +113,10 @@ class ArucoTracker:
         corners_print=np.array(corners_filtered,dtype='float32')
 
         if len(ids_filtered)>0:
-            self.app.frame_left_converted=aruco.drawDetectedMarkers(frame,corners=corners_print,ids=ids_print)
+            frame_converted=aruco.drawDetectedMarkers(frame,corners=corners_print,ids=ids_print)
             self.corners_scene=corners_filtered
             self.ids_scene=ids_filtered
+            
 
             #Test Aruco Pose Estimation
             #rvec,tvec,_=aruco.estimatePoseSingleMarkers(corners,ARUCO_SIDELENGTH,self.mtx_left,self.dist_left)
@@ -130,7 +130,9 @@ class ArucoTracker:
             #print("Corners:"+str(self.corners_scene))
             #print("IDs:"+str(self.ids_scene))
         else:
-            self.app.frame_left_converted=frame
+            frame_converted=frame
+        
+        return frame_converted
 
 
 
@@ -143,7 +145,7 @@ class ArucoTracker:
         self.ids_scene_list.append(self.ids_scene)
 
         if len(self.ids_scene_list)>=NUM_FRAME_DETECTIONS: 
-            self.app.calibrate_on=False
+            #self.app.calibrate_on=False
             #print("Corners Scene"+str(self.corner_scene_list))
             
             model_points=None
@@ -163,12 +165,14 @@ class ArucoTracker:
 
             print("image points:"+str(image_points))
             print("model points"+str(model_points))
-            success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,self.mtx_left,self.dist_left,\
+            success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,self.mtx,self.dist,\
                                                                           iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
             #success,rotation_vector,translation_vector=cv2.solvePnP(model_points,image_points,self.mtx_left,self.dist_left,False,cv2.SOLVEPNP_IPPE_SQUARE)
             if success: #We successfully found rotation/translation to the scene with ransac
                 #cv2.drawFrameAxes(self.app.frame_left_converted,self.mtx_left,self.dist_left,rotation_vector,translation_vector,0.05)
-                self.app.si_T_lci=self.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                #print("Calib Success")
+                self.calibrate_done=True
+                self.si_T_ci=self.convertRvecTvectoHomo(rotation_vector,translation_vector)
                 
                 
 
@@ -183,8 +187,8 @@ class ArucoTracker:
                 #self.app.rvec_scene=rvec_new
                 #self.app.tvec_scene=trans_new
 
-                self.app.rvec_scene=rotation_vector
-                self.app.tvec_scene=translation_vector
+                self.rvec_scene=rotation_vector
+                self.tvec_scene=translation_vector
                 #print("tvec: "+str(self.app.tvec_scene))    
             #Clearing the buffer
             self.corner_scene_list=[]

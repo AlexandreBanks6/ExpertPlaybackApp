@@ -293,7 +293,7 @@ class Renderer:
 
         #Label to count points for hand-eye calibration
         self.num_points_text=tk.Label(text="",width=30)
-        self.ndi_toggle_text.grid(row=4,column=0,sticky='nsew')
+        self.num_points_text.grid(row=4,column=0,sticky='nsew')
 
 
         #Button to start ndi tracker
@@ -330,8 +330,8 @@ class Renderer:
 
 
         ####Aruco Tracking Setup
-        self.aruco_tracker_left=ArucoTracker.ArucoTracker(self)
-        self.aruco_tracker_right=ArucoTracker.ArucoTracker(self)
+        self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
+        self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
 
 
 
@@ -341,8 +341,8 @@ class Renderer:
         self.si_T_lci=None #The left camera w.r.t. scene base frame (calibrated origin)
         self.si_T_rci=None #The right camera w.r.t. scene base frame (calibrated origin)
         #self.lci_T_si=None #Scene base frame w.r.t. to left camera
-        self.rvec_scene=None #How PnP returns rotation (for printing coordinate to scene)
-        self.tvec_scene=None #How PnP returns translation (for printing coordinate to scene)
+        #self.rvec_scene=None #How PnP returns rotation (for printing coordinate to scene)
+        #self.tvec_scene=None #How PnP returns translation (for printing coordinate to scene)
 
         self.lc_T_e=None #Hand-eye calibration for left camera to endoscope
         self.rc_T_e=None #Hand-eye calibraiton for right camera to endoscope
@@ -416,6 +416,9 @@ class Renderer:
 
     def calibrateToggleCallback(self):
         self.calibrate_on=not self.calibrate_on
+        self.aruco_tracker_left.calibrate_done=False
+        self.aruco_tracker_right.calibrate_done=False
+
 
         if self.NDI_TrackerToggle and self.calibrate_on: #We want to validate the pose estimates
 
@@ -544,7 +547,7 @@ class Renderer:
         #if(glfwGetKey(self.window1,GLFW_KEY_ESCAPE)==GLFW_PRESS):
          #   glfwTerminate()
           #  sys.exit()
-        #print("Key Pressed")
+        #print("Key Pressed")writeToNDIVal
         if self.keys[key.ESCAPE]:
             print("Escape Pressed")
            # self.window.close()
@@ -577,7 +580,7 @@ class Renderer:
         
 
 
-        ####Render Left Window (only track "scene" arucos for left window)
+        ####Render Left Window
         self.window_left.switch_to()       
         self.ctx_left.clear()
 
@@ -587,10 +590,11 @@ class Renderer:
             #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
             
             if self.aruco_on:
-                self.aruco_tracker.arucoTrackingScene()                
-                if self.calibrate_on: #Sets Scene Base Frame
+                self.frame_left_converted=self.aruco_tracker_left.arucoTrackingScene(self.frame_left)                
+                if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame
                     self.si_T_lci=None
-                    self.aruco_tracker.calibrateScene()
+                    self.aruco_tracker_left.calibrateScene()
+                    self.si_T_lci=self.aruco_tracker_left.si_T_ci
 
                     #Writing to CSV For Validation
                     if self.NDI_TrackerToggle:
@@ -598,8 +602,8 @@ class Renderer:
                         self.writeToNDIVal(NDI_dat)
       
                 if self.si_T_lci is not None: #We show the base frame
-                    cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker.mtx_left,\
-                                      self.aruco_tracker.dist_left,self.rvec_scene,self.tvec_scene,0.05)
+                    cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
+                                      self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
                   
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
             
@@ -632,8 +636,24 @@ class Renderer:
         #Updating Background Image
         if self.frame_right is not None:
             self.ctx_right.disable(mgl.DEPTH_TEST)
-            #background_image_right=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
-            self.frame_right_converted=self.cvFrame2Gl(self.frame_right)
+            
+            if self.aruco_on:
+                self.frame_right_converted=self.aruco_tracker_right.arucoTrackingScene(self.frame_right)                
+                if self.calibrate_on and (not self.aruco_tracker_right.calibrate_done): #Sets Scene Base Frame
+                    self.si_T_rci=None
+                    self.aruco_tracker_right.calibrateScene()
+                    self.si_T_rci=self.aruco_tracker_right.si_T_ci
+      
+                if self.si_T_rci is not None: #We show the base frame
+                    cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
+                                      self.aruco_tracker_right.dist,self.aruco_tracker_right.rvec_scene,self.aruco_tracker_right.tvec_scene,0.05) #Look at rvec and tvec, look at frame_right_converted, look at calibrate on
+                  
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
+            
+            else:
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right)
+
+
             self.texture_right.write(self.frame_right_converted)
             self.texture_right.use()
             self.vertex_array_right.render()
