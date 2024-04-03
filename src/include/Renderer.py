@@ -35,6 +35,11 @@ import time
 from datetime import datetime
 import csv
 
+#dvrk tool stuff
+import dvrk
+import PyKDL
+
+
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
@@ -87,6 +92,10 @@ C_r_jr=glm.mat4(glm.vec4(1,0,0,0),
 
 obj_names=['shaft','body','jaw_right','jaw_left']
 
+tool_tip_offset=0.0102 #meters
+tool_tip_translation=PyKDL.Vector(0,0,0.0102)
+
+
 ###For Testing:
 start_pose=glm.mat4(glm.vec4(1,0,0,0),
                 glm.vec4(0,1,0,0),
@@ -101,6 +110,12 @@ start_pose2=glm.mat4(glm.vec4(1,0,0,0),
 ##################Init Parameters for Grabbing Frames###################
 RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
+
+
+
+##############Numbering system to label corners for hand-eye calibration
+CORNER_NUMBERS_STRING=['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15']
+MIN_NUMBER_FORHANDEYE=4 #Minimum Number of points for Hand-Eye Calibration
 
 #Standalone function to take inverse of homogeneous transform with glm
 def invHomogenous(transform):
@@ -258,42 +273,47 @@ class Renderer:
         self.gui_window.rowconfigure([0,1,2,3,4,5],weight=1)
         self.gui_window.columnconfigure([0,1,2],weight=1)
 
-        #Button to start/stop aruco markers
-        self.render_button=tk.Button(text="Start/Stop Rendering",width=20,command=self.renderButtonPressCallback)
-        self.render_button.grid(row=0,column=0,sticky="nsew")
-
-        #CheckButtons to Render PSM1 and PSM2 
-        self.checkbox_PSM1=tk.Checkbutton(text="PSM1",width=10,onvalue=1,offvalue=0,command=self.psm1Checkbox)
-        self.checkbox_PSM1.grid(row=0,column=1,sticky='nsew')
-
-        self.checkbox_PSM3=tk.Checkbutton(text="PSM3",width=10,onvalue=1,offvalue=0,command=self.psm3Checkbox)
-        self.checkbox_PSM3.grid(row=0,column=2,sticky='nsew')
-
 
         #Button to start/top aruco tracking
         self.aruco_toggle_button=tk.Button(text="Start/Stop Aurco Tracking",width=20,command=self.arucoToggleCallback)
-        self.aruco_toggle_button.grid(row=1,column=0,sticky="nsew")
+        self.aruco_toggle_button.grid(row=0,column=0,sticky="nsew")
         
+        #Label to give number of points collected for hand-eye calibration
+        self.calibrate_scene_text=tk.Label(text="Perform Hand-Eye-Scene Calibration with right hand (collect ~8 points with no camera movement)",width=100)
+        self.calibrate_scene_text.grid(row=1,column=1,sticky='nsew')
 
-        #Button to "calibrate" the scene and perform hand-eye calibration (a.k.a. find the scene) => Press when camera is stable
-        self.calibrate_scene_button=tk.Button(text="Hand-Eye and Scene Calibration",width=20,command=self.calibrateToggleCallback)
-        self.calibrate_scene_button.grid(row=2,column=0,sticky="nsew")
-
-        #Label to give directions for hand-eye calibration (and scene calibration)
-        self.calibrate_scene_text=tk.Label(text="Perform Hand-Eye/Scene Calibration when camera is stable",width=20)
-        self.calibrate_scene_text.grid(row=2,column=1,sticky='nsew')
+        #Drop down to indicate which corner we are touching
+        self.handeye_selected_corner=tk.StringVar()
+        self.handeye_dropdown=tk.OptionMenu(self.gui_window,self.handeye_selected_corner,*CORNER_NUMBERS_STRING)
+        self.handeye_dropdown.grid(row=2,column=0,sticky='nsew')
 
         #Button to capture points for hand-eye calibration
         self.handeye_point_button=tk.Button(text="Capture Point for Hand-Eye",width=20,command=self.capturePointCallback)
-        self.handeye_point_button.grid(row=3,column=0,sticky="nsew")
-        
-        #Label to give directions for hand-eye calibration/scene calibration
-        self.point_capture_text=tk.Label(text="Move tool to indicated corners and then press capture point",width=20)
-        self.point_capture_text.grid(row=3,column=1,sticky='nsew')
+        self.handeye_point_button.grid(row=2,column=1,sticky="nsew")
 
-        #Label to count points for hand-eye calibration
-        self.num_points_text=tk.Label(text="",width=30)
-        self.num_points_text.grid(row=4,column=0,sticky='nsew')
+        #Label to give number of points collected for hand-eye calibration
+        self.calibrate_scene_text=tk.Label(text="# Collected = 0",width=50)
+        self.calibrate_scene_text.grid(row=2,column=2,sticky='nsew')
+
+
+
+        #Button to "calibrate" the scene and perform hand-eye calibration (a.k.a. find the scene) => Press when camera is stable
+        self.calibrate_scene_button=tk.Button(text="Complete Hand-Eye and Scene Calibration",width=20,command=self.calibrateToggleCallback)
+        self.calibrate_scene_button.grid(row=3,column=0,sticky="nsew")
+
+       
+
+
+        #Button to start/stop Rendering
+        self.render_button=tk.Button(text="Start/Stop Rendering",width=20,command=self.renderButtonPressCallback)
+        self.render_button.grid(row=4,column=0,sticky="nsew")
+
+        #CheckButtons to Render PSM1 and PSM2 
+        self.checkbox_PSM1=tk.Checkbutton(text="PSM1",width=10,onvalue=1,offvalue=0,command=self.psm1Checkbox)
+        self.checkbox_PSM1.grid(row=4,column=1,sticky='nsew')
+
+        self.checkbox_PSM3=tk.Checkbutton(text="PSM3",width=10,onvalue=1,offvalue=0,command=self.psm3Checkbox)
+        self.checkbox_PSM3.grid(row=4,column=2,sticky='nsew')
 
 
         #Button to start ndi tracker
@@ -317,6 +337,8 @@ class Renderer:
         self.aruco_on=False #Whether we show and update aruco poses
         self.calibrate_on=False
         self.capture_point_toggle=False
+        self.num_points_capture=0 #The number of points we have captured for hand-eye-scene calibration
+
 
         #Params for validating the calibration
         self.NDI_TrackerToggle=False #Whether the NDI tracker is on and we want to validate, validation is started with the calibration button
@@ -334,12 +356,18 @@ class Renderer:
         self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
 
 
+        #################dVRK API Config###################
+        self.psm1=dvrk.psm1("PSM1") #Mapped to right hand
+        self.psm3=dvrk.psm3("PSM3") #Mapped to left hand
+
 
         #################Frame Transformations#####################
         
         self.world_base=glm.mat4() #This is the world base frame (set to be the corner of scene)
         self.si_T_lci=None #The left camera w.r.t. scene base frame (calibrated origin)
         self.si_T_rci=None #The right camera w.r.t. scene base frame (calibrated origin)
+
+
         #self.lci_T_si=None #Scene base frame w.r.t. to left camera
         #self.rvec_scene=None #How PnP returns rotation (for printing coordinate to scene)
         #self.tvec_scene=None #How PnP returns translation (for printing coordinate to scene)
@@ -352,6 +380,11 @@ class Renderer:
         #Camera pose:
         self.cam_left_pose=None
         self.cam_right_pose=None
+
+
+        #Object Points for Hand-Eye Calibration
+        self.corner_points_handeye=[] #By adding this to initial corner is essentially the translation
+        self.robot_points_handeye=[]
 
         
 
@@ -590,18 +623,47 @@ class Renderer:
             #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
             
             if self.aruco_on:
-                self.frame_left_converted=self.aruco_tracker_left.arucoTrackingScene(self.frame_left)                
-                if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame
-                    self.si_T_lci=None
-                    self.aruco_tracker_left.calibrateScene()
-                    self.si_T_lci=self.aruco_tracker_left.si_T_ci
+                self.frame_left_converted=self.aruco_tracker_left.arucoTrackingScene(self.frame_left)
 
-                    #Writing to CSV For Validation
-                    if self.NDI_TrackerToggle:
-                        NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
-                        self.writeToNDIVal(NDI_dat)
+                if self.capture_point_toggle: 
+                    self.capture_point_toggle=False
+                    corner_number=int(self.handeye_selected_corner.get())
+                    corner_point=self.aruco_tracker_left.returnObjectPointForHandeye(corner_number)
+                    if corner_point:
+                        self.num_points_capture+=1
+                        self.corner_points_handeye.append(corner_point)   
+                        #Get point of PSM1 from da Vinci API
+                        tool_pose=self.psm1.measured_cp()
+                        tool_pose.p=tool_pose.p+tool_tip_translation
+                        tool_point=[tool_pose.p.x(),tool_pose.p.y(),tool_pose.p.z()]
+                        print("tool point: "+str(tool_point))
+
+
+                        self.calibrate_scene_text.config(text="# Collected = "+str(self.num_points_capture))
+                    else:
+                        print("Requested Corner Not In View")
+                    #Capture Points for Hand-Eye-Scene Calibration (capture point in endoscope coord system and in scene coord system)
+                    #These points are for both left and right cameras (doesn't matter because it is for robot)
+
+                
+                if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame
+                    if self.num_points_capture>=MIN_NUMBER_FORHANDEYE:
+
+                        self.si_T_lci=None
+                        self.aruco_tracker_left.calibrateScene()
+                        self.si_T_lci=self.aruco_tracker_left.si_T_ci
+
+                        #Writing to CSV For Validation
+                        if self.NDI_TrackerToggle:
+                            NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
+                            self.writeToNDIVal(NDI_dat)
+                    else:
+                        print("Not Enough Points for Hand-Eye-Scene Calibration, collect more")
       
-                if self.si_T_lci is not None: #We show the base frame
+                if self.si_T_lci is not None: #We Perform Hand-Eye Calibration and show the scene coord system
+                    
+                    
+                    
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
                                       self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
                   
@@ -640,11 +702,20 @@ class Renderer:
             if self.aruco_on:
                 self.frame_right_converted=self.aruco_tracker_right.arucoTrackingScene(self.frame_right)                
                 if self.calibrate_on and (not self.aruco_tracker_right.calibrate_done): #Sets Scene Base Frame
-                    self.si_T_rci=None
-                    self.aruco_tracker_right.calibrateScene()
-                    self.si_T_rci=self.aruco_tracker_right.si_T_ci
+                    if self.num_points_capture>=MIN_NUMBER_FORHANDEYE:
+                        self.si_T_rci=None
+                        self.aruco_tracker_right.calibrateScene()
+                        self.si_T_rci=self.aruco_tracker_right.si_T_ci
+
+                    else:
+                        print("Not Enough Points for Hand-Eye-Scene Calibration, collect more")
       
-                if self.si_T_rci is not None: #We show the base frame
+                if self.si_T_rci is not None: #We Perform Hand-Eye Calibration and show the scene coord system
+                    
+                    
+                    
+                    
+                    
                     cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                       self.aruco_tracker_right.dist,self.aruco_tracker_right.rvec_scene,self.aruco_tracker_right.tvec_scene,0.05) #Look at rvec and tvec, look at frame_right_converted, look at calibrate on
                   
@@ -670,6 +741,16 @@ class Renderer:
                 self.scene_PSM3.render(self.ctx_right)
 
         
+        #Resestting hand-eye variables:
+        if self.aruco_tracker_right.calibrate_done and self.aruco_tracker_left.calibrate_done:
+            self.num_points_capture=0
+            self.calibrate_scene_text.config(text="# Collected = "+str(self.num_points_capture))
+            self.corner_points_handeye=[]
+            self.robot_points_handeye=[]
+            self.aruco_tracker_left.calibrate_done=False
+            self.aruco_tracker_right.calibrate_done=False
+
+            
         ####Gui Updates
 
         self.gui_window.update()

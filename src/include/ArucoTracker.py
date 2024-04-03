@@ -20,6 +20,7 @@ RANSAC_SCENE_ITERATIONS=40 #Number of iterations for scene localization RANSAC
 ARUCO_SIDELENGTH=0.025527 #in meters
 ARUCO_SEPERATION=0.1022477 #From closest edges, in meters
 ARUCO_HEIGHT_OFFSET=0.005
+
 RINGOWIRE_MODELPOINTS={
     "6":np.array([
     [0.0,0.0,0.0],
@@ -45,6 +46,11 @@ RINGOWIRE_MODELPOINTS={
     [2*ARUCO_SIDELENGTH+ARUCO_SEPERATION,-ARUCO_SIDELENGTH,3*ARUCO_HEIGHT_OFFSET],
     [ARUCO_SIDELENGTH+ARUCO_SEPERATION,-ARUCO_SIDELENGTH,3*ARUCO_HEIGHT_OFFSET]],dtype='float32')
 }
+
+#Index of numbering-scheme for hand-eye calibration corners w.r.t. above structure
+CORNER_NUMBERS=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15] #We have 16 corners
+
+
 
 #Test Marker Points for SolvePnP
 marker_points = np.array([[0.0, 0.0, 0.0],
@@ -133,6 +139,31 @@ class ArucoTracker:
             frame_converted=frame
         
         return frame_converted
+
+    def returnObjectPointForHandeye(self,corner_number):
+        ids=[elem for entry in self.ids_scene for elem in entry]
+        corner_point=False
+        print("ids: "+str(ids))
+        if corner_number<4 and (6 in ids): #Corner numbering corresponding to ID 6
+            corners=RINGOWIRE_MODELPOINTS['6']
+            corners=corners.tolist()
+            corner_point=corners[corner_number]
+        elif corner_number<8 and corner_number>=4 and (4 in ids): #Corner numbering corresponding to ID 4
+            corners=RINGOWIRE_MODELPOINTS['4']
+            corners=corners.tolist()
+            corner_point=corners[corner_number-4]
+        elif corner_number<12 and corner_number>=8 and (5 in ids): #Corner numbering corresponding to ID 5
+            corners=RINGOWIRE_MODELPOINTS['5']
+            corners=corners.tolist()
+            corner_point=corners[corner_number-8]
+        elif corner_number<16 and corner_number>=12 and (7 in ids): #Corner numbering corresponding to ID 7
+            corners=RINGOWIRE_MODELPOINTS['7']
+            corners=corners.tolist()
+            corner_point=corners[corner_number-12]
+
+        return corner_point
+
+
 
 
 
