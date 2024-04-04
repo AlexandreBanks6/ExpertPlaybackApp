@@ -117,7 +117,7 @@ class HandEye:
         tA=A[0:3,3] #Translation of A
         
         #Enforce orthogonality
-        RA=self.EnforceOrthogonality(RA)
+        RA=EnforceOrthogonality(RA)
         #########Find the real part of the dual quaternion
 
         #Extract axis and angle of rotation (we use eigenvector/eigenvalue decomposition)
@@ -156,24 +156,24 @@ class HandEye:
         return skew_mat
 
 
-    def EnforceOrthogonality(self,R):
-        #Function which enforces a rotation matrix to be orthogonal
-        #R is a 3x3 numpy array
+def EnforceOrthogonality(R):
+    #Function which enforces a rotation matrix to be orthogonal
+    #R is a 3x3 numpy array
 
-        #Extracting columns of rotation matrix
-        x=R[:,0] 
-        y=R[:,1]
-        z=R[:,2]
-        diff_err=np.dot(x,y)
-        x_orth=x-(0.5*diff_err*y)
-        y_orth=y-(0.5*diff_err*x)
-        z_orth=np.cross(x_orth,y_orth)
-        x_norm=0.5*(3-np.dot(x_orth,x_orth))*x_orth
-        y_norm=0.5*(3-np.dot(y_orth,y_orth))*y_orth
-        z_norm=0.5*(3-np.dot(z_orth,z_orth))*z_orth
-        R_new=np.column_stack((x_norm,y_norm,z_norm))
+    #Extracting columns of rotation matrix
+    x=R[:,0] 
+    y=R[:,1]
+    z=R[:,2]
+    diff_err=np.dot(x,y)
+    x_orth=x-(0.5*diff_err*y)
+    y_orth=y-(0.5*diff_err*x)
+    z_orth=np.cross(x_orth,y_orth)
+    x_norm=0.5*(3-np.dot(x_orth,x_orth))*x_orth
+    y_norm=0.5*(3-np.dot(y_orth,y_orth))*y_orth
+    z_norm=0.5*(3-np.dot(z_orth,z_orth))*z_orth
+    R_new=np.column_stack((x_norm,y_norm,z_norm))
 
-        return R_new
+    return R_new
 
 
     

@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     #Initializing rospy subscriber
 
-    rospy.init_node('ExperPlayback')
+    #rospy.init_node('ExperPlayback')
     rospy.Rate(10000)
 
     rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackRight,queue_size=1,buff_size=2**18)

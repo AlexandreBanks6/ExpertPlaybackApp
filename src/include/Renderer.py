@@ -5,12 +5,16 @@ import pygame as pg
 #from glfw import _GLFWwindow as GLFWwindow
 import moderngl as mgl
 import sys
+
+import skimage.measure
+import skimage.transform
 from include import Model as mdl
 from include import Camera
 from include import Light
 from include import mesh
 from include import scene
 from include import ArucoTracker
+from include import HandEye
 import glm
 import pyglet
 
@@ -39,6 +43,9 @@ import csv
 import dvrk
 import PyKDL
 
+import skimage
+import tf_conversions.posemath as pm
+import tf_conversions
 
 
 CONSOLE_VIEWPORT_WIDTH=1400
@@ -270,7 +277,7 @@ class Renderer:
         self.gui_window=tk.Tk()
         self.gui_window.title("Expert Playback App")
 
-        self.gui_window.rowconfigure([0,1,2,3,4,5],weight=1)
+        self.gui_window.rowconfigure([0,1,2,3,4,5,6,7],weight=1)
         self.gui_window.columnconfigure([0,1,2],weight=1)
 
 
@@ -324,6 +331,13 @@ class Renderer:
         self.ndi_toggle_text=tk.Label(text="NDI Tracker Is Off",width=20)
         self.ndi_toggle_text.grid(row=5,column=1,sticky='nsew')
 
+        #Button to start teleoperation
+        self.teleop_button=tk.Button(text="Start/Stop Teleoperation",width=20,command=self.teleopButtonCallback)
+        self.teleop_button.grid(row=6,column=0,sticky="nsew")
+
+        self.teleop_lockout_checkbox=tk.Checkbutton(text="Lock Wrist",width=10,onvalue=1,offvalue=0,command=self.teleopLockoutCallback)
+        self.teleop_lockout_checkbox.grid(row=6,column=1,sticky='nsew')
+
         #Button to run ndi tracking validation
         #self.validation_start=tk.Button(text="Run NDI Validation",width=20,command=self.ValidationCallback)
         #self.validation_start.grid(row=4,column=0,sticky="nsew")
@@ -337,6 +351,12 @@ class Renderer:
         self.aruco_on=False #Whether we show and update aruco poses
         self.calibrate_on=False
         self.capture_point_toggle=False
+
+        self.teleop_on=False
+        self.teleop_init=False #Checks whether teleoperation has started
+        self.teleop_lockout=False #Whether we lockout wrist or not
+
+
         self.num_points_capture=0 #The number of points we have captured for hand-eye-scene calibration
 
 
@@ -357,8 +377,25 @@ class Renderer:
 
 
         #################dVRK API Config###################
-        self.psm1=dvrk.psm1("PSM1") #Mapped to right hand
-        self.psm3=dvrk.psm3("PSM3") #Mapped to left hand
+        self.psm1=dvrk.psm("PSM1")#Mapped to left hand
+        self.psm3=dvrk.psm("PSM3") #Mapped to right hand
+        self.mtml=dvrk.mtm("MTML")
+        self.mtmr=dvrk.mtm("MTMR")
+
+        #Enabling and Homing
+        self.psm1.enable()
+        self.psm1.home()
+
+        self.psm3.enable()
+        self.psm3.home()
+
+        self.mtml=dvrk.mtm("MTML")
+        self.mtmr=dvrk.mtm("MTMR")
+
+        self.mtml.enable()
+        self.mtml.home()
+        self.mtmr.enable()
+        self.mtmr.home()
 
 
         #################Frame Transformations#####################
@@ -375,11 +412,17 @@ class Renderer:
         self.lc_T_e=None #Hand-eye calibration for left camera to endoscope
         self.rc_T_e=None #Hand-eye calibraiton for right camera to endoscope
 
+        self.si_T_e=None #World base to endoscope base
+
         self.ei_T_e=glm.mat4() #Transform between initial endoscope position and current position
 
         #Camera pose:
         self.cam_left_pose=None
         self.cam_right_pose=None
+
+        ####Teleoperation Transforms:
+        self.orientation_offset_mtml=None
+        self.orientation_offset_mtmr=None
 
 
         #Object Points for Hand-Eye Calibration
@@ -387,8 +430,11 @@ class Renderer:
         self.robot_points_handeye=[]
 
         
-
-
+    def teleopLockoutCallback(self):
+        self.teleop_lockout=not self.teleop_lockout
+    def teleopButtonCallback(self):
+        self.teleop_on=not self.teleop_on
+        self.teleop_init=False
 
     def capturePointCallback(self):
         self.capture_point_toggle=not self.capture_point_toggle
@@ -596,6 +642,66 @@ class Renderer:
 
     def render(self,dt):
 
+        #################Teleoperation#####################
+
+        if self.teleop_on:
+
+            if not self.teleop_init: #We haven't initialized teleoperation and must do this first
+                self.teleop_init=True
+                #We set position of MTML equal to its position, and the orientation of MTML=PSM1
+                #We set position of MTMR equal to its position, and the orientation of MTMR=PSM3
+
+                #PSMs w.r.t. ECMs
+                ecm_T_psm1=self.psm1.setpoint_cp()
+
+                ecm_T_psm3=self.psm3.setpoint_cp()
+
+                #MTMs w.r.t. display
+
+                display_T_mtml=self.mtml.measured_cp()
+                display_T_mtmr=self.mtmr.measured_cp()
+
+
+                #Moving the MTMs 
+
+
+                print(ecm_T_psm1.M)
+
+                #Convert to numpy array
+                ecm_T_psm1_new=pm.toMatrix(ecm_T_psm1)
+                ecm_T_psm3_new=pm.toMatrix(ecm_T_psm3)
+
+                #Enforce orthogonality
+                ecm_T_psm1_new[0:3,0:3]=HandEye.EnforceOrthogonality(ecm_T_psm1_new[0:3,0:3])
+                ecm_T_psm3_new[0:3,0:3]=HandEye.EnforceOrthogonality(ecm_T_psm3_new[0:3,0:3])
+
+                #Convert back to a pykdl
+                ecm_T_psm1=pm.fromMatrix(ecm_T_psm1_new)
+                ecm_T_psm3=pm.fromMatrix(ecm_T_psm3_new)
+                print(ecm_T_psm1.M)
+
+                display_T_mtml.M=ecm_T_psm1.M
+                display_T_mtmr.M=ecm_T_psm3.M
+
+                self.mtml.move_cp(display_T_mtml).wait()
+                self.mtmr.move_cp(display_T_mtmr).wait()
+
+                self.orientation_offset_mtml=self.mtml.measured_cp().M.Inverse()*ecm_T_psm1.M
+                self.orientation_offset_mtmr=self.mtmr.measured_cp().M.Inverse()*ecm_T_psm3.M
+
+                alignment_offset_angle, _ = self.orientation_offset_mtml.GetRotAngle()
+
+                print("offset angle: "+str(alignment_offset_angle * (180/np.pi)))
+
+
+
+
+
+
+
+
+
+
         self.move_rads+=0.01
 
         #Get Time
@@ -636,7 +742,12 @@ class Renderer:
                         tool_pose=self.psm1.measured_cp()
                         tool_pose.p=tool_pose.p+tool_tip_translation
                         tool_point=[tool_pose.p.x(),tool_pose.p.y(),tool_pose.p.z()]
-                        print("tool point: "+str(tool_point))
+                        self.robot_points_handeye.append(tool_point)
+
+                        print("tool point: "+str(tool_pose.p))
+                        
+                        print("corner point list: "+str(self.corner_points_handeye))
+                        print("tool point list: "+str(self.robot_points_handeye))
 
 
                         self.calibrate_scene_text.config(text="# Collected = "+str(self.num_points_capture))
@@ -648,7 +759,7 @@ class Renderer:
                 
                 if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame
                     if self.num_points_capture>=MIN_NUMBER_FORHANDEYE:
-
+                        
                         self.si_T_lci=None
                         self.aruco_tracker_left.calibrateScene()
                         self.si_T_lci=self.aruco_tracker_left.si_T_ci
@@ -660,7 +771,14 @@ class Renderer:
                     else:
                         print("Not Enough Points for Hand-Eye-Scene Calibration, collect more")
       
-                if self.si_T_lci is not None: #We Perform Hand-Eye Calibration and show the scene coord system
+                if self.si_T_lci is not None: #We Perform Hand-Eye Calibration and show the scene coord system for left camera
+                    
+                    #First find scene to endoscope base transform (si_T_e) by solving a RANSAC registration
+                    src=np.array(self.corner_points_handeye)
+                    dst=np.array(self.robot_points_handeye)
+
+                    model_robust,inliers=skimage.measure.ransac((src,dst),skimage.transform.AffineTransform,\
+                                                                min_samples=3,residual_threshold=2,max_trials=100)
                     
                     
                     
@@ -710,7 +828,7 @@ class Renderer:
                     else:
                         print("Not Enough Points for Hand-Eye-Scene Calibration, collect more")
       
-                if self.si_T_rci is not None: #We Perform Hand-Eye Calibration and show the scene coord system
+                if (self.si_T_rci is not None) and (self.si_T_rci is not None): #We Perform Hand-Eye Calibration and show the scene coord system for right camera
                     
                     
                     
