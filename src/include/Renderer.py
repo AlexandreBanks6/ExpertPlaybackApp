@@ -42,17 +42,22 @@ import csv
 #dvrk tool stuff
 import dvrk
 import PyKDL
+import rospy
 
 import skimage
 import tf_conversions.posemath as pm
 import tf_conversions
-
+from sensor_msgs.msg import Joy
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
 
 MOVE_SPEED=0.5
 METERS_TO_RENDER_SCALE=1000
+
+##########Parameters for Teleoperation###########
+#PSM Position Motion Scale Factor
+PSM_SCALE_FACTOR=0.5
 
 ##########Parameters for NDI Validation##########
 
@@ -354,7 +359,12 @@ class Renderer:
 
         self.teleop_on=False
         self.teleop_init=False #Checks whether teleoperation has started
+
+        self.teleop_folow_init=False
         self.teleop_lockout=False #Whether we lockout wrist or not
+
+        self.clutch_val=0
+        self.camera_val=0
 
 
         self.num_points_capture=0 #The number of points we have captured for hand-eye-scene calibration
@@ -423,6 +433,12 @@ class Renderer:
         ####Teleoperation Transforms:
         self.orientation_offset_mtml=None
         self.orientation_offset_mtmr=None
+
+        #Used at the start of follow mode
+        self.display_T_mtml_ini=None
+        self.display_T_mtmr_ini=None
+        self.ecm_T_psm1_ini=None
+        self.ecm_T_psm3_ini=None
 
 
         #Object Points for Hand-Eye Calibration
@@ -523,7 +539,16 @@ class Renderer:
     def renderButtonPressCallback(self):
         self.render_on=not self.render_on
 
+    def clutchPedalCallback(self,data):
+        if self.teleop_on:
+            self.clutch_val=int(data.buttons[0])
 
+            print("Clutch Val: "+str(self.clutch_val))
+
+    def cameraPedalCallback(self,data):
+        if self.teleop_on:
+            self.camera_val=int(data.buttons[0])
+            print("Camera Val: "+str(self.camera_val))
     def get_program_background(self,shader_program_name):
         try:
             print("Shader Entered")
@@ -638,15 +663,21 @@ class Renderer:
           #      self.mesh.destroy()
            #     pg.quit()
             #    sys.exit()
-        
+    def enforceOrthogonalPyKDL(self,pykdl_frame):
+        pykdl_frame_new=pm.toMatrix(pykdl_frame)
+        pykdl_frame_new[0:3,0:3]=HandEye.EnforceOrthogonality(pykdl_frame_new[0:3,0:3])
+        pykdl_frame_new=pm.fromMatrix(pykdl_frame_new)
+        return pykdl_frame_new
 
     def render(self,dt):
 
         #################Teleoperation#####################
 
-        if self.teleop_on:
+        if self.teleop_on:  #Teleoperation On
 
-            if not self.teleop_init: #We haven't initialized teleoperation and must do this first
+            #############Aligning the MTMs############
+            if not self.teleop_init: 
+
                 self.teleop_init=True
                 #We set position of MTML equal to its position, and the orientation of MTML=PSM1
                 #We set position of MTMR equal to its position, and the orientation of MTMR=PSM3
@@ -664,21 +695,9 @@ class Renderer:
 
                 #Moving the MTMs 
 
+                ecm_T_psm1=self.enforceOrthogonalPyKDL(ecm_T_psm1)
+                ecm_T_psm3=self.enforceOrthogonalPyKDL(ecm_T_psm3)
 
-                print(ecm_T_psm1.M)
-
-                #Convert to numpy array
-                ecm_T_psm1_new=pm.toMatrix(ecm_T_psm1)
-                ecm_T_psm3_new=pm.toMatrix(ecm_T_psm3)
-
-                #Enforce orthogonality
-                ecm_T_psm1_new[0:3,0:3]=HandEye.EnforceOrthogonality(ecm_T_psm1_new[0:3,0:3])
-                ecm_T_psm3_new[0:3,0:3]=HandEye.EnforceOrthogonality(ecm_T_psm3_new[0:3,0:3])
-
-                #Convert back to a pykdl
-                ecm_T_psm1=pm.fromMatrix(ecm_T_psm1_new)
-                ecm_T_psm3=pm.fromMatrix(ecm_T_psm3_new)
-                print(ecm_T_psm1.M)
 
                 display_T_mtml.M=ecm_T_psm1.M
                 display_T_mtmr.M=ecm_T_psm3.M
@@ -686,15 +705,112 @@ class Renderer:
                 self.mtml.move_cp(display_T_mtml).wait()
                 self.mtmr.move_cp(display_T_mtmr).wait()
 
-                self.orientation_offset_mtml=self.mtml.measured_cp().M.Inverse()*ecm_T_psm1.M
+                self.orientation_offset_mtml=self.mtml.measured_cp().M.Inverse()*ecm_T_psm1.M                
                 self.orientation_offset_mtmr=self.mtmr.measured_cp().M.Inverse()*ecm_T_psm3.M
+                print("Initialized Teleoperation")
+                #alignment_offset_angle, _ = self.orientation_offset_mtml.GetRotAngle()
 
-                alignment_offset_angle, _ = self.orientation_offset_mtml.GetRotAngle()
+                #print("offset angle: "+str(alignment_offset_angle * (180/np.pi)))
+            else: 
+                
+                if self.clutch_val==1:
+                    ########Clutch Mode############
+                    zero_wrench=np.array([0.0,0.0,0.0,0.0,0.0,0.0])
+                    self.mtml.body.servo_cf(zero_wrench)
+                    self.mtmr.body.servo_cf(zero_wrench)
+                    print("Entered Clutching")
+                    '''
+                    ecm_T_psm1=self.psm1.setpoint_cp()
+                    ecm_T_psm3=self.psm3.setpoint_cp()
+                    display_T_mtml=self.mtml.measured_cp()
+                    display_T_mtmr=self.mtmr.measured_cp()
+                    ecm_T_psm1=self.enforceOrthogonalPyKDL(ecm_T_psm1)
+                    ecm_T_psm3=self.enforceOrthogonalPyKDL(ecm_T_psm3)
 
-                print("offset angle: "+str(alignment_offset_angle * (180/np.pi)))
+                    display_T_mtml.M=ecm_T_psm1.M*self.orientation_offset_mtml.Inverse()
+                    display_T_mtmr.M=ecm_T_psm3.M*self.orientation_offset_mtmr.Inverse()
+
+                    self.mtml.move_cp(display_T_mtml).wait()
+                    self.mtmr.move_cp(display_T_mtmr).wait()
+                    '''                
+                else:
 
 
+                    #########Follow Mode###########
 
+                    if not self.teleop_folow_init: #We are starting follow mode
+                        self.teleop_folow_init=True
+                        
+                        #Set gravity compensation and "free" the joints:
+                        zero_wrench=np.array([0.0,0.0,0.0,0.0,0.0,0.0])
+                        self.mtml.use_gravity_compensation(True)
+                        self.mtmr.use_gravity_compensation(True)
+                        self.mtml.body.servo_cf(zero_wrench)
+                        self.mtmr.body.servo_cf(zero_wrench)
+
+                        #Get the MTM and PSM pose
+                        self.display_T_mtml_ini=self.mtml.measured_cp()
+                        self.display_T_mtmr_ini=self.mtmr.measured_cp()
+                        self.ecm_T_psm1_ini=self.psm1.setpoint_cp()
+                        self.ecm_T_psm3_ini=self.psm3.setpoint_cp()
+                        print("Folow Mode Init Done")
+                    else:
+                        #Follow mode on each iteration
+                        display_T_mtml_new=self.mtml.setpoint_cp()
+                        display_T_mtmr_new=self.mtmr.setpoint_cp()
+
+                        mtml_jaw_angle=self.mtml.gripper.measured_js()
+                        mtmr_jaw_angle=self.mtmr.gripper.measured_js()
+
+
+                        ecm_T_psm1_next=self.ecm_T_psm1_ini
+                        ecm_T_psm3_next=self.ecm_T_psm3_ini
+
+                        mtmlInit_T_mtmlNew=display_T_mtml_new
+                        mtmrInit_T_mtmrNew=display_T_mtmr_new
+
+                        #Orientation Control
+                        #How much we have moved the mtm's orientation
+                        mtmlInit_T_mtmlNew.M=display_T_mtml_new.M*(self.display_T_mtml_ini.M.Inverse())
+                        mtmrInit_T_mtmrNew.M=display_T_mtmr_new.M*(self.display_T_mtmr_ini.M.Inverse())
+                        test=pm.Quaternion()
+                        
+                        #mtmlInit_T_mtmlNew.M=(self.display_T_mtml_ini.M.Inverse())*display_T_mtml_new.M
+                        #mtmrInit_T_mtmrNew.M=(self.display_T_mtmr_ini.M.Inverse())*display_T_mtmr_new.M
+
+                        rot_angle, _ = mtmlInit_T_mtmlNew.M.GetRotAngle()
+                        print("Rotation Change " + str(rot_angle))
+
+                        ecm_T_psm1_next.M=mtmlInit_T_mtmlNew.M*self.ecm_T_psm1_ini.M #*self.orientation_offset_mtml
+                        ecm_T_psm3_next.M=mtmrInit_T_mtmrNew.M*self.ecm_T_psm3_ini.M #*self.orientation_offset_mtmr
+                        #ecm_T_psm1_next.M=display_T_mtml_new.M*self.orientation_offset_mtml
+                        #ecm_T_psm3_next.M=display_T_mtmr_new.M*self.orientation_offset_mtmr
+                        #Position Control
+                        mtml_translation=display_T_mtml_new.p-self.display_T_mtml_ini.p
+                        mtmr_translation=display_T_mtmr_new.p-self.display_T_mtmr_ini.p
+
+
+                        ecm_T_psm1_next.p=PSM_SCALE_FACTOR*mtml_translation+self.ecm_T_psm1_ini.p
+                        ecm_T_psm3_next.p=PSM_SCALE_FACTOR*mtmr_translation+self.ecm_T_psm3_ini.p
+
+                        #Moving 
+                        #ecm_T_psm1_next=self.enforceOrthogonalPyKDL(ecm_T_psm1_next)
+                        #ecm_T_psm3_next=self.enforceOrthogonalPyKDL(ecm_T_psm3_next)
+                        self.psm1.servo_cp(ecm_T_psm1_next)
+                        self.psm1.jaw.servo_jp(np.array(mtml_jaw_angle[0]))
+                        self.psm3.servo_cp(ecm_T_psm3_next)
+                        self.psm3.jaw.servo_jp(np.array(mtmr_jaw_angle[0]))
+                        print("Folow Mode")
+                        
+
+                        #Updating mtml and psm poses
+                        self.display_T_mtml_ini=display_T_mtml_new
+                        self.display_T_mtmr_ini=display_T_mtmr_new
+
+                        self.ecm_T_psm1_ini=ecm_T_psm1_next
+                        self.ecm_T_psm3_ini=ecm_T_psm3_next
+                        #rospy.sleep(0.01)
+                        
 
 
 
