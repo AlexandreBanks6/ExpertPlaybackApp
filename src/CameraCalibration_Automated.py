@@ -196,77 +196,61 @@ class CameraCalibGUI:
         self.getFolderName()
         file_name_right=self.rootName+RIGHT_FRAMES_FILEDIR
         file_name_left=self.rootName+LEFT_FRAMES_FILEDIR
-
         #First, servo ECM in 2D (along x,y plane) to have ECM center at checkerboard center (there is no z-axis movement)
         #For now only servo based on left camera
         corners=self.findCheckerboard(self.frameLeft)
         if corners is not None:
+            #Get the rotation between 2x2 coordinate systems
+            checkerboard_center_initial=np.mean(corners,axis=0) #Initial checkerboard center
+            delta=np.array([0.025,0.025]) #How much we move ECM by (direction of how we expect it to move in camera coord system)
+            ecm_pose_curr=self.ecm.setpoint_cp()
+            ecm_pose_curr.p[0]+=delta[0]
+            ecm_pose_curr.p[1]+=delta[1]
+            self.ecm.move_cp(ecm_pose_curr).wait()
+            rospy.sleep(0.05)
+            corners=self.findCheckerboard(self.frameLeft)
+            checkerboard_center_actual=np.mean(corners,axis=0)
+            delta_actual=np.array([checkerboard_center_actual[0][0]-checkerboard_center_initial[0][0],checkerboard_center_actual[0][1]-checkerboard_center_initial[0][1]])
+
+            s_hat=delta/np.sqrt((delta[0]**2)+(delta[1]**2))
+            t_hat=delta_actual/np.sqrt((delta_actual[0]**2)+(delta_actual[1]**2))
+
+            if np.abs(s_hat+t_hat)<10**(-6):
+                alpha_mag=2*np.arctan(np.linalg.norm(s_hat-t_hat)/np.linalg.norm(s_hat+t_hat+10**(-4)))
+
+            else:
+                alpha_mag=2*np.arctan(np.linalg.norm(s_hat-t_hat)/np.linalg.norm(s_hat+t_hat))
+            cross_prod=np.cross(t_hat,s_hat)
+            alpha=np.sign(cross_prod)*alpha_mag
+            theta_z=-1*alpha
+            Rz=np.array([
+                [np.cos(theta_z),-np.sin(theta_z)],
+                [np.sin(theta_z),np.cos(theta_z)]
+            ])
+
+            err_mag=ERROR_THRESHOLD+1
+
+
             e_x,e_y=self.findAxisErrors(self.frameLeft,corners)
             err_mag=np.sqrt((e_x**2)+(e_y**2))
-            x_sign=1
-            y_sign=1
-            loop_num=1
-            while err_mag>ERROR_THRESHOLD: #Loops until center of LEFT ECM is within acceptable threshold
-                print("ex: "+str(e_x))
-                #print("ey: "+str(e_y))
-                move_x=x_sign*PROPORTIONAL_GAIN*e_x #Amount to move along x
-                move_y=y_sign*PROPORTIONAL_GAIN*e_y #Amount to move along y
-                print("move_x:" +str(move_x))
-                #print("move_y:" +str(move_y))
-                #Moving ECM
-                ecm_pose_curr=self.ecm.setpoint_cp()
-                #print("ECM Curr: "+str(ecm_pose_curr))
-                ecm_pose_curr.p[0]+=move_x
-                ecm_pose_curr.p[1]+=move_y
-                #print("ECM New: "+str(ecm_pose_curr))
-                #ecm_pose_curr=self.ecm.measured_cp()
-                #Transform matrix
-                #T=np.identity(4)
-                #T=T[0,3]=move_x
-                #T=T[1,3]=move_y
-                #T=pm.fromMatrix(T)
-                #ecm_pose_curr=ecm_pose_curr*T
-                self.ecm.move_cp(ecm_pose_curr).wait()
-                print("Moved")
-                rospy.sleep(0.05)
 
-                #Updating measurements
-                print("Finding Corners")
+            while err_mag>ERROR_THRESHOLD: #Loops until center of LEFT ECM is within acceptable threshold
                 corners=self.findCheckerboard(self.frameLeft)
                 if corners is not None:
-                    ex_new,ey_new=self.findAxisErrors(self.frameLeft,corners)
-                    '''
-                    if loop_num%2==0:
-                        if np.abs(ex_new)>np.abs(e_x):
-                            x_sign=-x_sign
-                    else:
-                        if np.abs(ey_new)>np.abs(e_y):
-                            y_sign=-y_sign
-
-                    '''
-
-
-                    '''
-                    if loop_num==1:
-                        if np.abs(ex_new)>np.abs(e_x):
-                            x_sign=-x_sign
-                        if np.abs(ey_new)>np.abs(e_y):
-                            y_sign=-y_sign
-                            loop_num+=1
-                    '''
-
-                    e_x=ex_new
-                    e_y=ey_new
-                    print("ex_new: "+str(e_x))
-                    #print("ey_new: "+str(e_y))
+                    e_x,e_y=self.findAxisErrors(self.frameLeft,corners)
                     err_mag=np.sqrt((e_x**2)+(e_y**2))
+                    error_vec=np.array([e_x,e_y])
+                    move=PROPORTIONAL_GAIN*np.dot(Rz,error_vec)
+                    ecm_pose_curr=self.ecm.setpoint_cp()
+                    ecm_pose_curr.p[0]+=move[0]
+                    ecm_pose_curr.p[1]+=move[1]
+                    self.ecm.move_cp(ecm_pose_curr).wait()
+                    #rospy.sleep(0.05)
+
+
                 else:
                     print("Returned")
-                    return
-                loop_num+=1
-                    
-
-
+                    return                   
         else:
             return
 
