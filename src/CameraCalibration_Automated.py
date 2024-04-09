@@ -16,6 +16,9 @@ import PyKDL
 ##################Change These Variables If Needed#############################
 CHECKERBOARD_DIM=(8,8) #Number of inner corners in the checkerboard (corners height, corners width)
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
+PROPORTIONAL_GAIN=0.00001 #Gain for centering ECM above checkerboard
+ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
+
 #Where the images for the calibration are saved
 
 CALIBRATION_DIR="../resources/Calib" #Where we store calibration parameters and images
@@ -35,17 +38,56 @@ LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 
 #20 Preset Motions from Starting Pose
 
-#Sets of 5 motions for 4 different z axis increments
-rotation_angle=20*(np.pi/180)
-null_translation=PyKDL.Vector(0,0,0) 
-translation_planar_x=PyKDL.Vector(0.1,0,0) #Ten Centemeters
-translation_planar_y=PyKDL.Vector(0,0.1,0) #Ten Centemeters
-translation_planar_z=PyKDL.Vector(0,0,0.025) #2.5 Centemeters (We move by this much depth each time)
+'''
+Sets of 5 motions for 4 different z axis increments:
+Firt, increment z
+then:
+1. No rotation/Translation
+2. Rotate about z by positive angle
+3. Rotate about z by negative angle
+4. Translate along x by positive val
+5. translate along y by positive val
+Repeat 4 times
 
-identity=PyKDL.Frame()
-#We do rotations, then translations
-MOTIONS=[identity,PyKDL.Frame(PyKDL.Rotation.RotZ(rotation_angle),null_translation),PyKDL.frame(PyKDL.Rotation.RotZ(-rotation_angle),null_translation),\
-         PyKDL.frame(PyKDL.Rotation.RotZ(0),translation_planar_x),PyKDL.frame(PyKDL.Rotation.RotZ(0),translation_planar_y)]
+We define these as numpy frames, they are later converted to PyKDL frames
+
+'''
+def rotationZ(theta):
+    R=np.array([[np.cos(theta),-np.sin(theta),0],
+               [np.sin(theta),np.cos(theta),0],
+               [0,0,1]])
+    return R
+
+
+z_translation=0.025 #Amount that we translate along z (2.5 centimeters)
+planar_translation=0.05 #Amount that we translate in plane parallel to endoscope
+rotation_angle=20*(np.pi/180) #20 degrees in Rad
+
+#T1, no change
+T1=np.identity(4)
+print("T1: "+str(T1))
+#T2 rotation about z positive
+Rz=rotationZ(rotation_angle)
+Rz=HandEye.EnforceOrthogonality(Rz)
+T2=np.identity(4)
+T2[0:3,0:3]=Rz
+print("T2: "+str(T2))
+#T3 rotation about z negative
+Rz=rotationZ(-rotation_angle)
+Rz=HandEye.EnforceOrthogonality(Rz)
+T3=np.identity(4)
+T3[0:3,0:3]=Rz
+print("T3: "+str(T3))
+
+#T4 translation along x
+T4=np.identity(4)
+T4[0,3]=planar_translation
+print("T4: "+str(T4))
+#T4 translation along y
+T5=np.identity(4)
+T5[1,3]=planar_translation
+print("T5: "+str(T5))
+MOTIONS=[T1,T2,T3,T4,T5]
 
 
 class CameraCalibGUI:
@@ -75,7 +117,7 @@ class CameraCalibGUI:
         #---Buttons
 
         #The grab frame callback automatically moves the robot to a new pose an grabs a frame
-        self.button_frame=tk.Button(text="Grab Frame",width=15,command=self.grabFramesCallback)
+        self.button_frame=tk.Button(text="Grab Frames",width=15,command=self.grabFramesCallback)
         self.button_frame.grid(row=2,column=0,sticky="nsew")
 
         self.button_calibrate=tk.Button(text="Calibrate",width=15,command=self.calibrateCameraCallback)
@@ -96,9 +138,14 @@ class CameraCalibGUI:
         rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackLeft,queue_size=1,buff_size=2**18)
         
         #Setting up the ecm
-        self.ecm=dvrk.ecm('ecm')
-        self.ecm.enable()
-        self.ecm.home()
+        self.ecm=dvrk.ecm("ECM")
+        enable_true=self.ecm.enable()
+        home_true=self.ecm.home()
+        print("Enable: "+str(enable_true))
+        print("Home: "+str(home_true))
+        #Checkerboard subpix criteria:
+        self.criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+
 
         #Execution Loop  
         #Window where we display the left/right frames:
@@ -126,12 +173,107 @@ class CameraCalibGUI:
     def frameCallbackLeft(self,data):
         self.frameLeft=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
         self.ranOnce+=1
-
+        print("New Frame")
+    def findCheckerboard(self,frame):
+        gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+        ret,corners=cv2.findChessboardCorners(gray,CHECKERBOARD_DIM,None)
+        if ret:
+            corners = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),self.criteria)
+            return corners
+        else:
+            self.calbration_message_label.config(text="Checkerboard Out of View. Make sure to position ECM far enough above")
+            return None
+    def findAxisErrors(self,frame,corners):
+        image_center=[frame.shape[1]/2,frame.shape[0]/2]
+        print("Image Center: "+str(image_center))
+        checkerboard_center=np.mean(corners,axis=0)
+        print("Checkerboard Center: "+str(checkerboard_center))
+        e_x=checkerboard_center[0][0] - image_center[0]
+        e_y=checkerboard_center[0][1] - image_center[1]
+        return e_x,e_y
 
     def grabFramesCallback(self):
         self.getFolderName()
         file_name_right=self.rootName+RIGHT_FRAMES_FILEDIR
         file_name_left=self.rootName+LEFT_FRAMES_FILEDIR
+
+        #First, servo ECM in 2D (along x,y plane) to have ECM center at checkerboard center (there is no z-axis movement)
+        #For now only servo based on left camera
+        corners=self.findCheckerboard(self.frameLeft)
+        if corners is not None:
+            e_x,e_y=self.findAxisErrors(self.frameLeft,corners)
+            err_mag=np.sqrt((e_x**2)+(e_y**2))
+            x_sign=1
+            y_sign=1
+            loop_num=1
+            while err_mag>ERROR_THRESHOLD: #Loops until center of LEFT ECM is within acceptable threshold
+                print("ex: "+str(e_x))
+                #print("ey: "+str(e_y))
+                move_x=x_sign*PROPORTIONAL_GAIN*e_x #Amount to move along x
+                move_y=y_sign*PROPORTIONAL_GAIN*e_y #Amount to move along y
+                print("move_x:" +str(move_x))
+                #print("move_y:" +str(move_y))
+                #Moving ECM
+                ecm_pose_curr=self.ecm.setpoint_cp()
+                #print("ECM Curr: "+str(ecm_pose_curr))
+                ecm_pose_curr.p[0]+=move_x
+                ecm_pose_curr.p[1]+=move_y
+                #print("ECM New: "+str(ecm_pose_curr))
+                #ecm_pose_curr=self.ecm.measured_cp()
+                #Transform matrix
+                #T=np.identity(4)
+                #T=T[0,3]=move_x
+                #T=T[1,3]=move_y
+                #T=pm.fromMatrix(T)
+                #ecm_pose_curr=ecm_pose_curr*T
+                self.ecm.move_cp(ecm_pose_curr).wait()
+                print("Moved")
+                rospy.sleep(0.05)
+
+                #Updating measurements
+                print("Finding Corners")
+                corners=self.findCheckerboard(self.frameLeft)
+                if corners is not None:
+                    ex_new,ey_new=self.findAxisErrors(self.frameLeft,corners)
+                    '''
+                    if loop_num%2==0:
+                        if np.abs(ex_new)>np.abs(e_x):
+                            x_sign=-x_sign
+                    else:
+                        if np.abs(ey_new)>np.abs(e_y):
+                            y_sign=-y_sign
+
+                    '''
+
+
+                    '''
+                    if loop_num==1:
+                        if np.abs(ex_new)>np.abs(e_x):
+                            x_sign=-x_sign
+                        if np.abs(ey_new)>np.abs(e_y):
+                            y_sign=-y_sign
+                            loop_num+=1
+                    '''
+
+                    e_x=ex_new
+                    e_y=ey_new
+                    print("ex_new: "+str(e_x))
+                    #print("ey_new: "+str(e_y))
+                    err_mag=np.sqrt((e_x**2)+(e_y**2))
+                else:
+                    print("Returned")
+                    return
+                loop_num+=1
+                    
+
+
+        else:
+            return
+
+
+
+
+        '''
         if not os.path.isdir(file_name_right):
             os.mkdir(file_name_right)
             os.mkdir(file_name_left)
@@ -139,6 +281,7 @@ class CameraCalibGUI:
         cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
         self.frame_number+=1
         self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
+        '''
    
     def rightCheckbox(self):
         CameraCalibGUI.isRight=not CameraCalibGUI.isRight
@@ -168,7 +311,6 @@ class CameraCalibGUI:
                 os.mkdir(calibration_params_path)
 
             #Camera Calibration params
-            criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
             objp = np.zeros((CHECKERBOARD_DIM[0]*CHECKERBOARD_DIM[1],3), np.float32)
             objp[:,:2] = np.mgrid[0:CHECKERBOARD_DIM[0], 0:CHECKERBOARD_DIM[1]].T.reshape(-1, 2)*0.0079248
 
@@ -187,7 +329,7 @@ class CameraCalibGUI:
                     # If found, add object points, image points (after refining them)
                     if ret == True:
                         objpoints.append(objp)   # Certainly, every loop objp is the same, in 3D.
-                        corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
+                        corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),self.criteria)
                         imgpoints.append(corners2)
                         # Draw and display the corners
                         img = cv2.drawChessboardCorners(img, CHECKERBOARD_DIM, corners2, ret)
