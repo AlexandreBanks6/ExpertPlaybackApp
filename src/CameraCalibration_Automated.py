@@ -16,9 +16,10 @@ import PyKDL
 ##################Change These Variables If Needed#############################
 CHECKERBOARD_DIM=(8,8) #Number of inner corners in the checkerboard (corners height, corners width)
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
-PROPORTIONAL_GAIN=20 #Gain for centering ECM above checkerboard
-ERROR_THRESHOLD=40 #Pixel Error Threshold for centering ECM above checkerboard
-MAX_ITERATIONS=40
+ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
+
+#PROPORTIONAL_GAIN=20 #Gain for centering ECM above checkerboard
+##MAX_ITERATIONS=40
 #Where the images for the calibration are saved
 
 CALIBRATION_DIR="../resources/Calib" #Where we store calibration parameters and images
@@ -36,10 +37,10 @@ RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 
 
-#20 Preset Motions from Starting Pose
+# Preset Motions from Starting Pose
 
 '''
-Sets of 5 motions for 4 different z axis increments:
+Sets of 7 motions for 3 different z axis increments:
 Firt, increment z
 then:
 1. No rotation/Translation
@@ -165,6 +166,14 @@ class CameraCalibGUI:
         home_true=self.ecm.home()
         print("Enable: "+str(enable_true))
         print("Home: "+str(home_true))
+
+
+        #Setting up PSM3
+        self.psm3=dvrk.psm("PSM3")
+        self.psm3.enable()
+        self.psm3.home()
+
+
         #Checkerboard subpix criteria:
         self.criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
@@ -175,10 +184,13 @@ class CameraCalibGUI:
         
         self.window.after(1,self.showFramesCallback)
         self.window.mainloop()
+
+
+        #Hand-Eye Parameteres
+        self.hand_eye=HandEye.HandEye() #Creates hand-eye calibration object
+        self.ecm_T_psm1_list=[]
     
     def showFramesCallback(self):
-        #We move servo the ECM along plane until its center aligns with the center of the checkerboard
-
 
         if self.ranOnce>=2:
             img_combined=cv2.hconcat([self.frameLeft,self.frameRight])
@@ -207,17 +219,67 @@ class CameraCalibGUI:
             return None
     def findAxisErrors(self,frame,corners):
         image_center=[frame.shape[1]/2,frame.shape[0]/2]
-        print("Image Center: "+str(image_center))
         checkerboard_center=np.mean(corners,axis=0)
-        print("Checkerboard Center: "+str(checkerboard_center))
         e_x=image_center[0]-checkerboard_center[0][0]
         e_y=image_center[1]-checkerboard_center[0][1]
+        #Displaying the Checkerboard Center (red) and Camera Center (green)
+        new_frame=frame
+        new_frame=cv2.circle(new_frame,(checkerboard_center[0][0],checkerboard_center[0][1]),3,(0,0,255),3)  #Drawing the checkerboard center
+        new_frame=cv2.circle(new_frame,(image_center[0],image_center[1]),ERROR_THRESHOLD,(0,255,0),2)  #Drawing the Camera Center
+        cv2.imshow('Alignment Error', new_frame)
+        cv2.waitKey(500)
         return e_x,e_y
 
     def grabFramesCallback(self):
         self.getFolderName()
         file_name_right=self.rootName+RIGHT_FRAMES_FILEDIR
         file_name_left=self.rootName+LEFT_FRAMES_FILEDIR
+
+        #First we get user to align the ECM center with the checkerboard center
+        self.calbration_message_label.config(text="Move Checkerboard Center (red) to Camera Center (green)")
+        err_mag=ERROR_THRESHOLD+1
+
+        while err_mag>ERROR_THRESHOLD: #Loops until center of LEFT ECM is within acceptable threshold
+            corners=self.findCheckerboard(self.frameLeft)
+            if corners is not None:
+                e_x,e_y=self.findAxisErrors(self.frameLeft,corners)
+                err_mag=np.sqrt((e_x**2)+(e_y**2))
+            else:
+                print("Returned")
+                return  
+
+        print("Aligned")
+
+        #Now we capture the frames for the camera calibration
+        if not os.path.isdir(file_name_right):
+            os.mkdir(file_name_right)
+            os.mkdir(file_name_left)
+        print("File Name: "+str(file_name_right))
+        self.frame_number=1
+        #We loop through and move the ECM, then take frames, we also get the ecm_T_psm3 transform
+        self.ecm_T_psm1_list=[]
+        for i in range(0,len(Z_MOTION)): #Loop for 3 z values
+            for j in range(0,len(MOTIONS)): #Loop for motions in this plane
+                print("z motion: "+str(Z_MOTION[i]))
+                #print("motion: "+str(MOTIONS[j]))                
+                print("ECM Pose="+ecm_pose_curr.p)
+                ecm_pose_curr=self.ecm.measured_cp()
+                ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
+                ecm_pose_curr=ecm_pose_curr*pm.fromMatrix(MOTIONS[j])
+                self.ecm.move_cp(ecm_pose_curr).wait()
+                rospy.sleep(1)                
+                cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
+                cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
+                self.frame_number+=1
+                self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
+                #Grab the pose of ecm_T_psm3
+                ecm_T_psm3=self.psm3.setpoint_cp()      #This might have to be the ecm pose, should look at math if changed to this
+                ecm_T_psm3=pm.fromMatrix(ecm_T_psm3)
+                self.ecm_T_psm1_list.append(ecm_T_psm3)
+                
+
+ 
+
         #First, servo ECM in 2D (along x,y plane) to have ECM center at checkerboard center (there is no z-axis movement)
         #For now only servo based on left camera
         #corners=self.findCheckerboard(self.frameLeft)
@@ -254,6 +316,7 @@ class CameraCalibGUI:
         ])
 
         err_mag=ERROR_THRESHOLD+1
+        '''
         '''
         #Finds mapping from change in camera coord system (pixels) to change in ECM coord system (meters) using regression
         move_ecm_list=[[0.0025,0.0025],[-0.005,0],[0,-0.005],[0.005,0.0025],[0,0.005],[0.0065,0],[-0.0055,-0.0045]]  #Set of 8 movements to write to ECM
@@ -357,7 +420,7 @@ class CameraCalibGUI:
             print("Returned")
             return
 
-
+        '''
 
 
         '''
@@ -379,6 +442,8 @@ class CameraCalibGUI:
 
 
     def calibrateCameraCallback(self):
+        #Does Both the Right and Left Cameras hand-eye+general calibration
+
         self.getFolderName()
         frames_right_path=self.rootName+RIGHT_FRAMES_FILEDIR
         frames_left_path=self.rootName+LEFT_FRAMES_FILEDIR
@@ -389,7 +454,9 @@ class CameraCalibGUI:
         frames_path=[frames_right_path,frames_left_path]
         params_path=[calibration_params_right,calibration_params_left]
 
+        #################Camera Calibration###############
         #Repeats Twice, right first then left
+
         for i in range(0,1):
             calibration_params_path=params_path[i]
             checkerboard_frames_path=frames_path[i]
@@ -443,6 +510,22 @@ class CameraCalibGUI:
             #Writing data to file
             with open(calibration_params_path+"calibration_matrix.yaml","w") as f:
                 yaml.dump(data,f)
+
+        ####################Hand Eye Calibration######################
+        '''
+        General Algorithm:
+        Loop through and get each checkerboard, if it exists store pose of scene_T_camera and ecm_T_psm3 (do this for both left and right)
+        Then convert these to the A (ecm poses) and B matrices (camera poses)
+        '''
+        ecm_T_psm3_right=[]
+        ecm_T_psm3_left=[]
+
+        scene_T_rightcam=[]
+        scene_T_leftcam=[]
+
+        
+
+
     def getFolderName(self):
         #Returns overall root folder where we store the calibration parameters
         if self.rootName is None:

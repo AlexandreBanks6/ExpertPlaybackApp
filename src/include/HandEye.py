@@ -12,8 +12,8 @@ class HandEye:
     #def __init__(self):
 
     def ComputeHandEye(self,A,B):
-        #Takes in A and B (A is camera w.r.t scene (or tool tip) and B is endoscope w.r.t. scene (tool tip touching same spot on scene) via API)
-        #B and A are an N array of 4x4 matrix where N is the number of transforms collected
+        #Takes in A and B
+        #B and A are an N array of 4x4 matrix where N is the number of motions collected
         #Returns: X the homogeneous transform from camera to endoscope (l,c_T_e)
 
         #Note that A and B are arrays of arrays, N=length of outer array=number of transformations
