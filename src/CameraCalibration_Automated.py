@@ -16,9 +16,9 @@ import PyKDL
 ##################Change These Variables If Needed#############################
 CHECKERBOARD_DIM=(8,8) #Number of inner corners in the checkerboard (corners height, corners width)
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
-PROPORTIONAL_GAIN=0.00001 #Gain for centering ECM above checkerboard
-ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
-
+PROPORTIONAL_GAIN=20 #Gain for centering ECM above checkerboard
+ERROR_THRESHOLD=40 #Pixel Error Threshold for centering ECM above checkerboard
+MAX_ITERATIONS=40
 #Where the images for the calibration are saved
 
 CALIBRATION_DIR="../resources/Calib" #Where we store calibration parameters and images
@@ -45,9 +45,11 @@ then:
 1. No rotation/Translation
 2. Rotate about z by positive angle
 3. Rotate about z by negative angle
-4. Translate along x by positive val
-5. translate along y by positive val
-Repeat 4 times
+4. Rotate about x by positive angle
+5. Rotate about x by negative angle
+6. Translate along x by positive val
+7. translate along y by positive val
+Repeat 3 times
 
 We define these as numpy frames, they are later converted to PyKDL frames
 
@@ -58,10 +60,17 @@ def rotationZ(theta):
                [0,0,1]])
     return R
 
+def rotationX(theta):
+    R=np.array([[1,0,0],
+               [0,np.cos(theta),-np.sin(theta)],
+               [0,np.sin(theta),np.cos(theta)]])
+    return R
 
-z_translation=0.025 #Amount that we translate along z (2.5 centimeters)
+
+z_translation=0.05 #Amount that we translate along z (2.5 centimeters)
+Z_MOTION=[0,z_translation,z_translation*2]
 planar_translation=0.05 #Amount that we translate in plane parallel to endoscope
-rotation_angle=20*(np.pi/180) #20 degrees in Rad
+rotation_angle=2*(np.pi/180) #20 degrees in Rad
 
 #T1, no change
 T1=np.identity(4)
@@ -79,15 +88,28 @@ T3=np.identity(4)
 T3[0:3,0:3]=Rz
 print("T3: "+str(T3))
 
-#T4 translation along x
+#T4 rotation about x positive
+Rx=rotationX(rotation_angle)
+Rx=HandEye.EnforceOrthogonality(Rx)
 T4=np.identity(4)
-T4[0,3]=planar_translation
+T4[0:3,0:3]=Rx
+print("T2: "+str(T4))
+#T5 rotation about x negative
+Rx=rotationX(-rotation_angle)
+Rx=HandEye.EnforceOrthogonality(Rx)
+T5=np.identity(4)
+T5[0:3,0:3]=Rx
+print("T3: "+str(T5))
+
+#T4 translation along x
+T6=np.identity(4)
+T6[0,3]=planar_translation
 print("T4: "+str(T4))
 #T4 translation along y
-T5=np.identity(4)
-T5[1,3]=planar_translation
+T7=np.identity(4)
+T7[1,3]=planar_translation
 print("T5: "+str(T5))
-MOTIONS=[T1,T2,T3,T4,T5]
+MOTIONS=[T1,T2,T3,T4,T5,T6,T7]
 
 
 class CameraCalibGUI:
@@ -188,8 +210,8 @@ class CameraCalibGUI:
         print("Image Center: "+str(image_center))
         checkerboard_center=np.mean(corners,axis=0)
         print("Checkerboard Center: "+str(checkerboard_center))
-        e_x=checkerboard_center[0][0] - image_center[0]
-        e_y=checkerboard_center[0][1] - image_center[1]
+        e_x=image_center[0]-checkerboard_center[0][0]
+        e_y=image_center[1]-checkerboard_center[0][1]
         return e_x,e_y
 
     def grabFramesCallback(self):
@@ -198,60 +220,141 @@ class CameraCalibGUI:
         file_name_left=self.rootName+LEFT_FRAMES_FILEDIR
         #First, servo ECM in 2D (along x,y plane) to have ECM center at checkerboard center (there is no z-axis movement)
         #For now only servo based on left camera
+        #corners=self.findCheckerboard(self.frameLeft)
+        #if corners is not None:
+            #Get the rotation between 2x2 coordinate systems
+        '''
+        checkerboard_center_initial=np.mean(corners,axis=0) #Initial checkerboard center
+        delta=np.array([0.04,0.04]) #How much we move ECM by (direction of how we expect it to move in camera coord system)
+        ecm_pose_curr=self.ecm.setpoint_cp()
+        ecm_pose_curr.p[0]+=delta[0]
+        ecm_pose_curr.p[1]+=delta[1]
+        self.ecm.move_cp(ecm_pose_curr).wait()
+        rospy.sleep(0.05)
+        corners=self.findCheckerboard(self.frameLeft)
+        checkerboard_center_actual=np.mean(corners,axis=0)
+        delta_actual=np.array([checkerboard_center_actual[0][0]-checkerboard_center_initial[0][0],checkerboard_center_actual[0][1]-checkerboard_center_initial[0][1]])
+
+        t_hat=delta/np.sqrt((delta[0]**2)+(delta[1]**2))
+        s_hat=delta_actual/np.sqrt((delta_actual[0]**2)+(delta_actual[1]**2))
+
+        if np.linalg.norm(s_hat+t_hat)<10**(-6):
+            alpha_mag=2*np.arctan(np.linalg.norm(s_hat-t_hat)/np.linalg.norm(s_hat+t_hat+10**(-4)))
+
+        else:
+            alpha_mag=2*np.arctan(np.linalg.norm(s_hat-t_hat)/np.linalg.norm(s_hat+t_hat))
+        cross_prod=np.cross(t_hat,s_hat)
+        print("Alpha Mag: "+str(alpha_mag*(180/np.pi)))
+        alpha=np.sign(cross_prod)*alpha_mag
+        theta_z=alpha
+        print("Rotation Angle: "+str(theta_z*(180/np.pi)))
+        Rz=np.array([
+            [np.cos(theta_z),-np.sin(theta_z)],
+            [np.sin(theta_z),np.cos(theta_z)]
+        ])
+
+        err_mag=ERROR_THRESHOLD+1
+        '''
+        #Finds mapping from change in camera coord system (pixels) to change in ECM coord system (meters) using regression
+        move_ecm_list=[[0.0025,0.0025],[-0.005,0],[0,-0.005],[0.005,0.0025],[0,0.005],[0.0065,0],[-0.0055,-0.0045]]  #Set of 8 movements to write to ECM
+        #move_ecm_list=[[0.01,0.01],[0.01,0],[0,0.01]]
+        delta_ecm_list=[]
+        delta_cam_list=[]
         corners=self.findCheckerboard(self.frameLeft)
         if corners is not None:
-            #Get the rotation between 2x2 coordinate systems
             checkerboard_center_initial=np.mean(corners,axis=0) #Initial checkerboard center
-            delta=np.array([0.025,0.025]) #How much we move ECM by (direction of how we expect it to move in camera coord system)
-            ecm_pose_curr=self.ecm.setpoint_cp()
-            ecm_pose_curr.p[0]+=delta[0]
-            ecm_pose_curr.p[1]+=delta[1]
-            self.ecm.move_cp(ecm_pose_curr).wait()
-            rospy.sleep(0.05)
-            corners=self.findCheckerboard(self.frameLeft)
-            checkerboard_center_actual=np.mean(corners,axis=0)
-            delta_actual=np.array([checkerboard_center_actual[0][0]-checkerboard_center_initial[0][0],checkerboard_center_actual[0][1]-checkerboard_center_initial[0][1]])
+            ecm_pose_curr=self.ecm.measured_cp()
+            for i in range(0,len(move_ecm_list)):  
+                print("Move #: "+str(i))
+                print("Move x: "+str(move_ecm_list[i][0])) 
+                print("Move y: "+str(move_ecm_list[i][1]))               
+                
+                ecm_pose_curr.p[0]+=move_ecm_list[i][0]
+                ecm_pose_curr.p[1]+=move_ecm_list[i][1]
+                #self.ecm.move_cp(ecm_pose_curr)
+                self.ecm.move_cp(ecm_pose_curr).wait()
+                rospy.sleep(1)
+                ecm_pose_new=self.ecm.measured_cp()
 
-            s_hat=delta/np.sqrt((delta[0]**2)+(delta[1]**2))
-            t_hat=delta_actual/np.sqrt((delta_actual[0]**2)+(delta_actual[1]**2))
+                delta_ecm_list.append([ecm_pose_new.p[0]-ecm_pose_curr.p[0],ecm_pose_new.p[1]-ecm_pose_curr.p[1]])
+                print('Delta ECM List: '+str(delta_ecm_list))
+                ecm_pose_curr=ecm_pose_new
+            
+                corners=self.findCheckerboard(self.frameLeft)
+                if corners is not None:
+                    checkerboard_center_new=np.mean(corners,axis=0)
+                    delta_cam=[checkerboard_center_new[0][0]-checkerboard_center_initial[0][0],checkerboard_center_new[0][1]-checkerboard_center_initial[0][1]]
+                    print("delta_cam: "+str(delta_cam))
+                    delta_cam_list.append(delta_cam)
+                    checkerboard_center_initial=checkerboard_center_new
+                else:
+                    print("Returned")
+                    return  
+            #Now we run the regression to get the transformation A such that: Ax=b 
+            #where x=delta_cam and b=delta_ecm
+            x_observations=np.array(delta_cam_list)
+            b_observations=np.array(delta_ecm_list)
+            A,residuals,rank,s=np.linalg.lstsq(x_observations,b_observations,rcond=None)
+            print("Estimated A:"+str(A))
+            print("Residual:"+str(residuals))
 
-            if np.abs(s_hat+t_hat)<10**(-6):
-                alpha_mag=2*np.arctan(np.linalg.norm(s_hat-t_hat)/np.linalg.norm(s_hat+t_hat+10**(-4)))
-
-            else:
-                alpha_mag=2*np.arctan(np.linalg.norm(s_hat-t_hat)/np.linalg.norm(s_hat+t_hat))
-            cross_prod=np.cross(t_hat,s_hat)
-            alpha=np.sign(cross_prod)*alpha_mag
-            theta_z=-1*alpha
-            Rz=np.array([
-                [np.cos(theta_z),-np.sin(theta_z)],
-                [np.sin(theta_z),np.cos(theta_z)]
-            ])
-
+            
             err_mag=ERROR_THRESHOLD+1
-
-
-            e_x,e_y=self.findAxisErrors(self.frameLeft,corners)
-            err_mag=np.sqrt((e_x**2)+(e_y**2))
-
-            while err_mag>ERROR_THRESHOLD: #Loops until center of LEFT ECM is within acceptable threshold
+            loop_count=0
+            while err_mag>ERROR_THRESHOLD and loop_count<MAX_ITERATIONS: #Loops until center of LEFT ECM is within acceptable threshold
                 corners=self.findCheckerboard(self.frameLeft)
                 if corners is not None:
                     e_x,e_y=self.findAxisErrors(self.frameLeft,corners)
+                    print("e_x,e_y: "+str([-e_x,-e_y]))
+
                     err_mag=np.sqrt((e_x**2)+(e_y**2))
-                    error_vec=np.array([e_x,e_y])
-                    move=PROPORTIONAL_GAIN*np.dot(Rz,error_vec)
-                    ecm_pose_curr=self.ecm.setpoint_cp()
-                    ecm_pose_curr.p[0]+=move[0]
-                    ecm_pose_curr.p[1]+=move[1]
+                    error_vec=np.array([e_x,e_y]) #This is delta_cam
+                    error_vec=PROPORTIONAL_GAIN*error_vec
+                    print("error_vec: "+str(error_vec))
+                    #move=PROPORTIONAL_GAIN*np.dot(Rz,error_vec)
+                    delta_ecm=np.dot(A,error_vec) #A @ error_vec
+                    print("move: "+str(delta_ecm))
+                    ecm_pose_curr=self.ecm.measured_cp()
+                    ecm_pose_curr.p[0]+=delta_ecm[0]
+                    ecm_pose_curr.p[1]+=delta_ecm[1]
                     self.ecm.move_cp(ecm_pose_curr).wait()
-                    #rospy.sleep(0.05)
+                    #self.ecm.servo_cp(ecm_pose_curr)
+                    rospy.sleep(0.05)
+                    loop_count+=1
 
 
                 else:
                     print("Returned")
-                    return                   
+                    return    
+
+            print("Got to Middle")
+            print("Grabbing Frames Starting")
+            #Now we capture the frames for the camera calibration
+            if not os.path.isdir(file_name_right):
+                os.mkdir(file_name_right)
+                os.mkdir(file_name_left)
+            print("File Name: "+str(file_name_right))
+            self.frame_number=1
+            #We loop through and move the ECM, then take frames:
+            for i in range(0,len(Z_MOTION)): #Loop for 3 z values
+                for j in range(0,len(MOTIONS)): #Loop for motions in this plane
+                    print("z motion: "+str(Z_MOTION[i]))
+                    #print("motion: "+str(MOTIONS[j]))
+                    ecm_pose_curr=self.ecm.measured_cp()
+                    print("ECM Pose="+ecm_pose_curr.p)
+                    ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
+
+                    #ecm_pose_curr=ecm_pose_curr*pm.fromMatrix(MOTIONS[j])
+                    self.ecm.move_cp(ecm_pose_curr).wait()
+                    rospy.sleep(1)
+                    cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
+                    cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
+                    self.frame_number+=1
+                    self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
+
+
         else:
+            print("Returned")
             return
 
 
@@ -344,11 +447,11 @@ class CameraCalibGUI:
         #Returns overall root folder where we store the calibration parameters
         if self.rootName is None:
             root_directory=CALIBRATION_DIR
-            folder_count=2
+            folder_count=1
             while True:
                 if os.path.isdir(root_directory):
                     folder_count_str=str(folder_count)
-                    root_directory=root_directory[:-1]+folder_count_str
+                    root_directory=root_directory+folder_count_str
                     folder_count+=1
                 else:
                     break
