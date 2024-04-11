@@ -129,22 +129,6 @@ LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 CORNER_NUMBERS_STRING=['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15']
 MIN_NUMBER_FORHANDEYE=4 #Minimum Number of points for Hand-Eye Calibration
 
-#Standalone function to take inverse of homogeneous transform with glm
-def invHomogenous(transform):
-    #Function to take inverse of homogenous transform
-    R=glm.mat3(transform[0,0],transform[0,1],transform[0,2],
-                transform[1,0],transform[1,1],transform[1,2],
-                transform[2,0],transform[2,1],transform[2,2],)
-
-    R_trans=glm.transpose(R)
-
-    d=glm.vec3(transform[3,0],transform[3,1],transform[3,2])
-    neg_R_trans_d=-R_trans*d
-    inverted_transform=glm.mat4(glm.vec4(R_trans[0,0],R_trans[0,1],R_trans[0,2],0),
-                                glm.vec4(R_trans[1,0],R_trans[1,1],R_trans[1,2],0),
-                                glm.vec4(R_trans[2,0],R_trans[2,1],R_trans[2,2],0),
-                                glm.vec4(neg_R_trans_d,1))
-    return inverted_transform
 
 class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):

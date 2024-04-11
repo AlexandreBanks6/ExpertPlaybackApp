@@ -3,7 +3,7 @@ import cv2.aruco as aruco
 import yaml
 import numpy as np
 import glm
-from include import Renderer
+from include import utils
 
 #Note: We only track aruco markers for one camera for the scene "calibration" but need to track for both camera for the hand-eye calibration
 
@@ -203,7 +203,8 @@ class ArucoTracker:
                 #cv2.drawFrameAxes(self.app.frame_left_converted,self.mtx_left,self.dist_left,rotation_vector,translation_vector,0.05)
                 #print("Calib Success")
                 self.calibrate_done=True
-                self.si_T_ci=self.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                si_T_ci=utils.convertRvecTvectoHomo(rotation_vector,translation_vector) #Returns as numpy array
+                self.si_T_ci=glm.mat4(si_T_ci)
                 
                 
 
@@ -227,16 +228,6 @@ class ArucoTracker:
     
     def flattenList(self,xss):
         return [x for xs in xss for x in xs]
-    
-    def convertRvecTvectoHomo(self,rvec,tvec):
-        Rot,_=cv2.Rodrigues(rvec)
-        #print("Rotation: "+str(Rot))
-        transform=glm.mat4(glm.vec4(Rot[0,0],Rot[1,0],Rot[2,0],0),
-                           glm.vec4(Rot[0,1],Rot[1,1],Rot[2,1],0),
-                           glm.vec4(Rot[0,2],Rot[1,2],Rot[2,2],0),
-                           glm.vec4(tvec[0],tvec[1],tvec[2],1))
-        #print("Transform: "+str(transform))
-        return transform
 
         
     

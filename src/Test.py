@@ -1,4 +1,6 @@
 import tkinter as tk
+import glm
+import numpy as np
 
 '''
 CHECKERBOARD_DIM=(8,8)
@@ -13,7 +15,7 @@ frame_num=[int(s) for s in name if s.isdigit()]
 combined_number = int("".join(str(number) for number in frame_num))
 print(combined_number)
 '''
-
+'''
 class TestGUI:
     def __init__(self):
         self.gui_window=tk.Tk()
@@ -79,3 +81,11 @@ class TestGUI:
 
 
 test_gui=TestGUI()
+'''
+
+glm_matrix=glm.mat4(1)
+numpy_array = np.array(glm_matrix.to_list())
+print(numpy_array)
+
+glm_matrix=glm.mat4(*numpy_array.flatten())
+print(glm_matrix)
