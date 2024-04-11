@@ -23,15 +23,15 @@ class HandEye:
         if N>=2:
             a,a_prime=self.HomoToDualQuat(A[0])
             b,b_prime=self.HomoToDualQuat(B[0])
-            L=self.contructK(a,b) #Starts the "L" matrix
-            L_prime=self.contructK(a_prime,b_prime)
+            L=self.constructK(a,b) #Starts the "L" matrix
+            L_prime=self.constructK(a_prime,b_prime)
 
             #Construct the L matrix for SVD decomposition to solve for 
             for i in range(1,N):
                 a,a_prime=self.HomoToDualQuat(A[i])
                 b,b_prime=self.HomoToDualQuat(B[i])
-                L=np.vstack((L,self.contructK(a,b)))
-                L_prime=np.vstack((L_prime,self.contructK(a_prime,b_prime)))
+                L=np.vstack((L,self.constructK(a,b)))
+                L_prime=np.vstack((L_prime,self.constructK(a_prime,b_prime)))
 
             #Compute rotation part (real quaternion) of hand-eye transform using SVD decomposition
             q=self.solveHomoSVD(L)
@@ -79,8 +79,8 @@ class HandEye:
         #final column of Vh
         return Vh[-1]
 
-    def contructK(self,a,b):
-        #Takes the real part of two dual quaternions to contruct the K matrix to build the L matrix for SVD decomposition
+    def constructK(self,a,b):
+        #Takes the real part of two dual quaternions to construct the K matrix to build the L matrix for SVD decomposition
         #See reference: Robust Hand-Eye Calibration for Computer Aided Medical Endoscopy
         #Assume input is two numpy arrays
 
@@ -99,8 +99,8 @@ class HandEye:
 
         K_mat[1:4,1:4]=bottom_right
         K_mat[0,0]=a0-b0
-        K_mat[0,1:4]=-(a_bar-b_bar)
-        K_mat[1:4,0]=a_bar-b_bar
+        K_mat[0,1:4]=-(a_minus_b)
+        K_mat[1:4,0]=a_minus_b
 
 
         return K_mat
@@ -144,7 +144,31 @@ class HandEye:
         else:
             print("Not a Rotation Matrix")
             return None,None
+        
+        
+##############Maybe use this method instead
+        '''
+def homogeneous_to_dual_quat(transform):
+    # Extract rotation matrix and translation vector
+    rotation_matrix = transform[0:3, 0:3]
+    translation_vector = transform[0:3, 3]
 
+    # Convert rotation matrix to quaternion (real part)
+    rotation = R.from_matrix(rotation_matrix)
+    quaternion = rotation.as_quat()  # In the format [x, y, z, w]
+
+    # Compute dual part of the dual quaternion
+    # The formula is 0.5 * (translation_vector * real_quaternion)
+    trans_quat = np.array([0] + list(translation_vector))  # Translation as a quaternion
+    dual_part = 0.5 * quaternion_multiply(trans_quat, np.array([quaternion[3], quaternion[0], quaternion[1], quaternion[2]]))
+
+    # Combine real and dual parts
+    dual_quaternion = np.concatenate((quaternion, dual_part))
+
+    return dual_quaternion
+        
+        
+        '''
         
 
     def SkewSymmetricMatrix(self,v):
@@ -154,6 +178,7 @@ class HandEye:
                           [-v[1],v[0],0]])       
         
         return skew_mat
+
 
 
 def EnforceOrthogonality(R):

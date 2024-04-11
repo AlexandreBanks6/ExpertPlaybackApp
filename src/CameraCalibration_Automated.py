@@ -13,8 +13,18 @@ import dvrk
 import tf_conversions.posemath as pm
 import PyKDL
 
+#####To Do: Add a functionality to calibrate using an ArUco board, also add functionality to change size of checkerboard
+
+
 ##################Change These Variables If Needed#############################
+#These Dimensions should be in meters, should change over to meters
 CHECKERBOARD_DIM=(8,8) #Number of inner corners in the checkerboard (corners height, corners width)
+CHECKER_WIDTH=0.0079248 #Width of each checker in the checkerboard
+
+
+RANSAC_SCENE_REPROJECTION_ERROR=0.005 #Reprojection error for scene localization RANSAC (in meters)
+RANSAC_SCENE_ITERATIONS=40 #Number of iterations for scene localization RANSAC
+
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
 ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
 
@@ -105,11 +115,11 @@ print("T3: "+str(T5))
 #T4 translation along x
 T6=np.identity(4)
 T6[0,3]=planar_translation
-print("T4: "+str(T4))
+print("T4: "+str(T6))
 #T4 translation along y
 T7=np.identity(4)
 T7[1,3]=planar_translation
-print("T5: "+str(T5))
+print("T5: "+str(T7))
 MOTIONS=[T1,T2,T3,T4,T5,T6,T7]
 
 
@@ -189,6 +199,11 @@ class CameraCalibGUI:
         #Hand-Eye Parameteres
         self.hand_eye=HandEye.HandEye() #Creates hand-eye calibration object
         self.ecm_T_psm1_list=[]
+        
+        self.mtx_right=None
+        self.mtx_left=None
+        self.dst_right=None
+        self.dist_left=None
     
     def showFramesCallback(self):
 
@@ -255,27 +270,30 @@ class CameraCalibGUI:
             os.mkdir(file_name_right)
             os.mkdir(file_name_left)
         print("File Name: "+str(file_name_right))
-        self.frame_number=1
+        self.frame_number=0
         #We loop through and move the ECM, then take frames, we also get the ecm_T_psm3 transform
         self.ecm_T_psm1_list=[]
-        for i in range(0,len(Z_MOTION)): #Loop for 3 z values
-            for j in range(0,len(MOTIONS)): #Loop for motions in this plane
+        for i in range(len(Z_MOTION)): #Loop for 3 z values
+            for j in range(len(MOTIONS)): #Loop for motions in this plane
                 print("z motion: "+str(Z_MOTION[i]))
                 #print("motion: "+str(MOTIONS[j]))                
-                print("ECM Pose="+ecm_pose_curr.p)
+                
                 ecm_pose_curr=self.ecm.measured_cp()
+                print("ECM Pose="+ecm_pose_curr.p)
                 ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
                 ecm_pose_curr=ecm_pose_curr*pm.fromMatrix(MOTIONS[j])
                 self.ecm.move_cp(ecm_pose_curr).wait()
                 rospy.sleep(1)                
                 cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
                 cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
+
                 self.frame_number+=1
                 self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
                 #Grab the pose of ecm_T_psm3
                 ecm_T_psm3=self.psm3.setpoint_cp()      #This might have to be the ecm pose, should look at math if changed to this
                 ecm_T_psm3=pm.fromMatrix(ecm_T_psm3)
                 self.ecm_T_psm1_list.append(ecm_T_psm3)
+
                 
 
  
@@ -457,7 +475,7 @@ class CameraCalibGUI:
         #################Camera Calibration###############
         #Repeats Twice, right first then left
 
-        for i in range(0,1):
+        for i in range(2):
             calibration_params_path=params_path[i]
             checkerboard_frames_path=frames_path[i]
 
@@ -466,7 +484,7 @@ class CameraCalibGUI:
 
             #Camera Calibration params
             objp = np.zeros((CHECKERBOARD_DIM[0]*CHECKERBOARD_DIM[1],3), np.float32)
-            objp[:,:2] = np.mgrid[0:CHECKERBOARD_DIM[0], 0:CHECKERBOARD_DIM[1]].T.reshape(-1, 2)*0.0079248
+            objp[:,:2] = np.mgrid[0:CHECKERBOARD_DIM[0], 0:CHECKERBOARD_DIM[1]].T.reshape(-1, 2)*CHECKER_WIDTH  #I think this is already the object point size as it should be
 
             objpoints=[]
             imgpoints=[]
@@ -493,15 +511,21 @@ class CameraCalibGUI:
             
             if found>=REQUIRED_CHECKERBOARD_NUM:
                 ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+                if i==0:
+                    self.mtx_right=mtx
+                    self.dst_right=dist
+                if i==1:
+                    self.mtx_left=mtx
+                    self.dst_left=dist
             else:
                 self.calbration_message_label.config(text="Note enough acceptable checkerboards, grab more frames, need "+str(REQUIRED_CHECKERBOARD_NUM))
                 return
             
             #Finding Re-projection error
             mean_error = 0
-            for i in range(len(objpoints)):
-                imgpoints2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
-                error = cv2.norm(imgpoints[i], imgpoints2, cv2.NORM_L2)/len(imgpoints2)
+            for j in range(len(objpoints)):
+                imgpoints2, _ = cv2.projectPoints(objpoints[j], rvecs[j], tvecs[j], mtx, dist)
+                error = cv2.norm(imgpoints[j], imgpoints2, cv2.NORM_L2)/len(imgpoints2)
                 mean_error += error
             data = {'camera_matrix': np.asarray(mtx).tolist(),
                         'dist_coeff': np.asarray(dist).tolist(),
@@ -523,7 +547,90 @@ class CameraCalibGUI:
         scene_T_rightcam=[]
         scene_T_leftcam=[]
 
+        objp = np.zeros((CHECKERBOARD_DIM[0]*CHECKERBOARD_DIM[1],3), np.float32)
+        objp[:,:2] = np.mgrid[0:CHECKERBOARD_DIM[0], 0:CHECKERBOARD_DIM[1]].T.reshape(-1, 2)*CHECKER_WIDTH
+
+
+        #Loop twice, right first then left
+        for i in range(2):
+            calibration_params_path=params_path[i]
+            checkerboard_frames_path=frames_path[i]
+            if i==0:
+                mtx=self.mtx_right
+                dist=self.dst_right
+            elif i==1:
+                mtx=self.mtx_left
+                dist=self.dst_left
+            
+            #Loops for each checkerboard that we previously captured
+            for frame_num in range(self.frame_number):
+                filename=checkerboard_frames_path+"frame_right"+str(frame_num)+".jpg"
+                img = cv2.imread(filename) # Capture frame-by-frame
+                gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+                ret, corners = cv2.findChessboardCorners(gray, CHECKERBOARD_DIM, None)
+                
+                if ret: #Chessboard found, find the rvecs and tvecs, convert to homogeneous and update our lists
+                    corners2=cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),self.criteria)
+                    success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(objp,corners2,mtx,dist,\
+                                                                                    iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
+
+                    #Convert rotation_vector and translation_vector to homogeneous transform
+                    cam_T_scene=self.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                    scene_T_cam=self.invHomogenous(cam_T_scene)
+                    
+                    #Get the frame number to index the corresponding ecm_T_psm pose
+                    #name,ext=filename.split('.')   #Splits off the name
+                    #frame_num=[int(s) for s in name if s.isdigit()]
+                    #combined_number = int("".join(str(number) for number in frame_num))
+                    ecm_T_psm=self.ecm_T_psm1_list[frame_num]
+
+                    #Updating the lists
+                    if i==0: #right
+                        ecm_T_psm3_right.append(ecm_T_psm)
+                        scene_T_rightcam.append(scene_T_cam)
+                    elif i==1:
+                        ecm_T_psm3_left.append(ecm_T_psm)
+                        scene_T_leftcam.append(scene_T_cam)
+
+
+        #Solving Hand-Eye Calibration for both the right and left cameras
         
+        #Do Right First
+        A=[]
+        B=[]
+        for i in range(len(ecm_T_psm3_right)-1):
+            A_i=np.dot(np.transpose(scene_T_rightcam[i]),scene_T_rightcam[i+1])
+            B_i=np.dot(ecm_T_psm3_right[i],np.transpose(ecm_T_psm3_right))
+            A.append(A_i)
+            B.append(B_i)
+        
+        #Solve hand-eye problem
+        A=np.array(A)
+        B=np.array(B)
+        rightcam_T_ecm=self.hand_eye.ComputeHandEye(A,B)
+        data_right = {'rightcam_T_ecm': rightcam_T_ecm.tolist()}
+
+        #Do Left Next
+        A=[]
+        B=[]
+        for i in range(len(ecm_T_psm3_left)-1):
+            A_i=np.dot(np.transpose(scene_T_leftcam[i]),scene_T_leftcam[i+1])
+            B_i=np.dot(ecm_T_psm3_left[i],np.transpose(ecm_T_psm3_left))
+            A.append(A_i)
+            B.append(B_i)
+        
+        #Solve hand-eye problem
+        A=np.array(A)
+        B=np.array(B)
+        leftcam_T_ecm=self.hand_eye.ComputeHandEye(A,B)
+        data_left = {'leftcam_T_ecm': leftcam_T_ecm.tolist()}
+
+        #Store these values
+        with open(calibration_params_right+"hand_eye_calibration_right.yaml","w") as f:
+                yaml.dump(data_right,f)
+
+        with open(calibration_params_left+"hand_eye_calibration_left.yaml","w") as f:
+                yaml.dump(data_left,f)           
 
 
     def getFolderName(self):
@@ -541,7 +648,24 @@ class CameraCalibGUI:
             os.mkdir(root_directory)
             self.rootName=root_directory
 
-        
+    def convertRvecTvectoHomo(self,rvec,tvec):
+        Rot,_=cv2.Rodrigues(rvec)
+        transform=np.identity(4)
+        transform[0:3,0:3]=Rot
+        transform[0:3,3]=tvec
+        return transform
+    
+    def invHomogenous(self,transform):
+        #Function to take inverse of homogenous transform
+        R=transform[0:3,0:3]
+
+        R_trans=np.transpose(R)
+        d=transform[0:3,3]
+        neg_R_trans_d=-1*np.dot(R_trans,d)
+        inverted_transform=np.identity(4)
+        inverted_transform[0:3,0:3]=R_trans
+        inverted_transform[0:3,3]=neg_R_trans_d
+        return inverted_transform
 
 
 if __name__=='__main__':
