@@ -22,7 +22,7 @@ def invHomogeneous(transform):
     inverted_transform[0:3,3]=neg_R_trans_d
     return inverted_transform
 
-def convertRvecTvectoHomo(self,rvec,tvec):
+def convertRvecTvectoHomo(rvec,tvec):
     #Input: OpenCV rvec (rotation) and tvec (translation)
     #Output: Homogeneous Transform
     Rot,_=cv2.Rodrigues(rvec)
@@ -89,3 +89,18 @@ def rotationZ(theta):
                [0,0,0],
                [-np.sin(theta),0,np.cos(theta)]])
     return R
+
+
+def SkewSymmetricMatrix(v):
+    #Takes the skew symmetric matrix of a vector
+    skew_mat=np.array([[0,-v[2],v[1]],
+                        [v[2],0,-v[0]],
+                        [-v[1],v[0],0]])       
+    
+    return skew_mat
+
+def convertPyDK_To_GLM(pykdl_frame):
+    numpy_frame=pm.toMatrix(pykdl_frame)
+    glm_frame=glm.mat4(*numpy_frame.flatten())
+    return glm_frame
+

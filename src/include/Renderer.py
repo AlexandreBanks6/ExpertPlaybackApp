@@ -1,5 +1,3 @@
-import pygame as pg
-
 #Use GLFW instead of pygame as we can create multiple windows
 #from glfw.GLFW import *
 #from glfw import _GLFWwindow as GLFWwindow
@@ -15,6 +13,7 @@ from include import mesh
 from include import scene
 from include import ArucoTracker
 from include import HandEye
+from include import utils
 import glm
 import pyglet
 
@@ -48,6 +47,7 @@ import skimage
 import tf_conversions.posemath as pm
 import tf_conversions
 from sensor_msgs.msg import Joy
+import yaml
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
@@ -360,32 +360,63 @@ class Renderer:
 
         self.ecm.enable()
         self.ecm.home()
+        rospy.sleep(1)
 
 
 
         #################Frame Transformations#####################
-        
-        self.world_base=glm.mat4() #This is the world base frame (set to be the corner of scene)
+
+        #Recorded Value for PSMs with respect to base frame (si)
+        self.si_T_psm3_recorded=None
+        self.si_T_psm1_recorded=None
+
+        ####Recorded Value for ECM w.r.t. base frame (si)
+        self.si_T_ecm_recorded=None
+
+        #####Current Values (updated every loop, or pre-defined)
         self.si_T_lci=None #The left camera w.r.t. scene base frame (calibrated origin)
         self.si_T_rci=None #The right camera w.r.t. scene base frame (calibrated origin)
 
+        self.lc_T_ecm=None #left hand-eye
+        self.rc_T_ecm=None #right hand-eye
 
-        #self.lci_T_si=None #Scene base frame w.r.t. to left camera
-        #self.rvec_scene=None #How PnP returns rotation (for printing coordinate to scene)
-        #self.tvec_scene=None #How PnP returns translation (for printing coordinate to scene)
+        self.ecmini_T_ecm=None #current ecm pose w.r.t. initial ecm pose
 
-        self.lc_T_e=None #Hand-eye calibration for left camera to endoscope
-        self.rc_T_e=None #Hand-eye calibraiton for right camera to endoscope
 
-        self.si_T_e=None #World base to endoscope base
+        #####Initial ECM Pose
+        self.ecm_init_pose=None
 
-        self.ei_T_e=glm.mat4() #Transform between initial endoscope position and current position
+        #####PSM w.r.t. ECM
+        self.ecm_T_psm1=None
+        self.ecm_T_psm3=None
 
-        #Camera pose:
-        self.cam_left_pose=None
-        self.cam_right_pose=None
+        #####Joint Variables (for recording)
+        self.joint_vars_psm1=None
+        self.joint_vars_psm3=None
+        self.joint_vars_psm1_recorded=None
+        self.joint_vars_psm3_recorded=None
 
         
+        ###Getting hand-eye calibration matrices
+        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_right/hand_eye_calibration_right.yaml','r') as file:
+            right_handeye=yaml.load(file)
+
+        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_left/hand_eye_calibration_left.yaml','r') as file:
+            left_handeye=yaml.load(file)
+
+        self.lc_T_ecm=left_handeye['leftcam_T_ecm']
+        self.lc_T_ecm=np.array(self.lc_T_ecm,dtype='float32')
+
+        self.rc_T_ecm=right_handeye['rightcam_T_ecm']
+        self.rc_T_ecm=np.array(self.rc_T_ecm,dtype='float32')
+
+
+        ##Getting current ecm pose
+        ecm_pose=self.ecm.measured_cp()
+        ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
+        ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
+        self.ecm_init_pose=ecm_pose
+
     def displayMessage(self,message):
         #function to insert messages in the text box
         self.message_box.config(state='normal')
@@ -603,15 +634,41 @@ class Renderer:
         #Get Time
         self.get_time() 
 
-        ################Move Instruments if Playback is Pushed###############
-        if self.PSM1_on:
-            #PSM1:
-            self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,self.move_rads],start_pose,'PSM1')
-        if self.PSM3_on:
-            #PSM3:
-            self.instrument_kinematics([glm.pi()/3,glm.pi()/3,glm.pi()/3,self.move_rads*2],start_pose2,'PSM3')
 
-        self.move_objects() 
+        #Maybe move these commands under if statements in next block
+        #Getting Current Poses (ecmini_T_ecm = curr ecm w.r.t. initial ecm), ecm_T_psm1=psm1 w.r.t. ecm, ecm_T_psm3 = psm3 w.r.t. ecm
+        ecm_pose=self.ecm.measured_cp()
+        ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
+        ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
+        self.ecmini_T_ecm=glm.transpose(self.ecm_init_pose)*ecm_pose
+
+        psm1_pose=self.psm1.measured_cp()
+        psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
+        self.ecm_T_psm1=utils.convertPyDK_To_GLM(psm1_pose)
+        
+        psm3_pose=self.psm3.measured_cp()
+        psm3_pose=utils.enforceOrthogonalPyKDL(psm3_pose)
+        self.ecm_T_psm3=utils.convertPyDK_To_GLM(psm3_pose)
+
+        #Get joint positions
+        joint_vars_psm1=self.psm1.measured_jp()
+        jaw_angle_psm1=self.psm1.gripper.measured_jp()
+        joint_vars_psm3=self.psm3.measured_js()
+        jaw_angle_psm3=self.psm3.gripper.measured_jp()
+
+        self.joint_vars_psm1=[joint_vars_psm1[4],joint_vars_psm1[5],joint_vars_psm1[6],jaw_angle_psm1]
+        self.joint_vars_psm3=[joint_vars_psm3[4],joint_vars_psm3[5],joint_vars_psm3[6],jaw_angle_psm3]
+
+        ################Move Instruments if Playback is Pushed###############
+        if self.render_on:
+            if self.PSM1_on:
+                #PSM1:
+                self.instrument_kinematics(self.joint_vars_psm1_recorded,start_pose,'PSM1')
+            if self.PSM3_on:
+                #PSM3:
+                self.instrument_kinematics(self.joint_vars_psm3_recorded,start_pose2,'PSM3')
+
+            self.move_objects() 
         
 
 
@@ -659,8 +716,8 @@ class Renderer:
         ######Rendering Left Screen Instruments
         if self.render_on:
             self.camera_left.update(None) 
-            #self.cam_left_pose=self.world_base*self.si_T_lci*self.lc_T_e*self.ei_T_e*glm.transpose(self.lc_T_e)
-            #self.camera_left.update(self.cam_left_pose)
+            cam_left_pose=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*glm.transpose(self.lc_T_ecm)
+            self.camera_left.update(cam_left_pose)
             #self.scene.render(self.ctx_left)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_left)
@@ -707,8 +764,8 @@ class Renderer:
 
         if self.render_on:
             self.camera_right.update(None)
-            #self.cam_right_pose=self.world_base*self.si_T_rci*self.rc_T_e*self.ei_T_e*glm.transpose(self.rc_T_e)
-            #self.camera_left.update(self.cam_left_pose)
+            cam_right_pose=self.si_T_rci*self.rc_T_ecm*self.ecmini_T_ecm*glm.transpose(self.rc_T_ecm)
+            self.camera_left.update(cam_right_pose)
             #self.scene.render(self.ctx_right)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_right)
