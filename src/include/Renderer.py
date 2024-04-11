@@ -278,119 +278,94 @@ class Renderer:
 
         self.bridge=CvBridge()
 
-        #####GUI Setup
+
+
+        ############GUI Setup##############
         self.gui_window=tk.Tk()
-        self.gui_window.title("Expert Playback App")
+        self.gui_window.title("dVRK Playback App")
 
-        self.gui_window.rowconfigure([0,1,2,3,4,5,6,7],weight=1)
+        self.gui_window.rowconfigure([0,1,2,3,4,5,6],weight=1)
         self.gui_window.columnconfigure([0,1,2],weight=1)
+        self.gui_window.minsize(300,100)
+
+        #Title at top
+        self.welcome_text=tk.Label(self.gui_window,text="Welcome to the dVRK Playback App")
+        self.welcome_text.grid(row=0,column=1,sticky='n')
+        #Show ArUco Button
+        self.aruco_button=tk.Button(self.gui_window,text="Show ArUco",command=self.arucoToggleCallback)
+        self.aruco_button.grid(row=1,column=1,sticky="nsew")
+
+        #Calibrate Scene Button
+        self.calibrate_scene_button=tk.Button(self.gui_window,text="Calibrate Scene",command=self.calibrateToggleCallback)
+        self.calibrate_scene_button.grid(row=2,column=0,sticky="nsew")
+
+        #Select PSM (to record/playback) Checkboxes
+        self.checkbox_PSM1=tk.Checkbutton(self.gui_window,text="PSM1",onvalue=1,offvalue=0,command=self.psm1Checkbox)
+        self.checkbox_PSM1.grid(row=2,column=1,sticky='nsew')
+
+        self.checkbox_PSM3=tk.Checkbutton(self.gui_window,text="PSM3",onvalue=1,offvalue=0,command=self.psm3Checkbox)
+        self.checkbox_PSM3.grid(row=2,column=2,sticky='nsew')
+
+        #Calibrate Gaze Button
+        self.calibrate_gaze_button=tk.Button(self.gui_window,text="Calibrate Gaze",command=self.calibrateGazeCallback)
+        self.calibrate_gaze_button.grid(row=3,column=0,sticky="nsew")
+
+        #Playback (render) Tools Button
+        self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.renderButtonPressCallback)
+        self.render_button.grid(row=3,column=1,sticky="nsew")
+
+        #Record Expert Motions Button
+        self.record_motions_button=tk.Button(self.gui_window,text="Record Motions",command=self.rocordMotionsPlayback)
+        self.record_motions_button.grid(row=4,column=0,sticky="nsew")
+
+        #Playback the ECM Motion Button (indicates on the screen arrows showing direction for ECM movement)
+        self.playback_ecm_button=tk.Button(self.gui_window,text="Playback ECM Motion",command=self.playbackECMCallback)
+        self.playback_ecm_button.grid(row=4,column=1,sticky="nsew")
+
+        #Message box to send text to the user
+        self.message_box = tk.Text(self.gui_window, height=10, width=80)
+        self.message_box.config(state='disabled')
+        self.message_box.grid(row=5, column=0, columnspan=3, sticky='nsew', padx=10, pady=10)
+        self.displayMessage("Ensure calibration parameters are in file: ../resources/Calib_Best/ \n \
+                            Also, motions will be played from the newest \n \
+                             ../resources/Motion/motion_num.csv where _num is the highest number in folder. \n \
+                            Make sure to change the number of the desired motions to the largest value")
+
+        #Button for NDI Validation
+        self.ndi_toggle_button=tk.Button(self.gui_window,text="Start NDI Tracker and Validate",command=self.ToggleTrackerCallback)
+        self.ndi_toggle_button.grid(row=6,column=0,sticky="nsew")
 
 
-        #Button to start/top aruco tracking
-        self.aruco_toggle_button=tk.Button(text="Start/Stop Aurco Tracking",width=20,command=self.arucoToggleCallback)
-        self.aruco_toggle_button.grid(row=0,column=0,sticky="nsew")
+
+        ##############Init Parameters###############
         
-        #Label to give number of points collected for hand-eye calibration
-        self.calibrate_scene_text=tk.Label(text="Perform Hand-Eye-Scene Calibration with right hand (collect ~8 points with no camera movement)",width=100)
-        self.calibrate_scene_text.grid(row=1,column=1,sticky='nsew')
-
-        #Drop down to indicate which corner we are touching
-        self.handeye_selected_corner=tk.StringVar()
-        self.handeye_dropdown=tk.OptionMenu(self.gui_window,self.handeye_selected_corner,*CORNER_NUMBERS_STRING)
-        self.handeye_dropdown.grid(row=2,column=0,sticky='nsew')
-
-        #Button to capture points for hand-eye calibration
-        self.handeye_point_button=tk.Button(text="Capture Point for Hand-Eye",width=20,command=self.capturePointCallback)
-        self.handeye_point_button.grid(row=2,column=1,sticky="nsew")
-
-        #Label to give number of points collected for hand-eye calibration
-        self.calibrate_scene_text=tk.Label(text="# Collected = 0",width=50)
-        self.calibrate_scene_text.grid(row=2,column=2,sticky='nsew')
-
-
-
-        #Button to "calibrate" the scene and perform hand-eye calibration (a.k.a. find the scene) => Press when camera is stable
-        self.calibrate_scene_button=tk.Button(text="Complete Hand-Eye and Scene Calibration",width=20,command=self.calibrateToggleCallback)
-        self.calibrate_scene_button.grid(row=3,column=0,sticky="nsew")
-
-       
-
-
-        #Button to start/stop Rendering
-        self.render_button=tk.Button(text="Start/Stop Rendering",width=20,command=self.renderButtonPressCallback)
-        self.render_button.grid(row=4,column=0,sticky="nsew")
-
-        #CheckButtons to Render PSM1 and PSM2 
-        self.checkbox_PSM1=tk.Checkbutton(text="PSM1",width=10,onvalue=1,offvalue=0,command=self.psm1Checkbox)
-        self.checkbox_PSM1.grid(row=4,column=1,sticky='nsew')
-
-        self.checkbox_PSM3=tk.Checkbutton(text="PSM3",width=10,onvalue=1,offvalue=0,command=self.psm3Checkbox)
-        self.checkbox_PSM3.grid(row=4,column=2,sticky='nsew')
-
-
-        #Button to start ndi tracker
-        self.ndi_toggle_button=tk.Button(text="Start NDI Tracker",width=20,command=self.ToggleTrackerCallback)
-        self.ndi_toggle_button.grid(row=5,column=0,sticky="nsew")
-
-        #Label to show that the tracker is running
-        self.ndi_toggle_text=tk.Label(text="NDI Tracker Is Off",width=20)
-        self.ndi_toggle_text.grid(row=5,column=1,sticky='nsew')
-
-        #Button to start teleoperation
-        self.teleop_button=tk.Button(text="Start/Stop Teleoperation",width=20,command=self.teleopButtonCallback)
-        self.teleop_button.grid(row=6,column=0,sticky="nsew")
-
-        self.teleop_lockout_checkbox=tk.Checkbutton(text="Lock Wrist",width=10,onvalue=1,offvalue=0,command=self.teleopLockoutCallback)
-        self.teleop_lockout_checkbox.grid(row=6,column=1,sticky='nsew')
-
-        #Button to run ndi tracking validation
-        #self.validation_start=tk.Button(text="Run NDI Validation",width=20,command=self.ValidationCallback)
-        #self.validation_start.grid(row=4,column=0,sticky="nsew")
-
-
-        #Label for validation
-        #self.validation_text=tk.Label(text="",width=20)
-        #self.validation_text.grid(row=4,column=1,sticky='nsew')
-
-        self.render_on=False
         self.aruco_on=False #Whether we show and update aruco poses
         self.calibrate_on=False
-        self.capture_point_toggle=False
+        #Selecting PSM buttons
+        self.PSM1_on=False
+        self.PSM3_on=False
 
-        self.teleop_on=False
-        self.teleop_init=False #Checks whether teleoperation has started
-
-        self.teleop_folow_init=False
-        self.teleop_lockout=False #Whether we lockout wrist or not
-
-        self.clutch_val=0
-        self.camera_val=0
-
-
-        self.num_points_capture=0 #The number of points we have captured for hand-eye-scene calibration
-
+        self.calib_gaze_on=False
+        self.render_on=False
+        self.record_motions_on=False
+        self.playback_ecm_on=False
 
         #Params for validating the calibration
         self.NDI_TrackerToggle=False #Whether the NDI tracker is on and we want to validate, validation is started with the calibration button
         self.validation_trial_count=None
         self.csv_name=None
-        #self.Pose_Validation=False
 
-        #Selecting PSM buttons
-        self.PSM1_on=False
-        self.PSM3_on=False
-
-
+ 
         ####Aruco Tracking Setup
         self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
         self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
 
 
         #################dVRK API Config###################
-        self.psm1=dvrk.psm("PSM1")#Mapped to left hand
+        self.psm1=dvrk.psm("PSM1") #Mapped to left hand
         self.psm3=dvrk.psm("PSM3") #Mapped to right hand
-        self.mtml=dvrk.mtm("MTML")
-        self.mtmr=dvrk.mtm("MTMR")
+
+        self.ecm=dvrk.ecm("ECM")
 
         #Enabling and Homing
         self.psm1.enable()
@@ -399,13 +374,9 @@ class Renderer:
         self.psm3.enable()
         self.psm3.home()
 
-        self.mtml=dvrk.mtm("MTML")
-        self.mtmr=dvrk.mtm("MTMR")
+        self.ecm.enable()
+        self.ecm.home()
 
-        self.mtml.enable()
-        self.mtml.home()
-        self.mtmr.enable()
-        self.mtmr.home()
 
 
         #################Frame Transformations#####################
@@ -430,36 +401,62 @@ class Renderer:
         self.cam_left_pose=None
         self.cam_right_pose=None
 
-        ####Teleoperation Transforms:
-        self.orientation_offset_mtml=None
-        self.orientation_offset_mtmr=None
-
-        #Used at the start of follow mode
-        self.display_T_mtml_ini=None
-        self.display_T_mtmr_ini=None
-        self.ecm_T_psm1_ini=None
-        self.ecm_T_psm3_ini=None
-
-
-        #Object Points for Hand-Eye Calibration
-        self.corner_points_handeye=[] #By adding this to initial corner is essentially the translation
-        self.robot_points_handeye=[]
-
         
-    def teleopLockoutCallback(self):
-        self.teleop_lockout=not self.teleop_lockout
-    def teleopButtonCallback(self):
-        self.teleop_on=not self.teleop_on
-        self.teleop_init=False
+    def displayMessage(self,message):
+        #function to insert messages in the text box
+        self.message_box.config(state='normal')
+        self.message_box.delete("1.0",tk.END)
 
-    def capturePointCallback(self):
-        self.capture_point_toggle=not self.capture_point_toggle
+        self.message_box.insert(tk.END, message + "\n")
+        self.message_box.see(tk.END)
+
+        self.message_box.config(state='disabled')
+
+
+    def arucoToggleCallback(self):
+        self.aruco_on=not self.aruco_on
+
+
+    def calibrateToggleCallback(self):
+        self.calibrate_on=not self.calibrate_on
+        self.aruco_tracker_left.calibrate_done=False
+        self.aruco_tracker_right.calibrate_done=False
+
+
+        if self.NDI_TrackerToggle and self.calibrate_on: #We want to validate the pose estimates
+
+            if not os.path.isfile(self.csv_name):
+                self.validation_trial_count=1
+                with open(self.csv_name,'w',newline='') as file_object:
+                    writer_object=csv.writer(file_object)
+                    writer_object.writerow(["Timestamp","Trial #","NDI_Tracker",\
+                                            "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
+                                            "Visual_Tracking","Tx","Ty","Tz","Q0","Qx","Qy","Qz"])
+                    file_object.close()
+            else:
+                self.validation_trial_count+=1
+                with open(self.csv_name,'a',newline='') as file_object:
+                    writer_object=csv.writer(file_object)
+                    writer_object.writerow("\n")
+                    file_object.close()
+
     def psm1Checkbox(self):
         self.PSM1_on=not self.PSM1_on
 
     def psm3Checkbox(self):
         self.PSM3_on=not self.PSM3_on
 
+    def calibrateGazeCallback(self):
+        self.calib_gaze_on=not self.calib_gaze_on
+
+    def renderButtonPressCallback(self):
+        self.render_on=not self.render_on
+
+    def rocordMotionsPlayback(self):
+        self.record_motions_on=not self.record_motions_on
+
+    def playbackECMCallback(self):
+        self.playback_ecm_on=not self.playback_ecm_on
 
     def ToggleTrackerCallback(self):
         if not self.NDI_TrackerToggle: #Tracker is not running, so we toggle on
@@ -488,67 +485,9 @@ class Renderer:
 
 
         self.NDI_TrackerToggle=not self.NDI_TrackerToggle
-    '''
-    def ValidationCallback(self):
-        #Initialize the csv if it does not exist
-        if not os.path.isfile(PATH_TO_VALIDATION_CSV):
-            self.validation_trial_count=1
-            with open(PATH_TO_VALIDATION_CSV,'w',newline='') as file_object:
-                writer_object=csv.writer(file_object)
-                writer_object.writerow(["Timestamp","Trial #","NDI_Tracker",\
-                                        "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
-                                        "Visual_Tracking","Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality"])
-        else:
-            self.validation_trial_count+=1
-            with open(PATH_TO_VALIDATION_CSV,'a',newline='') as file_object:
-                writer_object=csv.writer(file_object)
-                writer_object.writerow("\n")
-
-        
-        self.Pose_Validation=not self.Pose_Validation
-        self.validation_text.config(text='Validation Started')
-    '''
-
-    def calibrateToggleCallback(self):
-        self.calibrate_on=not self.calibrate_on
-        self.aruco_tracker_left.calibrate_done=False
-        self.aruco_tracker_right.calibrate_done=False
 
 
-        if self.NDI_TrackerToggle and self.calibrate_on: #We want to validate the pose estimates
 
-            if not os.path.isfile(self.csv_name):
-                self.validation_trial_count=1
-                with open(self.csv_name,'w',newline='') as file_object:
-                    writer_object=csv.writer(file_object)
-                    writer_object.writerow(["Timestamp","Trial #","NDI_Tracker",\
-                                            "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
-                                            "Visual_Tracking","Tx","Ty","Tz","Q0","Qx","Qy","Qz"])
-                    file_object.close()
-            else:
-                self.validation_trial_count+=1
-                with open(self.csv_name,'a',newline='') as file_object:
-                    writer_object=csv.writer(file_object)
-                    writer_object.writerow("\n")
-                    file_object.close()
-
-
-    def arucoToggleCallback(self):
-        self.aruco_on=not self.aruco_on
-    
-    def renderButtonPressCallback(self):
-        self.render_on=not self.render_on
-
-    def clutchPedalCallback(self,data):
-        if self.teleop_on:
-            self.clutch_val=int(data.buttons[0])
-
-            print("Clutch Val: "+str(self.clutch_val))
-
-    def cameraPedalCallback(self,data):
-        if self.teleop_on:
-            self.camera_val=int(data.buttons[0])
-            print("Camera Val: "+str(self.camera_val))
     def get_program_background(self,shader_program_name):
         try:
             print("Shader Entered")
@@ -645,8 +584,6 @@ class Renderer:
         if symbol==key.E:
             self.key_dict['E']=False
 
-
-
     def check_events(self):
         #if(glfwGetKey(self.window1,GLFW_KEY_ESCAPE)==GLFW_PRESS):
          #   glfwTerminate()
@@ -668,6 +605,8 @@ class Renderer:
         pykdl_frame_new[0:3,0:3]=HandEye.EnforceOrthogonality(pykdl_frame_new[0:3,0:3])
         pykdl_frame_new=pm.fromMatrix(pykdl_frame_new)
         return pykdl_frame_new
+
+
 
     def render(self,dt):
 
