@@ -327,8 +327,8 @@ class Renderer:
         self.message_box.config(state='disabled')
         self.message_box.grid(row=5, column=0, columnspan=3, sticky='nsew', padx=10, pady=10)
         self.displayMessage("Ensure calibration parameters are in file: ../resources/Calib_Best/ \n \
-                            Also, motions will be played from the newest \n \
-                             ../resources/Motion/motion_num.csv where _num is the highest number in folder. \n \
+                            Also, motions will be played from the newest folder\n \
+                             ../resources/Motions/Motion_num where _num is the highest number directory in folder. \n \
                             Make sure to change the number of the desired motions to the largest value")
 
         #Button for NDI Validation
@@ -486,7 +486,11 @@ class Renderer:
 
         self.NDI_TrackerToggle=not self.NDI_TrackerToggle
 
+    def frameCallbackRight(self,data):
+        self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
 
+    def frameCallbackLeft(self,data):        
+        self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
 
     def get_program_background(self,shader_program_name):
         try:
@@ -610,159 +614,12 @@ class Renderer:
 
     def render(self,dt):
 
-        #################Teleoperation#####################
-
-        if self.teleop_on:  #Teleoperation On
-
-            #############Aligning the MTMs############
-            if not self.teleop_init: 
-
-                self.teleop_init=True
-                #We set position of MTML equal to its position, and the orientation of MTML=PSM1
-                #We set position of MTMR equal to its position, and the orientation of MTMR=PSM3
-
-                #PSMs w.r.t. ECMs
-                ecm_T_psm1=self.psm1.setpoint_cp()
-
-                ecm_T_psm3=self.psm3.setpoint_cp()
-
-                #MTMs w.r.t. display
-
-                display_T_mtml=self.mtml.measured_cp()
-                display_T_mtmr=self.mtmr.measured_cp()
-
-
-                #Moving the MTMs 
-
-                ecm_T_psm1=self.enforceOrthogonalPyKDL(ecm_T_psm1)
-                ecm_T_psm3=self.enforceOrthogonalPyKDL(ecm_T_psm3)
-
-
-                display_T_mtml.M=ecm_T_psm1.M
-                display_T_mtmr.M=ecm_T_psm3.M
-
-                self.mtml.move_cp(display_T_mtml).wait()
-                self.mtmr.move_cp(display_T_mtmr).wait()
-
-                self.orientation_offset_mtml=self.mtml.measured_cp().M.Inverse()*ecm_T_psm1.M                
-                self.orientation_offset_mtmr=self.mtmr.measured_cp().M.Inverse()*ecm_T_psm3.M
-                print("Initialized Teleoperation")
-                #alignment_offset_angle, _ = self.orientation_offset_mtml.GetRotAngle()
-
-                #print("offset angle: "+str(alignment_offset_angle * (180/np.pi)))
-            else: 
-                
-                if self.clutch_val==1:
-                    ########Clutch Mode############
-                    zero_wrench=np.array([0.0,0.0,0.0,0.0,0.0,0.0])
-                    self.mtml.body.servo_cf(zero_wrench)
-                    self.mtmr.body.servo_cf(zero_wrench)
-                    print("Entered Clutching")
-                    '''
-                    ecm_T_psm1=self.psm1.setpoint_cp()
-                    ecm_T_psm3=self.psm3.setpoint_cp()
-                    display_T_mtml=self.mtml.measured_cp()
-                    display_T_mtmr=self.mtmr.measured_cp()
-                    ecm_T_psm1=self.enforceOrthogonalPyKDL(ecm_T_psm1)
-                    ecm_T_psm3=self.enforceOrthogonalPyKDL(ecm_T_psm3)
-
-                    display_T_mtml.M=ecm_T_psm1.M*self.orientation_offset_mtml.Inverse()
-                    display_T_mtmr.M=ecm_T_psm3.M*self.orientation_offset_mtmr.Inverse()
-
-                    self.mtml.move_cp(display_T_mtml).wait()
-                    self.mtmr.move_cp(display_T_mtmr).wait()
-                    '''                
-                else:
-
-
-                    #########Follow Mode###########
-
-                    if not self.teleop_folow_init: #We are starting follow mode
-                        self.teleop_folow_init=True
-                        
-                        #Set gravity compensation and "free" the joints:
-                        zero_wrench=np.array([0.0,0.0,0.0,0.0,0.0,0.0])
-                        self.mtml.use_gravity_compensation(True)
-                        self.mtmr.use_gravity_compensation(True)
-                        self.mtml.body.servo_cf(zero_wrench)
-                        self.mtmr.body.servo_cf(zero_wrench)
-
-                        #Get the MTM and PSM pose
-                        self.display_T_mtml_ini=self.mtml.measured_cp()
-                        self.display_T_mtmr_ini=self.mtmr.measured_cp()
-                        self.ecm_T_psm1_ini=self.psm1.setpoint_cp()
-                        self.ecm_T_psm3_ini=self.psm3.setpoint_cp()
-                        print("Folow Mode Init Done")
-                    else:
-                        #Follow mode on each iteration
-                        display_T_mtml_new=self.mtml.setpoint_cp()
-                        display_T_mtmr_new=self.mtmr.setpoint_cp()
-
-                        mtml_jaw_angle=self.mtml.gripper.measured_js()
-                        mtmr_jaw_angle=self.mtmr.gripper.measured_js()
-
-
-                        ecm_T_psm1_next=self.ecm_T_psm1_ini
-                        ecm_T_psm3_next=self.ecm_T_psm3_ini
-
-                        mtmlInit_T_mtmlNew=display_T_mtml_new
-                        mtmrInit_T_mtmrNew=display_T_mtmr_new
-
-                        #Orientation Control
-                        #How much we have moved the mtm's orientation
-                        mtmlInit_T_mtmlNew.M=display_T_mtml_new.M*(self.display_T_mtml_ini.M.Inverse())
-                        mtmrInit_T_mtmrNew.M=display_T_mtmr_new.M*(self.display_T_mtmr_ini.M.Inverse())
-                        test=pm.Quaternion()
-                        
-                        #mtmlInit_T_mtmlNew.M=(self.display_T_mtml_ini.M.Inverse())*display_T_mtml_new.M
-                        #mtmrInit_T_mtmrNew.M=(self.display_T_mtmr_ini.M.Inverse())*display_T_mtmr_new.M
-
-                        rot_angle, _ = mtmlInit_T_mtmlNew.M.GetRotAngle()
-                        print("Rotation Change " + str(rot_angle))
-
-                        ecm_T_psm1_next.M=mtmlInit_T_mtmlNew.M*self.ecm_T_psm1_ini.M #*self.orientation_offset_mtml
-                        ecm_T_psm3_next.M=mtmrInit_T_mtmrNew.M*self.ecm_T_psm3_ini.M #*self.orientation_offset_mtmr
-                        #ecm_T_psm1_next.M=display_T_mtml_new.M*self.orientation_offset_mtml
-                        #ecm_T_psm3_next.M=display_T_mtmr_new.M*self.orientation_offset_mtmr
-                        #Position Control
-                        mtml_translation=display_T_mtml_new.p-self.display_T_mtml_ini.p
-                        mtmr_translation=display_T_mtmr_new.p-self.display_T_mtmr_ini.p
-
-
-                        ecm_T_psm1_next.p=PSM_SCALE_FACTOR*mtml_translation+self.ecm_T_psm1_ini.p
-                        ecm_T_psm3_next.p=PSM_SCALE_FACTOR*mtmr_translation+self.ecm_T_psm3_ini.p
-
-                        #Moving 
-                        #ecm_T_psm1_next=self.enforceOrthogonalPyKDL(ecm_T_psm1_next)
-                        #ecm_T_psm3_next=self.enforceOrthogonalPyKDL(ecm_T_psm3_next)
-                        self.psm1.servo_cp(ecm_T_psm1_next)
-                        self.psm1.jaw.servo_jp(np.array(mtml_jaw_angle[0]))
-                        self.psm3.servo_cp(ecm_T_psm3_next)
-                        self.psm3.jaw.servo_jp(np.array(mtmr_jaw_angle[0]))
-                        print("Folow Mode")
-                        
-
-                        #Updating mtml and psm poses
-                        self.display_T_mtml_ini=display_T_mtml_new
-                        self.display_T_mtmr_ini=display_T_mtmr_new
-
-                        self.ecm_T_psm1_ini=ecm_T_psm1_next
-                        self.ecm_T_psm3_ini=ecm_T_psm3_next
-                        #rospy.sleep(0.01)
-                        
-
-
-
-
-
-
-
         self.move_rads+=0.01
 
         #Get Time
         self.get_time() 
 
-        ################Move Instruments
+        ################Move Instruments if Playback is Pushed###############
         if self.PSM1_on:
             #PSM1:
             self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,self.move_rads],start_pose,'PSM1')
@@ -774,11 +631,11 @@ class Renderer:
         
 
 
-        ####Render Left Window
-        self.window_left.switch_to()       
-        self.ctx_left.clear()
+        ###########################Render Left Window##########################
+        self.window_left.switch_to()       #Switch to left window
+        self.ctx_left.clear()              #Switch to left context
 
-        #Updating Background Image
+        ####Updating Background Image
         if self.frame_left is not None:
             self.ctx_left.disable(mgl.DEPTH_TEST)
             #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
@@ -786,56 +643,19 @@ class Renderer:
             if self.aruco_on:
                 self.frame_left_converted=self.aruco_tracker_left.arucoTrackingScene(self.frame_left)
 
-                if self.capture_point_toggle: 
-                    self.capture_point_toggle=False
-                    corner_number=int(self.handeye_selected_corner.get())
-                    corner_point=self.aruco_tracker_left.returnObjectPointForHandeye(corner_number)
-                    if corner_point:
-                        self.num_points_capture+=1
-                        self.corner_points_handeye.append(corner_point)   
-                        #Get point of PSM1 from da Vinci API
-                        tool_pose=self.psm1.measured_cp()
-                        tool_pose.p=tool_pose.p+tool_tip_translation
-                        tool_point=[tool_pose.p.x(),tool_pose.p.y(),tool_pose.p.z()]
-                        self.robot_points_handeye.append(tool_point)
+                #If Scene Calibration is On
+                if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame 
 
-                        print("tool point: "+str(tool_pose.p))
-                        
-                        print("corner point list: "+str(self.corner_points_handeye))
-                        print("tool point list: "+str(self.robot_points_handeye))
+                    self.si_T_lci=None
+                    self.aruco_tracker_left.calibrateScene()
+                    self.si_T_lci=self.aruco_tracker_left.si_T_ci
 
-
-                        self.calibrate_scene_text.config(text="# Collected = "+str(self.num_points_capture))
-                    else:
-                        print("Requested Corner Not In View")
-                    #Capture Points for Hand-Eye-Scene Calibration (capture point in endoscope coord system and in scene coord system)
-                    #These points are for both left and right cameras (doesn't matter because it is for robot)
-
-                
-                if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame
-                    if self.num_points_capture>=MIN_NUMBER_FORHANDEYE:
-                        
-                        self.si_T_lci=None
-                        self.aruco_tracker_left.calibrateScene()
-                        self.si_T_lci=self.aruco_tracker_left.si_T_ci
-
-                        #Writing to CSV For Validation
-                        if self.NDI_TrackerToggle:
-                            NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
-                            self.writeToNDIVal(NDI_dat)
-                    else:
-                        print("Not Enough Points for Hand-Eye-Scene Calibration, collect more")
+                    #Writing to CSV For Validation
+                    if self.NDI_TrackerToggle:
+                        NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
+                        self.writeToNDIVal(NDI_dat)
       
-                if self.si_T_lci is not None: #We Perform Hand-Eye Calibration and show the scene coord system for left camera
-                    
-                    #First find scene to endoscope base transform (si_T_e) by solving a RANSAC registration
-                    src=np.array(self.corner_points_handeye)
-                    dst=np.array(self.robot_points_handeye)
-
-                    model_robust,inliers=skimage.measure.ransac((src,dst),skimage.transform.AffineTransform,\
-                                                                min_samples=3,residual_threshold=2,max_trials=100)
-                    
-                    
+                if self.si_T_lci is not None: #We show scene coord system                      
                     
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
                                       self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
@@ -852,7 +672,7 @@ class Renderer:
             self.vertex_array_left.render()
             self.ctx_left.enable(mgl.DEPTH_TEST)
 
-        #Rendering Left Instruments
+        ######Rendering Left Screen Instruments
         if self.render_on:
             self.camera_left.update(None) 
             #self.cam_left_pose=self.world_base*self.si_T_lci*self.lc_T_e*self.ei_T_e*glm.transpose(self.lc_T_e)
@@ -864,31 +684,26 @@ class Renderer:
                 self.scene_PSM3.render(self.ctx_left)
                 
         
-        #########Render the Right Window
+        ###########################Render the Right Window##########################
         self.window_right.switch_to()
         self.ctx_right.clear()
 
-        #Updating Background Image
+        ######Updating Background Image
         if self.frame_right is not None:
             self.ctx_right.disable(mgl.DEPTH_TEST)
-            
+
             if self.aruco_on:
                 self.frame_right_converted=self.aruco_tracker_right.arucoTrackingScene(self.frame_right)                
+                
+                #If Scene Calibration is On
                 if self.calibrate_on and (not self.aruco_tracker_right.calibrate_done): #Sets Scene Base Frame
-                    if self.num_points_capture>=MIN_NUMBER_FORHANDEYE:
-                        self.si_T_rci=None
-                        self.aruco_tracker_right.calibrateScene()
-                        self.si_T_rci=self.aruco_tracker_right.si_T_ci
 
-                    else:
-                        print("Not Enough Points for Hand-Eye-Scene Calibration, collect more")
-      
-                if (self.si_T_rci is not None) and (self.si_T_rci is not None): #We Perform Hand-Eye Calibration and show the scene coord system for right camera
-                    
-                    
-                    
-                    
-                    
+                    self.si_T_rci=None
+                    self.aruco_tracker_right.calibrateScene()
+                    self.si_T_rci=self.aruco_tracker_right.si_T_ci
+
+                if self.si_T_rci is not None:
+
                     cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                       self.aruco_tracker_right.dist,self.aruco_tracker_right.rvec_scene,self.aruco_tracker_right.tvec_scene,0.05) #Look at rvec and tvec, look at frame_right_converted, look at calibrate on
                   
@@ -903,28 +718,21 @@ class Renderer:
             self.vertex_array_right.render()
             self.ctx_right.enable(mgl.DEPTH_TEST)
 
+        
+        #Render the right screen 
+
         if self.render_on:
             self.camera_right.update(None)
             #self.cam_right_pose=self.world_base*self.si_T_rci*self.rc_T_e*self.ei_T_e*glm.transpose(self.rc_T_e)
-            #                            self.camera_left.update(self.cam_left_pose)
+            #self.camera_left.update(self.cam_left_pose)
             #self.scene.render(self.ctx_right)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_right)
             if self.PSM3_on:
                 self.scene_PSM3.render(self.ctx_right)
 
-        
-        #Resestting hand-eye variables:
-        if self.aruco_tracker_right.calibrate_done and self.aruco_tracker_left.calibrate_done:
-            self.num_points_capture=0
-            self.calibrate_scene_text.config(text="# Collected = "+str(self.num_points_capture))
-            self.corner_points_handeye=[]
-            self.robot_points_handeye=[]
-            self.aruco_tracker_left.calibrate_done=False
-            self.aruco_tracker_right.calibrate_done=False
-
-            
-        ####Gui Updates
+                   
+        ####Updates Gui
 
         self.gui_window.update()
 
@@ -1085,14 +893,6 @@ class Renderer:
                          glm.vec4(0,0,0,1))
         return rot_mat    
 
-    def frameCallbackRight(self,data):
-        self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-
-    def frameCallbackLeft(self,data):
-        
-        self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-        #cv2.imshow('Frame Callback',self.frame_left)
-        #cv2.waitKey(1)
 
 
     
