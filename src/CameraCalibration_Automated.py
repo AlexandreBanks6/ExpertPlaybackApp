@@ -19,7 +19,7 @@ import PyKDL
 ##################Change These Variables If Needed#############################
 #These Dimensions should be in meters, should change over to meters
 CHECKERBOARD_DIM=(8,8) #Number of inner corners in the checkerboard (corners height, corners width)
-CHECKER_WIDTH=0.0079248 #Width of each checker in the checkerboard
+CHECKER_WIDTH=0.0078232 #Width of each checker in the checkerboard
 
 
 RANSAC_SCENE_REPROJECTION_ERROR=0.005 #Reprojection error for scene localization RANSAC (in meters)
@@ -239,10 +239,10 @@ class CameraCalibGUI:
         e_y=image_center[1]-checkerboard_center[0][1]
         #Displaying the Checkerboard Center (red) and Camera Center (green)
         new_frame=frame
-        new_frame=cv2.circle(new_frame,(checkerboard_center[0][0],checkerboard_center[0][1]),3,(0,0,255),3)  #Drawing the checkerboard center
-        new_frame=cv2.circle(new_frame,(image_center[0],image_center[1]),ERROR_THRESHOLD,(0,255,0),2)  #Drawing the Camera Center
+        new_frame=cv2.circle(new_frame,(int(checkerboard_center[0][0]),int(checkerboard_center[0][1])),3,(0,0,255),3)  #Drawing the checkerboard center
+        new_frame=cv2.circle(new_frame,(int(image_center[0]),int(image_center[1])),ERROR_THRESHOLD,(0,255,0),2)  #Drawing the Camera Center
         cv2.imshow('Alignment Error', new_frame)
-        cv2.waitKey(500)
+        cv2.waitKey(100)
         return e_x,e_y
 
     def grabFramesCallback(self):
@@ -259,12 +259,13 @@ class CameraCalibGUI:
             if corners is not None:
                 e_x,e_y=self.findAxisErrors(self.frameLeft,corners)
                 err_mag=np.sqrt((e_x**2)+(e_y**2))
+                print("err_mag: "+str(err_mag))
             else:
                 print("Returned")
                 return  
 
         print("Aligned")
-
+        cv2.destroyWindow('Alignment Error')
         #Now we capture the frames for the camera calibration
         if not os.path.isdir(file_name_right):
             os.mkdir(file_name_right)
@@ -279,7 +280,7 @@ class CameraCalibGUI:
                 #print("motion: "+str(MOTIONS[j]))                
                 
                 ecm_pose_curr=self.ecm.measured_cp()
-                print("ECM Pose="+ecm_pose_curr.p)
+                print("ECM Pose="+str(ecm_pose_curr.p))
                 ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
                 ecm_pose_curr=ecm_pose_curr*pm.fromMatrix(MOTIONS[j])
                 self.ecm.move_cp(ecm_pose_curr).wait()

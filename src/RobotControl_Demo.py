@@ -10,11 +10,12 @@ import crtk
 if __name__ == '__main__':
     rospy.init_node('dvrk_arm_test', anonymous=True)
     print('testing arms')
-    psm1=dvrk.psm("PSM1")
-    print(psm1.enable())
-    print(psm1.home())
-    goal=psm1.setpoint_cp()
+    ecm=dvrk.ecm("ecm")
+    print(ecm.enable())
+    print(ecm.home())
+    goal=ecm.measured_cp()
+    print(goal)
     
-    goal.p[2]-=0.05
-    psm1.move_cp(goal).wait()
+    #goal.p[2]-=0.05
+    #psm1.move_cp(goal).wait()
     
