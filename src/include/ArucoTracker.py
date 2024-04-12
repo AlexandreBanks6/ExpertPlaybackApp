@@ -7,7 +7,7 @@ from include import utils
 
 #Note: We only track aruco markers for one camera for the scene "calibration" but need to track for both camera for the hand-eye calibration
 
-DEFAULT_CAMCALIB_DIR='../resources/Calib_Best/'
+DEFAULT_CAMCALIB_DIR='../resources/Calib/Calib_Best/'
 ARUCO_IDs=[4,5,6,7] #List containing the IDs of the aruco markers that we are tracking
 NUM_FRAME_DETECTIONS=8 #How many sets of aruco "frames" need to be detected, ToDo for later
 
@@ -231,5 +231,3 @@ class ArucoTracker:
 
         
     
-
-

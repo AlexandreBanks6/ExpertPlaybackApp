@@ -339,6 +339,8 @@ class Renderer:
         self.validation_trial_count=None
         self.csv_name=None
 
+        self.record_init=False #Keeps track if we have initialized recording
+
  
         ####Aruco Tracking Setup
         self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
@@ -658,6 +660,7 @@ class Renderer:
 
         self.joint_vars_psm1=[joint_vars_psm1[4],joint_vars_psm1[5],joint_vars_psm1[6],jaw_angle_psm1]
         self.joint_vars_psm3=[joint_vars_psm3[4],joint_vars_psm3[5],joint_vars_psm3[6],jaw_angle_psm3]
+
 
         ################Move Instruments if Playback is Pushed###############
         if self.render_on:

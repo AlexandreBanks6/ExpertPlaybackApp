@@ -33,7 +33,7 @@ ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
 ##MAX_ITERATIONS=40
 #Where the images for the calibration are saved
 
-CALIBRATION_DIR="../resources/Calib" #Where we store calibration parameters and images
+CALIBRATION_DIR="../resources/Calib/" #Where we store calibration parameters and images
 
 
 RIGHT_FRAMES_FILEDIR="/chessboard_images_right/"
@@ -641,7 +641,7 @@ class CameraCalibGUI:
             while True:
                 if os.path.isdir(root_directory):
                     folder_count_str=str(folder_count)
-                    root_directory=root_directory+folder_count_str
+                    root_directory=root_directory+'Calib_'+folder_count_str
                     folder_count+=1
                 else:
                     break
