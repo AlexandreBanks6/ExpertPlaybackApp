@@ -78,9 +78,9 @@ def rotationX(theta):
     return R
 
 
-z_translation=0.05 #Amount that we translate along z (2.5 centimeters)
+z_translation=0.005 #Amount that we translate along z (2.5 centimeters)
 Z_MOTION=[0,z_translation,z_translation*2]
-planar_translation=0.05 #Amount that we translate in plane parallel to endoscope
+planar_translation=0.005 #Amount that we translate in plane parallel to endoscope
 rotation_angle=2*(np.pi/180) #20 degrees in Rad
 
 #T1, no change
@@ -178,6 +178,7 @@ class CameraCalibGUI:
         print("Home: "+str(home_true))
 
 
+
         #Setting up PSM3
         self.psm3=dvrk.psm("PSM3")
         self.psm3.enable()
@@ -204,6 +205,7 @@ class CameraCalibGUI:
         self.mtx_left=None
         self.dst_right=None
         self.dist_left=None
+        rospy.sleep(1)
     
     def showFramesCallback(self):
 
@@ -274,15 +276,23 @@ class CameraCalibGUI:
         self.frame_number=0
         #We loop through and move the ECM, then take frames, we also get the ecm_T_psm3 transform
         self.ecm_T_psm1_list=[]
+        translation_sign=1
         for i in range(len(Z_MOTION)): #Loop for 3 z values
             for j in range(len(MOTIONS)): #Loop for motions in this plane
-                print("z motion: "+str(Z_MOTION[i]))
-                #print("motion: "+str(MOTIONS[j]))                
+                
                 
                 ecm_pose_curr=self.ecm.measured_cp()
-                print("ECM Pose="+str(ecm_pose_curr.p))
+                print("ECM Position="+str(ecm_pose_curr.p))
+                print("ECM Rotation="+str(ecm_pose_curr.M))
+
+                print("z motion: "+str(Z_MOTION[i]))
+                print("Tranform: "+str(MOTIONS[j]))
                 ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
-                ecm_pose_curr=ecm_pose_curr*pm.fromMatrix(MOTIONS[j])
+                motion_mat=pm.fromMatrix(MOTIONS[j])
+                ecm_pose_curr.p[0]+=translation_sign*motion_mat.p[0]
+                ecm_pose_curr.p[1]+=translation_sign*motion_mat.p[1]
+                translation_sign=-1*translation_sign
+                ecm_pose_curr.M=ecm_pose_curr.M*motion_mat.M
                 self.ecm.move_cp(ecm_pose_curr).wait()
                 rospy.sleep(1)                
                 cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
