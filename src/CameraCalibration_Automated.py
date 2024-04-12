@@ -12,6 +12,7 @@ from include import HandEye
 import dvrk
 import tf_conversions.posemath as pm
 import PyKDL
+from include import utils
 
 #####To Do: Add a functionality to calibrate using an ArUco board, also add functionality to change size of checkerboard
 
@@ -65,18 +66,6 @@ Repeat 3 times
 We define these as numpy frames, they are later converted to PyKDL frames
 
 '''
-def rotationZ(theta):
-    R=np.array([[np.cos(theta),-np.sin(theta),0],
-               [np.sin(theta),np.cos(theta),0],
-               [0,0,1]])
-    return R
-
-def rotationX(theta):
-    R=np.array([[1,0,0],
-               [0,np.cos(theta),-np.sin(theta)],
-               [0,np.sin(theta),np.cos(theta)]])
-    return R
-
 
 z_translation=0.005 #Amount that we translate along z (2.5 centimeters)
 Z_MOTION=[0,z_translation,z_translation*2]
@@ -87,27 +76,27 @@ rotation_angle=2*(np.pi/180) #20 degrees in Rad
 T1=np.identity(4)
 print("T1: "+str(T1))
 #T2 rotation about z positive
-Rz=rotationZ(rotation_angle)
-Rz=HandEye.EnforceOrthogonality(Rz)
+Rz=utils.rotationZ(rotation_angle)
+Rz=utils.EnforceOrthogonalityNumpy(Rz)
 T2=np.identity(4)
 T2[0:3,0:3]=Rz
 print("T2: "+str(T2))
 #T3 rotation about z negative
-Rz=rotationZ(-rotation_angle)
-Rz=HandEye.EnforceOrthogonality(Rz)
+Rz=utils.rotationZ(-rotation_angle)
+Rz=utils.EnforceOrthogonalityNumpy(Rz)
 T3=np.identity(4)
 T3[0:3,0:3]=Rz
 print("T3: "+str(T3))
 
 #T4 rotation about x positive
-Rx=rotationX(rotation_angle)
-Rx=HandEye.EnforceOrthogonality(Rx)
+Rx=utils.rotationX(rotation_angle)
+Rx=utils.EnforceOrthogonalityNumpy(Rx)
 T4=np.identity(4)
 T4[0:3,0:3]=Rx
 print("T2: "+str(T4))
 #T5 rotation about x negative
-Rx=rotationX(-rotation_angle)
-Rx=HandEye.EnforceOrthogonality(Rx)
+Rx=utils.rotationX(-rotation_angle)
+Rx=utils.EnforceOrthogonalityNumpy(Rx)
 T5=np.identity(4)
 T5[0:3,0:3]=Rx
 print("T3: "+str(T5))
@@ -587,7 +576,7 @@ class CameraCalibGUI:
 
                     #Convert rotation_vector and translation_vector to homogeneous transform
                     cam_T_scene=self.convertRvecTvectoHomo(rotation_vector,translation_vector)
-                    scene_T_cam=self.invHomogenous(cam_T_scene)
+                    scene_T_cam=utils.invHomogeneous(cam_T_scene)
                     
                     #Get the frame number to index the corresponding ecm_T_psm pose
                     #name,ext=filename.split('.')   #Splits off the name
@@ -666,17 +655,6 @@ class CameraCalibGUI:
         transform[0:3,3]=tvec
         return transform
     
-    def invHomogenous(self,transform):
-        #Function to take inverse of homogenous transform
-        R=transform[0:3,0:3]
-
-        R_trans=np.transpose(R)
-        d=transform[0:3,3]
-        neg_R_trans_d=-1*np.dot(R_trans,d)
-        inverted_transform=np.identity(4)
-        inverted_transform[0:3,0:3]=R_trans
-        inverted_transform[0:3,3]=neg_R_trans_d
-        return inverted_transform
 
 
 if __name__=='__main__':

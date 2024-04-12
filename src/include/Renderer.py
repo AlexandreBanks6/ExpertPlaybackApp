@@ -1,5 +1,3 @@
-import pygame as pg
-
 #Use GLFW instead of pygame as we can create multiple windows
 #from glfw.GLFW import *
 #from glfw import _GLFWwindow as GLFWwindow
@@ -15,6 +13,7 @@ from include import mesh
 from include import scene
 from include import ArucoTracker
 from include import HandEye
+from include import utils
 import glm
 import pyglet
 
@@ -48,6 +47,7 @@ import skimage
 import tf_conversions.posemath as pm
 import tf_conversions
 from sensor_msgs.msg import Joy
+import yaml
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
@@ -129,22 +129,6 @@ LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 CORNER_NUMBERS_STRING=['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15']
 MIN_NUMBER_FORHANDEYE=4 #Minimum Number of points for Hand-Eye Calibration
 
-#Standalone function to take inverse of homogeneous transform with glm
-def invHomogenous(transform):
-    #Function to take inverse of homogenous transform
-    R=glm.mat3(transform[0,0],transform[0,1],transform[0,2],
-                transform[1,0],transform[1,1],transform[1,2],
-                transform[2,0],transform[2,1],transform[2,2],)
-
-    R_trans=glm.transpose(R)
-
-    d=glm.vec3(transform[3,0],transform[3,1],transform[3,2])
-    neg_R_trans_d=-R_trans*d
-    inverted_transform=glm.mat4(glm.vec4(R_trans[0,0],R_trans[0,1],R_trans[0,2],0),
-                                glm.vec4(R_trans[1,0],R_trans[1,1],R_trans[1,2],0),
-                                glm.vec4(R_trans[2,0],R_trans[2,1],R_trans[2,2],0),
-                                glm.vec4(neg_R_trans_d,1))
-    return inverted_transform
 
 class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
@@ -278,119 +262,94 @@ class Renderer:
 
         self.bridge=CvBridge()
 
-        #####GUI Setup
+
+
+        ############GUI Setup##############
         self.gui_window=tk.Tk()
-        self.gui_window.title("Expert Playback App")
+        self.gui_window.title("dVRK Playback App")
 
-        self.gui_window.rowconfigure([0,1,2,3,4,5,6,7],weight=1)
+        self.gui_window.rowconfigure([0,1,2,3,4,5,6],weight=1)
         self.gui_window.columnconfigure([0,1,2],weight=1)
+        self.gui_window.minsize(300,100)
+
+        #Title at top
+        self.welcome_text=tk.Label(self.gui_window,text="Welcome to the dVRK Playback App")
+        self.welcome_text.grid(row=0,column=1,sticky='n')
+        #Show ArUco Button
+        self.aruco_button=tk.Button(self.gui_window,text="Show ArUco",command=self.arucoToggleCallback)
+        self.aruco_button.grid(row=1,column=1,sticky="nsew")
+
+        #Calibrate Scene Button
+        self.calibrate_scene_button=tk.Button(self.gui_window,text="Calibrate Scene",command=self.calibrateToggleCallback)
+        self.calibrate_scene_button.grid(row=2,column=0,sticky="nsew")
+
+        #Select PSM (to record/playback) Checkboxes
+        self.checkbox_PSM1=tk.Checkbutton(self.gui_window,text="PSM1",onvalue=1,offvalue=0,command=self.psm1Checkbox)
+        self.checkbox_PSM1.grid(row=2,column=1,sticky='nsew')
+
+        self.checkbox_PSM3=tk.Checkbutton(self.gui_window,text="PSM3",onvalue=1,offvalue=0,command=self.psm3Checkbox)
+        self.checkbox_PSM3.grid(row=2,column=2,sticky='nsew')
+
+        #Calibrate Gaze Button
+        self.calibrate_gaze_button=tk.Button(self.gui_window,text="Calibrate Gaze",command=self.calibrateGazeCallback)
+        self.calibrate_gaze_button.grid(row=3,column=0,sticky="nsew")
+
+        #Playback (render) Tools Button
+        self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.renderButtonPressCallback)
+        self.render_button.grid(row=3,column=1,sticky="nsew")
+
+        #Record Expert Motions Button
+        self.record_motions_button=tk.Button(self.gui_window,text="Record Motions",command=self.rocordMotionsPlayback)
+        self.record_motions_button.grid(row=4,column=0,sticky="nsew")
+
+        #Playback the ECM Motion Button (indicates on the screen arrows showing direction for ECM movement)
+        self.playback_ecm_button=tk.Button(self.gui_window,text="Playback ECM Motion",command=self.playbackECMCallback)
+        self.playback_ecm_button.grid(row=4,column=1,sticky="nsew")
+
+        #Message box to send text to the user
+        self.message_box = tk.Text(self.gui_window, height=10, width=80)
+        self.message_box.config(state='disabled')
+        self.message_box.grid(row=5, column=0, columnspan=3, sticky='nsew', padx=10, pady=10)
+        self.displayMessage("Ensure calibration parameters are in file: ../resources/Calib_Best/ \n \
+                            Also, motions will be played from the newest folder\n \
+                             ../resources/Motions/Motion_num where _num is the highest number directory in folder. \n \
+                            Make sure to change the number of the desired motions to the largest value")
+
+        #Button for NDI Validation
+        self.ndi_toggle_button=tk.Button(self.gui_window,text="Start NDI Tracker and Validate",command=self.ToggleTrackerCallback)
+        self.ndi_toggle_button.grid(row=6,column=0,sticky="nsew")
 
 
-        #Button to start/top aruco tracking
-        self.aruco_toggle_button=tk.Button(text="Start/Stop Aurco Tracking",width=20,command=self.arucoToggleCallback)
-        self.aruco_toggle_button.grid(row=0,column=0,sticky="nsew")
+
+        ##############Init Parameters###############
         
-        #Label to give number of points collected for hand-eye calibration
-        self.calibrate_scene_text=tk.Label(text="Perform Hand-Eye-Scene Calibration with right hand (collect ~8 points with no camera movement)",width=100)
-        self.calibrate_scene_text.grid(row=1,column=1,sticky='nsew')
-
-        #Drop down to indicate which corner we are touching
-        self.handeye_selected_corner=tk.StringVar()
-        self.handeye_dropdown=tk.OptionMenu(self.gui_window,self.handeye_selected_corner,*CORNER_NUMBERS_STRING)
-        self.handeye_dropdown.grid(row=2,column=0,sticky='nsew')
-
-        #Button to capture points for hand-eye calibration
-        self.handeye_point_button=tk.Button(text="Capture Point for Hand-Eye",width=20,command=self.capturePointCallback)
-        self.handeye_point_button.grid(row=2,column=1,sticky="nsew")
-
-        #Label to give number of points collected for hand-eye calibration
-        self.calibrate_scene_text=tk.Label(text="# Collected = 0",width=50)
-        self.calibrate_scene_text.grid(row=2,column=2,sticky='nsew')
-
-
-
-        #Button to "calibrate" the scene and perform hand-eye calibration (a.k.a. find the scene) => Press when camera is stable
-        self.calibrate_scene_button=tk.Button(text="Complete Hand-Eye and Scene Calibration",width=20,command=self.calibrateToggleCallback)
-        self.calibrate_scene_button.grid(row=3,column=0,sticky="nsew")
-
-       
-
-
-        #Button to start/stop Rendering
-        self.render_button=tk.Button(text="Start/Stop Rendering",width=20,command=self.renderButtonPressCallback)
-        self.render_button.grid(row=4,column=0,sticky="nsew")
-
-        #CheckButtons to Render PSM1 and PSM2 
-        self.checkbox_PSM1=tk.Checkbutton(text="PSM1",width=10,onvalue=1,offvalue=0,command=self.psm1Checkbox)
-        self.checkbox_PSM1.grid(row=4,column=1,sticky='nsew')
-
-        self.checkbox_PSM3=tk.Checkbutton(text="PSM3",width=10,onvalue=1,offvalue=0,command=self.psm3Checkbox)
-        self.checkbox_PSM3.grid(row=4,column=2,sticky='nsew')
-
-
-        #Button to start ndi tracker
-        self.ndi_toggle_button=tk.Button(text="Start NDI Tracker",width=20,command=self.ToggleTrackerCallback)
-        self.ndi_toggle_button.grid(row=5,column=0,sticky="nsew")
-
-        #Label to show that the tracker is running
-        self.ndi_toggle_text=tk.Label(text="NDI Tracker Is Off",width=20)
-        self.ndi_toggle_text.grid(row=5,column=1,sticky='nsew')
-
-        #Button to start teleoperation
-        self.teleop_button=tk.Button(text="Start/Stop Teleoperation",width=20,command=self.teleopButtonCallback)
-        self.teleop_button.grid(row=6,column=0,sticky="nsew")
-
-        self.teleop_lockout_checkbox=tk.Checkbutton(text="Lock Wrist",width=10,onvalue=1,offvalue=0,command=self.teleopLockoutCallback)
-        self.teleop_lockout_checkbox.grid(row=6,column=1,sticky='nsew')
-
-        #Button to run ndi tracking validation
-        #self.validation_start=tk.Button(text="Run NDI Validation",width=20,command=self.ValidationCallback)
-        #self.validation_start.grid(row=4,column=0,sticky="nsew")
-
-
-        #Label for validation
-        #self.validation_text=tk.Label(text="",width=20)
-        #self.validation_text.grid(row=4,column=1,sticky='nsew')
-
-        self.render_on=False
         self.aruco_on=False #Whether we show and update aruco poses
         self.calibrate_on=False
-        self.capture_point_toggle=False
+        #Selecting PSM buttons
+        self.PSM1_on=False
+        self.PSM3_on=False
 
-        self.teleop_on=False
-        self.teleop_init=False #Checks whether teleoperation has started
-
-        self.teleop_folow_init=False
-        self.teleop_lockout=False #Whether we lockout wrist or not
-
-        self.clutch_val=0
-        self.camera_val=0
-
-
-        self.num_points_capture=0 #The number of points we have captured for hand-eye-scene calibration
-
+        self.calib_gaze_on=False
+        self.render_on=False
+        self.record_motions_on=False
+        self.playback_ecm_on=False
 
         #Params for validating the calibration
         self.NDI_TrackerToggle=False #Whether the NDI tracker is on and we want to validate, validation is started with the calibration button
         self.validation_trial_count=None
         self.csv_name=None
-        #self.Pose_Validation=False
 
-        #Selecting PSM buttons
-        self.PSM1_on=False
-        self.PSM3_on=False
-
-
+ 
         ####Aruco Tracking Setup
         self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
         self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
 
 
         #################dVRK API Config###################
-        self.psm1=dvrk.psm("PSM1")#Mapped to left hand
+        self.psm1=dvrk.psm("PSM1") #Mapped to left hand
         self.psm3=dvrk.psm("PSM3") #Mapped to right hand
-        self.mtml=dvrk.mtm("MTML")
-        self.mtmr=dvrk.mtm("MTMR")
+
+        self.ecm=dvrk.ecm("ECM")
 
         #Enabling and Homing
         self.psm1.enable()
@@ -399,67 +358,120 @@ class Renderer:
         self.psm3.enable()
         self.psm3.home()
 
-        self.mtml=dvrk.mtm("MTML")
-        self.mtmr=dvrk.mtm("MTMR")
+        self.ecm.enable()
+        self.ecm.home()
+        rospy.sleep(1)
 
-        self.mtml.enable()
-        self.mtml.home()
-        self.mtmr.enable()
-        self.mtmr.home()
 
 
         #################Frame Transformations#####################
-        
-        self.world_base=glm.mat4() #This is the world base frame (set to be the corner of scene)
+
+        #Recorded Value for PSMs with respect to base frame (si)
+        self.si_T_psm3_recorded=None
+        self.si_T_psm1_recorded=None
+
+        ####Recorded Value for ECM w.r.t. base frame (si)
+        self.si_T_ecm_recorded=None
+
+        #####Current Values (updated every loop, or pre-defined)
         self.si_T_lci=None #The left camera w.r.t. scene base frame (calibrated origin)
         self.si_T_rci=None #The right camera w.r.t. scene base frame (calibrated origin)
 
+        self.lc_T_ecm=None #left hand-eye
+        self.rc_T_ecm=None #right hand-eye
 
-        #self.lci_T_si=None #Scene base frame w.r.t. to left camera
-        #self.rvec_scene=None #How PnP returns rotation (for printing coordinate to scene)
-        #self.tvec_scene=None #How PnP returns translation (for printing coordinate to scene)
-
-        self.lc_T_e=None #Hand-eye calibration for left camera to endoscope
-        self.rc_T_e=None #Hand-eye calibraiton for right camera to endoscope
-
-        self.si_T_e=None #World base to endoscope base
-
-        self.ei_T_e=glm.mat4() #Transform between initial endoscope position and current position
-
-        #Camera pose:
-        self.cam_left_pose=None
-        self.cam_right_pose=None
-
-        ####Teleoperation Transforms:
-        self.orientation_offset_mtml=None
-        self.orientation_offset_mtmr=None
-
-        #Used at the start of follow mode
-        self.display_T_mtml_ini=None
-        self.display_T_mtmr_ini=None
-        self.ecm_T_psm1_ini=None
-        self.ecm_T_psm3_ini=None
+        self.ecmini_T_ecm=None #current ecm pose w.r.t. initial ecm pose
 
 
-        #Object Points for Hand-Eye Calibration
-        self.corner_points_handeye=[] #By adding this to initial corner is essentially the translation
-        self.robot_points_handeye=[]
+        #####Initial ECM Pose
+        self.ecm_init_pose=None
+
+        #####PSM w.r.t. ECM
+        self.ecm_T_psm1=None
+        self.ecm_T_psm3=None
+
+        #####Joint Variables (for recording)
+        self.joint_vars_psm1=None
+        self.joint_vars_psm3=None
+        self.joint_vars_psm1_recorded=None
+        self.joint_vars_psm3_recorded=None
 
         
-    def teleopLockoutCallback(self):
-        self.teleop_lockout=not self.teleop_lockout
-    def teleopButtonCallback(self):
-        self.teleop_on=not self.teleop_on
-        self.teleop_init=False
+        ###Getting hand-eye calibration matrices
+        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_right/hand_eye_calibration_right.yaml','r') as file:
+            right_handeye=yaml.load(file)
 
-    def capturePointCallback(self):
-        self.capture_point_toggle=not self.capture_point_toggle
+        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_left/hand_eye_calibration_left.yaml','r') as file:
+            left_handeye=yaml.load(file)
+
+        self.lc_T_ecm=left_handeye['leftcam_T_ecm']
+        self.lc_T_ecm=np.array(self.lc_T_ecm,dtype='float32')
+
+        self.rc_T_ecm=right_handeye['rightcam_T_ecm']
+        self.rc_T_ecm=np.array(self.rc_T_ecm,dtype='float32')
+
+
+        ##Getting current ecm pose
+        ecm_pose=self.ecm.measured_cp()
+        ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
+        ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
+        self.ecm_init_pose=ecm_pose
+
+    def displayMessage(self,message):
+        #function to insert messages in the text box
+        self.message_box.config(state='normal')
+        self.message_box.delete("1.0",tk.END)
+
+        self.message_box.insert(tk.END, message + "\n")
+        self.message_box.see(tk.END)
+
+        self.message_box.config(state='disabled')
+
+
+    def arucoToggleCallback(self):
+        self.aruco_on=not self.aruco_on
+
+
+    def calibrateToggleCallback(self):
+        self.calibrate_on=not self.calibrate_on
+        self.aruco_tracker_left.calibrate_done=False
+        self.aruco_tracker_right.calibrate_done=False
+
+
+        if self.NDI_TrackerToggle and self.calibrate_on: #We want to validate the pose estimates
+
+            if not os.path.isfile(self.csv_name):
+                self.validation_trial_count=1
+                with open(self.csv_name,'w',newline='') as file_object:
+                    writer_object=csv.writer(file_object)
+                    writer_object.writerow(["Timestamp","Trial #","NDI_Tracker",\
+                                            "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
+                                            "Visual_Tracking","Tx","Ty","Tz","Q0","Qx","Qy","Qz"])
+                    file_object.close()
+            else:
+                self.validation_trial_count+=1
+                with open(self.csv_name,'a',newline='') as file_object:
+                    writer_object=csv.writer(file_object)
+                    writer_object.writerow("\n")
+                    file_object.close()
+
     def psm1Checkbox(self):
         self.PSM1_on=not self.PSM1_on
 
     def psm3Checkbox(self):
         self.PSM3_on=not self.PSM3_on
 
+    def calibrateGazeCallback(self):
+        self.calib_gaze_on=not self.calib_gaze_on
+
+    def renderButtonPressCallback(self):
+        self.render_on=not self.render_on
+
+    def rocordMotionsPlayback(self):
+        self.record_motions_on=not self.record_motions_on
+
+    def playbackECMCallback(self):
+        self.playback_ecm_on=not self.playback_ecm_on
 
     def ToggleTrackerCallback(self):
         if not self.NDI_TrackerToggle: #Tracker is not running, so we toggle on
@@ -488,67 +500,13 @@ class Renderer:
 
 
         self.NDI_TrackerToggle=not self.NDI_TrackerToggle
-    '''
-    def ValidationCallback(self):
-        #Initialize the csv if it does not exist
-        if not os.path.isfile(PATH_TO_VALIDATION_CSV):
-            self.validation_trial_count=1
-            with open(PATH_TO_VALIDATION_CSV,'w',newline='') as file_object:
-                writer_object=csv.writer(file_object)
-                writer_object.writerow(["Timestamp","Trial #","NDI_Tracker",\
-                                        "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
-                                        "Visual_Tracking","Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality"])
-        else:
-            self.validation_trial_count+=1
-            with open(PATH_TO_VALIDATION_CSV,'a',newline='') as file_object:
-                writer_object=csv.writer(file_object)
-                writer_object.writerow("\n")
 
-        
-        self.Pose_Validation=not self.Pose_Validation
-        self.validation_text.config(text='Validation Started')
-    '''
+    def frameCallbackRight(self,data):
+        self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
 
-    def calibrateToggleCallback(self):
-        self.calibrate_on=not self.calibrate_on
-        self.aruco_tracker_left.calibrate_done=False
-        self.aruco_tracker_right.calibrate_done=False
+    def frameCallbackLeft(self,data):        
+        self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
 
-
-        if self.NDI_TrackerToggle and self.calibrate_on: #We want to validate the pose estimates
-
-            if not os.path.isfile(self.csv_name):
-                self.validation_trial_count=1
-                with open(self.csv_name,'w',newline='') as file_object:
-                    writer_object=csv.writer(file_object)
-                    writer_object.writerow(["Timestamp","Trial #","NDI_Tracker",\
-                                            "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
-                                            "Visual_Tracking","Tx","Ty","Tz","Q0","Qx","Qy","Qz"])
-                    file_object.close()
-            else:
-                self.validation_trial_count+=1
-                with open(self.csv_name,'a',newline='') as file_object:
-                    writer_object=csv.writer(file_object)
-                    writer_object.writerow("\n")
-                    file_object.close()
-
-
-    def arucoToggleCallback(self):
-        self.aruco_on=not self.aruco_on
-    
-    def renderButtonPressCallback(self):
-        self.render_on=not self.render_on
-
-    def clutchPedalCallback(self,data):
-        if self.teleop_on:
-            self.clutch_val=int(data.buttons[0])
-
-            print("Clutch Val: "+str(self.clutch_val))
-
-    def cameraPedalCallback(self,data):
-        if self.teleop_on:
-            self.camera_val=int(data.buttons[0])
-            print("Camera Val: "+str(self.camera_val))
     def get_program_background(self,shader_program_name):
         try:
             print("Shader Entered")
@@ -645,8 +603,6 @@ class Renderer:
         if symbol==key.E:
             self.key_dict['E']=False
 
-
-
     def check_events(self):
         #if(glfwGetKey(self.window1,GLFW_KEY_ESCAPE)==GLFW_PRESS):
          #   glfwTerminate()
@@ -669,177 +625,58 @@ class Renderer:
         pykdl_frame_new=pm.fromMatrix(pykdl_frame_new)
         return pykdl_frame_new
 
+
+
     def render(self,dt):
-
-        #################Teleoperation#####################
-
-        if self.teleop_on:  #Teleoperation On
-
-            #############Aligning the MTMs############
-            if not self.teleop_init: 
-
-                self.teleop_init=True
-                #We set position of MTML equal to its position, and the orientation of MTML=PSM1
-                #We set position of MTMR equal to its position, and the orientation of MTMR=PSM3
-
-                #PSMs w.r.t. ECMs
-                ecm_T_psm1=self.psm1.setpoint_cp()
-
-                ecm_T_psm3=self.psm3.setpoint_cp()
-
-                #MTMs w.r.t. display
-
-                display_T_mtml=self.mtml.measured_cp()
-                display_T_mtmr=self.mtmr.measured_cp()
-
-
-                #Moving the MTMs 
-
-                ecm_T_psm1=self.enforceOrthogonalPyKDL(ecm_T_psm1)
-                ecm_T_psm3=self.enforceOrthogonalPyKDL(ecm_T_psm3)
-
-
-                display_T_mtml.M=ecm_T_psm1.M
-                display_T_mtmr.M=ecm_T_psm3.M
-
-                self.mtml.move_cp(display_T_mtml).wait()
-                self.mtmr.move_cp(display_T_mtmr).wait()
-
-                self.orientation_offset_mtml=self.mtml.measured_cp().M.Inverse()*ecm_T_psm1.M                
-                self.orientation_offset_mtmr=self.mtmr.measured_cp().M.Inverse()*ecm_T_psm3.M
-                print("Initialized Teleoperation")
-                #alignment_offset_angle, _ = self.orientation_offset_mtml.GetRotAngle()
-
-                #print("offset angle: "+str(alignment_offset_angle * (180/np.pi)))
-            else: 
-                
-                if self.clutch_val==1:
-                    ########Clutch Mode############
-                    zero_wrench=np.array([0.0,0.0,0.0,0.0,0.0,0.0])
-                    self.mtml.body.servo_cf(zero_wrench)
-                    self.mtmr.body.servo_cf(zero_wrench)
-                    print("Entered Clutching")
-                    '''
-                    ecm_T_psm1=self.psm1.setpoint_cp()
-                    ecm_T_psm3=self.psm3.setpoint_cp()
-                    display_T_mtml=self.mtml.measured_cp()
-                    display_T_mtmr=self.mtmr.measured_cp()
-                    ecm_T_psm1=self.enforceOrthogonalPyKDL(ecm_T_psm1)
-                    ecm_T_psm3=self.enforceOrthogonalPyKDL(ecm_T_psm3)
-
-                    display_T_mtml.M=ecm_T_psm1.M*self.orientation_offset_mtml.Inverse()
-                    display_T_mtmr.M=ecm_T_psm3.M*self.orientation_offset_mtmr.Inverse()
-
-                    self.mtml.move_cp(display_T_mtml).wait()
-                    self.mtmr.move_cp(display_T_mtmr).wait()
-                    '''                
-                else:
-
-
-                    #########Follow Mode###########
-
-                    if not self.teleop_folow_init: #We are starting follow mode
-                        self.teleop_folow_init=True
-                        
-                        #Set gravity compensation and "free" the joints:
-                        zero_wrench=np.array([0.0,0.0,0.0,0.0,0.0,0.0])
-                        self.mtml.use_gravity_compensation(True)
-                        self.mtmr.use_gravity_compensation(True)
-                        self.mtml.body.servo_cf(zero_wrench)
-                        self.mtmr.body.servo_cf(zero_wrench)
-
-                        #Get the MTM and PSM pose
-                        self.display_T_mtml_ini=self.mtml.measured_cp()
-                        self.display_T_mtmr_ini=self.mtmr.measured_cp()
-                        self.ecm_T_psm1_ini=self.psm1.setpoint_cp()
-                        self.ecm_T_psm3_ini=self.psm3.setpoint_cp()
-                        print("Folow Mode Init Done")
-                    else:
-                        #Follow mode on each iteration
-                        display_T_mtml_new=self.mtml.setpoint_cp()
-                        display_T_mtmr_new=self.mtmr.setpoint_cp()
-
-                        mtml_jaw_angle=self.mtml.gripper.measured_js()
-                        mtmr_jaw_angle=self.mtmr.gripper.measured_js()
-
-
-                        ecm_T_psm1_next=self.ecm_T_psm1_ini
-                        ecm_T_psm3_next=self.ecm_T_psm3_ini
-
-                        mtmlInit_T_mtmlNew=display_T_mtml_new
-                        mtmrInit_T_mtmrNew=display_T_mtmr_new
-
-                        #Orientation Control
-                        #How much we have moved the mtm's orientation
-                        mtmlInit_T_mtmlNew.M=display_T_mtml_new.M*(self.display_T_mtml_ini.M.Inverse())
-                        mtmrInit_T_mtmrNew.M=display_T_mtmr_new.M*(self.display_T_mtmr_ini.M.Inverse())
-                        test=pm.Quaternion()
-                        
-                        #mtmlInit_T_mtmlNew.M=(self.display_T_mtml_ini.M.Inverse())*display_T_mtml_new.M
-                        #mtmrInit_T_mtmrNew.M=(self.display_T_mtmr_ini.M.Inverse())*display_T_mtmr_new.M
-
-                        rot_angle, _ = mtmlInit_T_mtmlNew.M.GetRotAngle()
-                        print("Rotation Change " + str(rot_angle))
-
-                        ecm_T_psm1_next.M=mtmlInit_T_mtmlNew.M*self.ecm_T_psm1_ini.M #*self.orientation_offset_mtml
-                        ecm_T_psm3_next.M=mtmrInit_T_mtmrNew.M*self.ecm_T_psm3_ini.M #*self.orientation_offset_mtmr
-                        #ecm_T_psm1_next.M=display_T_mtml_new.M*self.orientation_offset_mtml
-                        #ecm_T_psm3_next.M=display_T_mtmr_new.M*self.orientation_offset_mtmr
-                        #Position Control
-                        mtml_translation=display_T_mtml_new.p-self.display_T_mtml_ini.p
-                        mtmr_translation=display_T_mtmr_new.p-self.display_T_mtmr_ini.p
-
-
-                        ecm_T_psm1_next.p=PSM_SCALE_FACTOR*mtml_translation+self.ecm_T_psm1_ini.p
-                        ecm_T_psm3_next.p=PSM_SCALE_FACTOR*mtmr_translation+self.ecm_T_psm3_ini.p
-
-                        #Moving 
-                        #ecm_T_psm1_next=self.enforceOrthogonalPyKDL(ecm_T_psm1_next)
-                        #ecm_T_psm3_next=self.enforceOrthogonalPyKDL(ecm_T_psm3_next)
-                        self.psm1.servo_cp(ecm_T_psm1_next)
-                        self.psm1.jaw.servo_jp(np.array(mtml_jaw_angle[0]))
-                        self.psm3.servo_cp(ecm_T_psm3_next)
-                        self.psm3.jaw.servo_jp(np.array(mtmr_jaw_angle[0]))
-                        print("Folow Mode")
-                        
-
-                        #Updating mtml and psm poses
-                        self.display_T_mtml_ini=display_T_mtml_new
-                        self.display_T_mtmr_ini=display_T_mtmr_new
-
-                        self.ecm_T_psm1_ini=ecm_T_psm1_next
-                        self.ecm_T_psm3_ini=ecm_T_psm3_next
-                        #rospy.sleep(0.01)
-                        
-
-
-
-
-
-
 
         self.move_rads+=0.01
 
         #Get Time
         self.get_time() 
 
-        ################Move Instruments
-        if self.PSM1_on:
-            #PSM1:
-            self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,self.move_rads],start_pose,'PSM1')
-        if self.PSM3_on:
-            #PSM3:
-            self.instrument_kinematics([glm.pi()/3,glm.pi()/3,glm.pi()/3,self.move_rads*2],start_pose2,'PSM3')
 
-        self.move_objects() 
+        #Maybe move these commands under if statements in next block
+        #Getting Current Poses (ecmini_T_ecm = curr ecm w.r.t. initial ecm), ecm_T_psm1=psm1 w.r.t. ecm, ecm_T_psm3 = psm3 w.r.t. ecm
+        ecm_pose=self.ecm.measured_cp()
+        ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
+        ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
+        self.ecmini_T_ecm=glm.transpose(self.ecm_init_pose)*ecm_pose
+
+        psm1_pose=self.psm1.measured_cp()
+        psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
+        self.ecm_T_psm1=utils.convertPyDK_To_GLM(psm1_pose)
+        
+        psm3_pose=self.psm3.measured_cp()
+        psm3_pose=utils.enforceOrthogonalPyKDL(psm3_pose)
+        self.ecm_T_psm3=utils.convertPyDK_To_GLM(psm3_pose)
+
+        #Get joint positions
+        joint_vars_psm1=self.psm1.measured_jp()
+        jaw_angle_psm1=self.psm1.gripper.measured_jp()
+        joint_vars_psm3=self.psm3.measured_js()
+        jaw_angle_psm3=self.psm3.gripper.measured_jp()
+
+        self.joint_vars_psm1=[joint_vars_psm1[4],joint_vars_psm1[5],joint_vars_psm1[6],jaw_angle_psm1]
+        self.joint_vars_psm3=[joint_vars_psm3[4],joint_vars_psm3[5],joint_vars_psm3[6],jaw_angle_psm3]
+
+        ################Move Instruments if Playback is Pushed###############
+        if self.render_on:
+            if self.PSM1_on:
+                #PSM1:
+                self.instrument_kinematics(self.joint_vars_psm1_recorded,start_pose,'PSM1')
+            if self.PSM3_on:
+                #PSM3:
+                self.instrument_kinematics(self.joint_vars_psm3_recorded,start_pose2,'PSM3')
+
+            self.move_objects() 
         
 
 
-        ####Render Left Window
-        self.window_left.switch_to()       
-        self.ctx_left.clear()
+        ###########################Render Left Window##########################
+        self.window_left.switch_to()       #Switch to left window
+        self.ctx_left.clear()              #Switch to left context
 
-        #Updating Background Image
+        ####Updating Background Image
         if self.frame_left is not None:
             self.ctx_left.disable(mgl.DEPTH_TEST)
             #background_image_left=Image.open('textures/Sunflower.jpg').transpose(Image.FLIP_TOP_BOTTOM)
@@ -847,56 +684,19 @@ class Renderer:
             if self.aruco_on:
                 self.frame_left_converted=self.aruco_tracker_left.arucoTrackingScene(self.frame_left)
 
-                if self.capture_point_toggle: 
-                    self.capture_point_toggle=False
-                    corner_number=int(self.handeye_selected_corner.get())
-                    corner_point=self.aruco_tracker_left.returnObjectPointForHandeye(corner_number)
-                    if corner_point:
-                        self.num_points_capture+=1
-                        self.corner_points_handeye.append(corner_point)   
-                        #Get point of PSM1 from da Vinci API
-                        tool_pose=self.psm1.measured_cp()
-                        tool_pose.p=tool_pose.p+tool_tip_translation
-                        tool_point=[tool_pose.p.x(),tool_pose.p.y(),tool_pose.p.z()]
-                        self.robot_points_handeye.append(tool_point)
+                #If Scene Calibration is On
+                if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame 
 
-                        print("tool point: "+str(tool_pose.p))
-                        
-                        print("corner point list: "+str(self.corner_points_handeye))
-                        print("tool point list: "+str(self.robot_points_handeye))
+                    self.si_T_lci=None
+                    self.aruco_tracker_left.calibrateScene()
+                    self.si_T_lci=self.aruco_tracker_left.si_T_ci
 
-
-                        self.calibrate_scene_text.config(text="# Collected = "+str(self.num_points_capture))
-                    else:
-                        print("Requested Corner Not In View")
-                    #Capture Points for Hand-Eye-Scene Calibration (capture point in endoscope coord system and in scene coord system)
-                    #These points are for both left and right cameras (doesn't matter because it is for robot)
-
-                
-                if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame
-                    if self.num_points_capture>=MIN_NUMBER_FORHANDEYE:
-                        
-                        self.si_T_lci=None
-                        self.aruco_tracker_left.calibrateScene()
-                        self.si_T_lci=self.aruco_tracker_left.si_T_ci
-
-                        #Writing to CSV For Validation
-                        if self.NDI_TrackerToggle:
-                            NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
-                            self.writeToNDIVal(NDI_dat)
-                    else:
-                        print("Not Enough Points for Hand-Eye-Scene Calibration, collect more")
+                    #Writing to CSV For Validation
+                    if self.NDI_TrackerToggle:
+                        NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
+                        self.writeToNDIVal(NDI_dat)
       
-                if self.si_T_lci is not None: #We Perform Hand-Eye Calibration and show the scene coord system for left camera
-                    
-                    #First find scene to endoscope base transform (si_T_e) by solving a RANSAC registration
-                    src=np.array(self.corner_points_handeye)
-                    dst=np.array(self.robot_points_handeye)
-
-                    model_robust,inliers=skimage.measure.ransac((src,dst),skimage.transform.AffineTransform,\
-                                                                min_samples=3,residual_threshold=2,max_trials=100)
-                    
-                    
+                if self.si_T_lci is not None: #We show scene coord system                      
                     
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
                                       self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
@@ -913,11 +713,11 @@ class Renderer:
             self.vertex_array_left.render()
             self.ctx_left.enable(mgl.DEPTH_TEST)
 
-        #Rendering Left Instruments
+        ######Rendering Left Screen Instruments
         if self.render_on:
             self.camera_left.update(None) 
-            #self.cam_left_pose=self.world_base*self.si_T_lci*self.lc_T_e*self.ei_T_e*glm.transpose(self.lc_T_e)
-            #self.camera_left.update(self.cam_left_pose)
+            cam_left_pose=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*glm.transpose(self.lc_T_ecm)
+            self.camera_left.update(cam_left_pose)
             #self.scene.render(self.ctx_left)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_left)
@@ -925,31 +725,26 @@ class Renderer:
                 self.scene_PSM3.render(self.ctx_left)
                 
         
-        #########Render the Right Window
+        ###########################Render the Right Window##########################
         self.window_right.switch_to()
         self.ctx_right.clear()
 
-        #Updating Background Image
+        ######Updating Background Image
         if self.frame_right is not None:
             self.ctx_right.disable(mgl.DEPTH_TEST)
-            
+
             if self.aruco_on:
                 self.frame_right_converted=self.aruco_tracker_right.arucoTrackingScene(self.frame_right)                
+                
+                #If Scene Calibration is On
                 if self.calibrate_on and (not self.aruco_tracker_right.calibrate_done): #Sets Scene Base Frame
-                    if self.num_points_capture>=MIN_NUMBER_FORHANDEYE:
-                        self.si_T_rci=None
-                        self.aruco_tracker_right.calibrateScene()
-                        self.si_T_rci=self.aruco_tracker_right.si_T_ci
 
-                    else:
-                        print("Not Enough Points for Hand-Eye-Scene Calibration, collect more")
-      
-                if (self.si_T_rci is not None) and (self.si_T_rci is not None): #We Perform Hand-Eye Calibration and show the scene coord system for right camera
-                    
-                    
-                    
-                    
-                    
+                    self.si_T_rci=None
+                    self.aruco_tracker_right.calibrateScene()
+                    self.si_T_rci=self.aruco_tracker_right.si_T_ci
+
+                if self.si_T_rci is not None:
+
                     cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                       self.aruco_tracker_right.dist,self.aruco_tracker_right.rvec_scene,self.aruco_tracker_right.tvec_scene,0.05) #Look at rvec and tvec, look at frame_right_converted, look at calibrate on
                   
@@ -964,28 +759,21 @@ class Renderer:
             self.vertex_array_right.render()
             self.ctx_right.enable(mgl.DEPTH_TEST)
 
+        
+        #Render the right screen 
+
         if self.render_on:
             self.camera_right.update(None)
-            #self.cam_right_pose=self.world_base*self.si_T_rci*self.rc_T_e*self.ei_T_e*glm.transpose(self.rc_T_e)
-            #                            self.camera_left.update(self.cam_left_pose)
+            cam_right_pose=self.si_T_rci*self.rc_T_ecm*self.ecmini_T_ecm*glm.transpose(self.rc_T_ecm)
+            self.camera_left.update(cam_right_pose)
             #self.scene.render(self.ctx_right)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_right)
             if self.PSM3_on:
                 self.scene_PSM3.render(self.ctx_right)
 
-        
-        #Resestting hand-eye variables:
-        if self.aruco_tracker_right.calibrate_done and self.aruco_tracker_left.calibrate_done:
-            self.num_points_capture=0
-            self.calibrate_scene_text.config(text="# Collected = "+str(self.num_points_capture))
-            self.corner_points_handeye=[]
-            self.robot_points_handeye=[]
-            self.aruco_tracker_left.calibrate_done=False
-            self.aruco_tracker_right.calibrate_done=False
-
-            
-        ####Gui Updates
+                   
+        ####Updates Gui
 
         self.gui_window.update()
 
@@ -1146,14 +934,6 @@ class Renderer:
                          glm.vec4(0,0,0,1))
         return rot_mat    
 
-    def frameCallbackRight(self,data):
-        self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-
-    def frameCallbackLeft(self,data):
-        
-        self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-        #cv2.imshow('Frame Callback',self.frame_left)
-        #cv2.waitKey(1)
 
 
     

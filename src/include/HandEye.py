@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from scipy.spatial.transform import Rotation
+from include import utils
 
 
 class HandEye:
@@ -93,7 +93,7 @@ class HandEye:
 
         a_plus_b=np.add(a_bar,b_bar)
         a_minus_b=np.subtract(a_bar,b_bar)
-        bottom_right=np.add(self.SkewSymmetricMatrix(a_plus_b),(a0-b0)*np.identity(3))
+        bottom_right=np.add(utils.SkewSymmetricMatrix(a_plus_b),(a0-b0)*np.identity(3))
 
         K_mat=np.zeros((4,4))
 
@@ -117,7 +117,7 @@ class HandEye:
         tA=A[0:3,3] #Translation of A
         
         #Enforce orthogonality
-        RA=EnforceOrthogonality(RA)
+        RA=utils.EnforceOrthogonalityNumpy(RA)
         #########Find the real part of the dual quaternion
 
         #Extract axis and angle of rotation (we use eigenvector/eigenvalue decomposition)
@@ -145,7 +145,7 @@ class HandEye:
             print("Not a Rotation Matrix")
             return None,None
         
-        
+
 ##############Maybe use this method instead
         '''
 def homogeneous_to_dual_quat(transform):
@@ -171,34 +171,6 @@ def homogeneous_to_dual_quat(transform):
         '''
         
 
-    def SkewSymmetricMatrix(self,v):
-        #Takes the skew symmetric matrix of a vector
-        skew_mat=np.array([[0,-v[2],v[1]],
-                          [v[2],0,-v[0]],
-                          [-v[1],v[0],0]])       
-        
-        return skew_mat
-
-
-
-def EnforceOrthogonality(R):
-    #Function which enforces a rotation matrix to be orthogonal
-    #R is a 3x3 numpy array
-
-    #Extracting columns of rotation matrix
-    x=R[:,0] 
-    y=R[:,1]
-    z=R[:,2]
-    diff_err=np.dot(x,y)
-    x_orth=x-(0.5*diff_err*y)
-    y_orth=y-(0.5*diff_err*x)
-    z_orth=np.cross(x_orth,y_orth)
-    x_norm=0.5*(3-np.dot(x_orth,x_orth))*x_orth
-    y_norm=0.5*(3-np.dot(y_orth,y_orth))*y_orth
-    z_norm=0.5*(3-np.dot(z_orth,z_orth))*z_orth
-    R_new=np.column_stack((x_norm,y_norm,z_norm))
-
-    return R_new
 
 
     
