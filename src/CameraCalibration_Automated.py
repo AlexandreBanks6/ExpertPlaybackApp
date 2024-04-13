@@ -43,6 +43,9 @@ LEFT_FRAMES_FILEDIR="/chessboard_images_left/"
 RIGHT_CAMERA_CALIB_DIR="/calibration_params_right/"
 LEFT_CAMERA_CALIB_DIR="/calibration_params_left/"
 
+#Where we store the base_T_ecm poses
+BASE_TO_ECM_DIR="/base_T_ecm_poses/"
+
 #Ros Topics
 RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
@@ -67,7 +70,7 @@ We define these as numpy frames, they are later converted to PyKDL frames
 
 '''
 
-z_translation=0.005 #Amount that we translate along z (2.5 centimeters)
+z_translation=0.005 #Amount that we translate along z (1.5 centimeters)
 Z_MOTION=[0,z_translation,z_translation*2]
 planar_translation=0.005 #Amount that we translate in plane parallel to endoscope
 rotation_angle=2*(np.pi/180) #20 degrees in Rad
@@ -89,13 +92,13 @@ T3[0:3,0:3]=Rz
 print("T3: "+str(T3))
 
 #T4 rotation about x positive
-Rx=utils.rotationX(rotation_angle)
+Rx=utils.rotationX(rotation_angle/2)
 Rx=utils.EnforceOrthogonalityNumpy(Rx)
 T4=np.identity(4)
 T4[0:3,0:3]=Rx
 print("T2: "+str(T4))
 #T5 rotation about x negative
-Rx=utils.rotationX(-rotation_angle)
+Rx=utils.rotationX(-rotation_angle/2)
 Rx=utils.EnforceOrthogonalityNumpy(Rx)
 T5=np.identity(4)
 T5[0:3,0:3]=Rx
@@ -111,6 +114,7 @@ T7[1,3]=planar_translation
 print("T5: "+str(T7))
 MOTIONS=[T1,T2,T3,T4,T5,T6,T7]
 
+NUM_FRAMES_CAPTURED=21 #We capture 21 frames
 
 class CameraCalibGUI:
 
@@ -168,12 +172,6 @@ class CameraCalibGUI:
 
 
 
-        #Setting up PSM3
-        self.psm3=dvrk.psm("PSM3")
-        self.psm3.enable()
-        self.psm3.home()
-
-
         #Checkerboard subpix criteria:
         self.criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
@@ -182,19 +180,22 @@ class CameraCalibGUI:
         #Window where we display the left/right frames:
         cv2.namedWindow("Left/Right Frames",cv2.WINDOW_NORMAL)
         
-        self.window.after(1,self.showFramesCallback)
-        self.window.mainloop()
+
 
 
         #Hand-Eye Parameteres
         self.hand_eye=HandEye.HandEye() #Creates hand-eye calibration object
-        self.ecm_T_psm1_list=[]
+        self.rb_T_ecm_list=[]   #List of robot base to ecm transforms
         
         self.mtx_right=None
         self.mtx_left=None
         self.dst_right=None
         self.dist_left=None
+
         rospy.sleep(1)
+
+        self.window.after(1,self.showFramesCallback)
+        self.window.mainloop()
     
     def showFramesCallback(self):
 
@@ -213,7 +214,7 @@ class CameraCalibGUI:
     def frameCallbackLeft(self,data):
         self.frameLeft=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
         self.ranOnce+=1
-        print("New Frame")
+        #print("New Frame")
     def findCheckerboard(self,frame):
         gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
         ret,corners=cv2.findChessboardCorners(gray,CHECKERBOARD_DIM,None)
@@ -237,14 +238,15 @@ class CameraCalibGUI:
         return e_x,e_y
 
     def grabFramesCallback(self):
-        self.getFolderName()
+        self.just_grabbed_frames=True
+        self.createSaveFolder()    #This Creates a new folder with an incremented folder number (Calib_num)
         file_name_right=self.rootName+RIGHT_FRAMES_FILEDIR
         file_name_left=self.rootName+LEFT_FRAMES_FILEDIR
 
         #First we get user to align the ECM center with the checkerboard center
         self.calbration_message_label.config(text="Move Checkerboard Center (red) to Camera Center (green)")
         err_mag=ERROR_THRESHOLD+1
-
+        print("Entered Grabbed Frames")
         while err_mag>ERROR_THRESHOLD: #Loops until center of LEFT ECM is within acceptable threshold
             corners=self.findCheckerboard(self.frameLeft)
             if corners is not None:
@@ -257,30 +259,38 @@ class CameraCalibGUI:
 
         print("Aligned")
         cv2.destroyWindow('Alignment Error')
+        rospy.sleep(5)  #Sleep to allow user to move away from ecm
+
         #Now we capture the frames for the camera calibration
         if not os.path.isdir(file_name_right):
             os.mkdir(file_name_right)
             os.mkdir(file_name_left)
         print("File Name: "+str(file_name_right))
         self.frame_number=0
-        #We loop through and move the ECM, then take frames, we also get the ecm_T_psm3 transform
-        self.ecm_T_psm1_list=[]
-        translation_sign=1
+        #We loop through and move the ECM, then take frames, we also get the rb_T_ecm transform
+        self.rb_T_ecm_list=[]
+        translation_sign=-1
+        
+        ecm_pose_init=self.ecm.measured_cp()
         for i in range(len(Z_MOTION)): #Loop for 3 z values
-            for j in range(len(MOTIONS)): #Loop for motions in this plane
-                
-                
+            translation_sign=-1*translation_sign
+            for j in range(len(MOTIONS)): #Loop for motions in this plane                
+                #Move it back to central location before translating again
+                self.ecm.move_cp(ecm_pose_init).wait()
+                rospy.sleep(0.9)
                 ecm_pose_curr=self.ecm.measured_cp()
-                print("ECM Position="+str(ecm_pose_curr.p))
-                print("ECM Rotation="+str(ecm_pose_curr.M))
 
-                print("z motion: "+str(Z_MOTION[i]))
-                print("Tranform: "+str(MOTIONS[j]))
-                ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
+                #print("ECM Position="+str(ecm_pose_curr.p))
+                #print("ECM Rotation="+str(ecm_pose_curr.M))
+                #print("z motion: "+str(Z_MOTION[i]))
+                #print("Tranform: "+str(MOTIONS[j]))
+                
                 motion_mat=pm.fromMatrix(MOTIONS[j])
+                
                 ecm_pose_curr.p[0]+=translation_sign*motion_mat.p[0]
                 ecm_pose_curr.p[1]+=translation_sign*motion_mat.p[1]
-                translation_sign=-1*translation_sign
+                ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
+                
                 ecm_pose_curr.M=ecm_pose_curr.M*motion_mat.M
                 self.ecm.move_cp(ecm_pose_curr).wait()
                 rospy.sleep(1)                
@@ -289,10 +299,17 @@ class CameraCalibGUI:
 
                 self.frame_number+=1
                 self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
-                #Grab the pose of ecm_T_psm3
-                ecm_T_psm3=self.psm3.setpoint_cp()      #This might have to be the ecm pose, should look at math if changed to this
-                ecm_T_psm3=pm.fromMatrix(ecm_T_psm3)
-                self.ecm_T_psm1_list.append(ecm_T_psm3)
+                #Grab the pose of ecm w.r.t. robot base
+                ecm_pose_new=self.ecm.measured_cp()
+                rb_T_ecm=pm.toMatrix(ecm_pose_new)
+                self.rb_T_ecm_list.append(rb_T_ecm)
+        print("Num Frames: "+str(self.frame_number))
+        #Store the rb_T_ecm poses in a yaml file
+        os.mkdir(self.rootName+BASE_TO_ECM_DIR)
+        rb_T_ecm_store=np.array(self.rb_T_ecm_list)
+        np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm',rb_T_ecm_store)
+
+        self.calbration_message_label.config(text="Frame Grabbing Done")
 
                 
 
@@ -462,7 +479,7 @@ class CameraCalibGUI:
     def calibrateCameraCallback(self):
         #Does Both the Right and Left Cameras hand-eye+general calibration
 
-        self.getFolderName()
+        self.getFolderName()    #Gets Most Recent File Directory
         frames_right_path=self.rootName+RIGHT_FRAMES_FILEDIR
         frames_left_path=self.rootName+LEFT_FRAMES_FILEDIR
 
@@ -474,7 +491,7 @@ class CameraCalibGUI:
 
         #################Camera Calibration###############
         #Repeats Twice, right first then left
-
+        
         for i in range(2):
             calibration_params_path=params_path[i]
             checkerboard_frames_path=frames_path[i]
@@ -529,20 +546,20 @@ class CameraCalibGUI:
                 mean_error += error
             data = {'camera_matrix': np.asarray(mtx).tolist(),
                         'dist_coeff': np.asarray(dist).tolist(),
-                        'mea reprojection error': [mean_error/len(objpoints)]}
+                        'mean reprojection error': [mean_error/len(objpoints)]}
             
             #Writing data to file
             with open(calibration_params_path+"calibration_matrix.yaml","w") as f:
                 yaml.dump(data,f)
-
+        
         ####################Hand Eye Calibration######################
         '''
         General Algorithm:
         Loop through and get each checkerboard, if it exists store pose of scene_T_camera and ecm_T_psm3 (do this for both left and right)
         Then convert these to the A (ecm poses) and B matrices (camera poses)
         '''
-        ecm_T_psm3_right=[]
-        ecm_T_psm3_left=[]
+        rb_T_ecm_right=[]
+        rb_T_ecm_left=[]
 
         scene_T_rightcam=[]
         scene_T_leftcam=[]
@@ -550,7 +567,10 @@ class CameraCalibGUI:
         objp = np.zeros((CHECKERBOARD_DIM[0]*CHECKERBOARD_DIM[1],3), np.float32)
         objp[:,:2] = np.mgrid[0:CHECKERBOARD_DIM[0], 0:CHECKERBOARD_DIM[1]].T.reshape(-1, 2)*CHECKER_WIDTH
 
-
+        #Open Up the rb_T_ecm list
+        rb_T_ecm_path=self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm.npy'
+        rb_T_ecm_list=np.load(rb_T_ecm_path)
+        #print("rb_T_ecm_list: "+str(rb_T_ecm_list))
         #Loop twice, right first then left
         for i in range(2):
             calibration_params_path=params_path[i]
@@ -558,13 +578,15 @@ class CameraCalibGUI:
             if i==0:
                 mtx=self.mtx_right
                 dist=self.dst_right
+                frame_name='frame_right'
             elif i==1:
+                frame_name='frame_left'
                 mtx=self.mtx_left
                 dist=self.dst_left
             
             #Loops for each checkerboard that we previously captured
-            for frame_num in range(self.frame_number):
-                filename=checkerboard_frames_path+"frame_right"+str(frame_num)+".jpg"
+            for frame_num in range(NUM_FRAMES_CAPTURED):
+                filename=checkerboard_frames_path+frame_name+str(frame_num)+".jpg"
                 img = cv2.imread(filename) # Capture frame-by-frame
                 gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
                 ret, corners = cv2.findChessboardCorners(gray, CHECKERBOARD_DIM, None)
@@ -573,23 +595,25 @@ class CameraCalibGUI:
                     corners2=cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),self.criteria)
                     success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(objp,corners2,mtx,dist,\
                                                                                     iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
-
+                    
+                    #print("tvec: "+str(translation_vector))
                     #Convert rotation_vector and translation_vector to homogeneous transform
-                    cam_T_scene=self.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                    cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector[0])
                     scene_T_cam=utils.invHomogeneous(cam_T_scene)
                     
                     #Get the frame number to index the corresponding ecm_T_psm pose
                     #name,ext=filename.split('.')   #Splits off the name
                     #frame_num=[int(s) for s in name if s.isdigit()]
                     #combined_number = int("".join(str(number) for number in frame_num))
-                    ecm_T_psm=self.ecm_T_psm1_list[frame_num]
+                    rb_T_ecm=rb_T_ecm_list[frame_num]
+                    #print('rb_T_ecm: '+str(rb_T_ecm))
 
                     #Updating the lists
                     if i==0: #right
-                        ecm_T_psm3_right.append(ecm_T_psm)
+                        rb_T_ecm_right.append(rb_T_ecm)
                         scene_T_rightcam.append(scene_T_cam)
                     elif i==1:
-                        ecm_T_psm3_left.append(ecm_T_psm)
+                        rb_T_ecm_left.append(rb_T_ecm)
                         scene_T_leftcam.append(scene_T_cam)
 
 
@@ -598,24 +622,25 @@ class CameraCalibGUI:
         #Do Right First
         A=[]
         B=[]
-        for i in range(len(ecm_T_psm3_right)-1):
+        for i in range(len(rb_T_ecm_right)-1):
             A_i=np.dot(np.transpose(scene_T_rightcam[i]),scene_T_rightcam[i+1])
-            B_i=np.dot(ecm_T_psm3_right[i],np.transpose(ecm_T_psm3_right))
+            B_i=np.dot(np.transpose(rb_T_ecm_right[i]),rb_T_ecm_right[i+1])
             A.append(A_i)
             B.append(B_i)
         
         #Solve hand-eye problem
         A=np.array(A)
         B=np.array(B)
+        
         rightcam_T_ecm=self.hand_eye.ComputeHandEye(A,B)
         data_right = {'rightcam_T_ecm': rightcam_T_ecm.tolist()}
 
         #Do Left Next
         A=[]
         B=[]
-        for i in range(len(ecm_T_psm3_left)-1):
+        for i in range(len(rb_T_ecm_left)-1):
             A_i=np.dot(np.transpose(scene_T_leftcam[i]),scene_T_leftcam[i+1])
-            B_i=np.dot(ecm_T_psm3_left[i],np.transpose(ecm_T_psm3_left))
+            B_i=np.dot(np.transpose(rb_T_ecm_left[i]),rb_T_ecm_left[i+1])
             A.append(A_i)
             B.append(B_i)
         
@@ -632,21 +657,35 @@ class CameraCalibGUI:
         with open(calibration_params_left+"hand_eye_calibration_left.yaml","w") as f:
                 yaml.dump(data_left,f)           
 
-
     def getFolderName(self):
-        #Returns overall root folder where we store the calibration parameters
-        if self.rootName is None:
-            root_directory=CALIBRATION_DIR
-            folder_count=1
+        #Gets the most recent folder where we store checkerboards and base_T_ecm poses
+        folder_count=1
+        root_directory=CALIBRATION_DIR+'Calib_'+str(folder_count)
+        old_root=root_directory
+        if os.path.isdir(root_directory):
             while True:
                 if os.path.isdir(root_directory):
-                    folder_count_str=str(folder_count)
-                    root_directory=root_directory+'Calib_'+folder_count_str
+                    old_root=root_directory
                     folder_count+=1
+                    root_directory=CALIBRATION_DIR+'Calib_'+str(folder_count)
                 else:
                     break
-            os.mkdir(root_directory)
-            self.rootName=root_directory
+            self.rootName=old_root
+        else:
+            self.calbration_message_label.config(text="No Available Checkerboards, grab some")
+            return
+    def createSaveFolder(self):
+        #Creates Root Folder to Store New Checkerboard Images and base_T_ecm frames
+        folder_count=1
+        root_directory=CALIBRATION_DIR+'Calib_'+str(folder_count)
+        while True:
+            if os.path.isdir(root_directory):
+                folder_count+=1
+                root_directory=CALIBRATION_DIR+'Calib_'+str(folder_count)                    
+            else:
+                break
+        os.mkdir(root_directory)
+        self.rootName=root_directory
 
     def convertRvecTvectoHomo(self,rvec,tvec):
         Rot,_=cv2.Rodrigues(rvec)

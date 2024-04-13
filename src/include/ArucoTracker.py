@@ -203,8 +203,9 @@ class ArucoTracker:
                 #cv2.drawFrameAxes(self.app.frame_left_converted,self.mtx_left,self.dist_left,rotation_vector,translation_vector,0.05)
                 #print("Calib Success")
                 self.calibrate_done=True
-                si_T_ci=utils.convertRvecTvectoHomo(rotation_vector,translation_vector) #Returns as numpy array
-                self.si_T_ci=glm.mat4(si_T_ci)
+                si_T_ci=utils.convertRvecTvectoHomo(rotation_vector,translation_vector[0]) #Returns as numpy array
+                si_T_ci=utils.EnforceOrthogonalityNumpy_FullTransform(si_T_ci)
+                self.si_T_ci=glm.mat4(*si_T_ci.flatten())
                 
                 
 

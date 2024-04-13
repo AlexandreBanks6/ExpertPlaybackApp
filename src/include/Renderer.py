@@ -66,6 +66,8 @@ PSM_SCALE_FACTOR=0.5
 PATH_TO_NDI_APPLE3='../resources/NDI_DRF_Models/APPLE03.rom' 
 PATH_TO_VALIDATION_CSV='../resources/validation/'
 
+MOTIONS_ROOT='../resources/Motions/'
+
 #DH Parameter things (we directly substitute the DH parameters in the operations to save computation)
 
 #DH parameters for 4_C_5 (placing shaft)
@@ -125,11 +127,9 @@ LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 
 
 
-##############Numbering system to label corners for hand-eye calibration
-CORNER_NUMBERS_STRING=['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15']
-MIN_NUMBER_FORHANDEYE=4 #Minimum Number of points for Hand-Eye Calibration
-
-
+#################Header for recording Motions CSV######################
+repeat_string=["Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"] #First number is row of R, second number is column
+MOTION_HEADER=["Time","si_T_psm1"]+repeat_string+["si_T_psm3"]+repeat_string+["si_T_ecm"]+repeat_string+["joint_vars_psm1"]+["q1","q2","q3","q4","q5","q6","jaw"]+["joint_vars_psm3"]+["q1","q2","q3","q4","q5","q6","jaw"]
 class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
         #Init pygame modules
@@ -299,7 +299,7 @@ class Renderer:
         self.render_button.grid(row=3,column=1,sticky="nsew")
 
         #Record Expert Motions Button
-        self.record_motions_button=tk.Button(self.gui_window,text="Record Motions",command=self.rocordMotionsPlayback)
+        self.record_motions_button=tk.Button(self.gui_window,text="Record Motions",command=self.rocordMotionsCallback)
         self.record_motions_button.grid(row=4,column=0,sticky="nsew")
 
         #Playback the ECM Motion Button (indicates on the screen arrows showing direction for ECM movement)
@@ -339,7 +339,7 @@ class Renderer:
         self.validation_trial_count=None
         self.csv_name=None
 
-        self.record_init=False #Keeps track if we have initialized recording
+        self.record_filename=None #Current Filename that we are writing to
 
  
         ####Aruco Tracking Setup
@@ -372,8 +372,15 @@ class Renderer:
         self.si_T_psm3_recorded=None
         self.si_T_psm1_recorded=None
 
+        #CUrrent Value for PSMw with respect to base frame
+        self.si_T_psm1=None
+        self.si_T_psm3=None
+
         ####Recorded Value for ECM w.r.t. base frame (si)
         self.si_T_ecm_recorded=None
+
+        ####Current Value for ECM w.r.t. base
+        self.si_T_ecm=None
 
         #####Current Values (updated every loop, or pre-defined)
         self.si_T_lci=None #The left camera w.r.t. scene base frame (calibrated origin)
@@ -408,16 +415,25 @@ class Renderer:
 
         self.lc_T_ecm=left_handeye['leftcam_T_ecm']
         self.lc_T_ecm=np.array(self.lc_T_ecm,dtype='float32')
+        #self.lc_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(self.lc_T_ecm)
+        self.lc_T_ecm=glm.mat4(*self.lc_T_ecm.flatten())
 
         self.rc_T_ecm=right_handeye['rightcam_T_ecm']
         self.rc_T_ecm=np.array(self.rc_T_ecm,dtype='float32')
-
+        #self.rc_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(self.rc_T_ecm)
+        self.rc_T_ecm=glm.mat4(*self.rc_T_ecm.flatten())
 
         ##Getting current ecm pose
         ecm_pose=self.ecm.measured_cp()
         ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
         ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
         self.ecm_init_pose=ecm_pose
+
+
+        ##Time Variables
+        self.delta_time=None
+        self.record_time=0
+        rospy.sleep(0.2)
 
     def displayMessage(self,message):
         #function to insert messages in the text box
@@ -469,11 +485,65 @@ class Renderer:
     def renderButtonPressCallback(self):
         self.render_on=not self.render_on
 
-    def rocordMotionsPlayback(self):
+    def rocordMotionsCallback(self):
         self.record_motions_on=not self.record_motions_on
+        self.record_filename
+
+        self.record_time=0
+
+        if self.record_motions_on: 
+            ###########Initialize a new csv file to write motions
+            file_count=1
+            file_name=MOTIONS_ROOT+'Motion_'+str(file_count)+'.csv'
+            #Gets a new filename
+            while True:
+                if os.path.isfile(file_name):
+                    file_count+=1
+                    file_name=MOTIONS_ROOT+'Motion_'+str(file_count)+'.csv'                
+                else:
+                    break
+            
+            self.record_filename=file_name
+
+            #Writing .csv file and initial values
+            with open(self.record_filename,'w',newline='') as file_object:
+                writer_object=csv.writer(file_object)
+                writer_object.writerow(MOTION_HEADER)    #Writing the Header
+
+                #Writing si_T_lci (scene to left camera initial)
+                writer_object.writerow(['si_T_lci'])
+                si_T_lci_numpy=np.array(self.si_T_lci.to_list())
+                si_T_lci_list=utils.convertHomogeneousToCSVROW(si_T_lci_numpy)
+                writer_object.writerow(["0"]+si_T_lci_list)
+
+                #Writing si_T_rci (scene to right camera initial)
+                writer_object.writerow(['si_T_rci'])
+                si_T_rci_numpy=np.array(self.si_T_rci.to_list())
+                si_T_rci_list=utils.convertHomogeneousToCSVROW(si_T_rci_numpy)
+                writer_object.writerow(["0"]+si_T_rci_list)
+
+                #Writing lc_T_ecm (hand-eye left)
+                writer_object.writerow(['lc_T_ecm'])
+                lc_T_ecm_numpy=np.array(self.lc_T_ecm.to_list())
+                lc_T_ecm_list=utils.convertHomogeneousToCSVROW(lc_T_ecm_numpy)
+                writer_object.writerow(["0"]+lc_T_ecm_list)
+
+                #Writing rc_T_ecm (hand-eye right)
+                writer_object.writerow(['rc_T_ecm'])
+                rc_T_ecm_numpy=np.array(self.rc_T_ecm.to_list())
+                rc_T_ecm_list=utils.convertHomogeneousToCSVROW(rc_T_ecm_numpy)
+                writer_object.writerow(["0"]+rc_T_ecm_list)
+
+
+
+                
+                file_object.close()
+        
+
 
     def playbackECMCallback(self):
         self.playback_ecm_on=not self.playback_ecm_on
+        
 
     def ToggleTrackerCallback(self):
         if not self.NDI_TrackerToggle: #Tracker is not running, so we toggle on
@@ -631,48 +701,102 @@ class Renderer:
 
     def render(self,dt):
 
-        self.move_rads+=0.01
+        #self.move_rads+=0.01
 
         #Get Time
-        self.get_time() 
+        #self.get_time() 
+        #print("delta time: "+str(self.delta_time))
+        self.delta_time=dt
+        print("dt: "+str(dt))
 
-
-        #Maybe move these commands under if statements in next block
-        #Getting Current Poses (ecmini_T_ecm = curr ecm w.r.t. initial ecm), ecm_T_psm1=psm1 w.r.t. ecm, ecm_T_psm3 = psm3 w.r.t. ecm
-        ecm_pose=self.ecm.measured_cp()
-        ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
-        ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
-        self.ecmini_T_ecm=glm.transpose(self.ecm_init_pose)*ecm_pose
-
-        psm1_pose=self.psm1.measured_cp()
-        psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
-        self.ecm_T_psm1=utils.convertPyDK_To_GLM(psm1_pose)
-        
-        psm3_pose=self.psm3.measured_cp()
-        psm3_pose=utils.enforceOrthogonalPyKDL(psm3_pose)
-        self.ecm_T_psm3=utils.convertPyDK_To_GLM(psm3_pose)
-
-        #Get joint positions
-        joint_vars_psm1=self.psm1.measured_jp()
-        jaw_angle_psm1=self.psm1.gripper.measured_jp()
-        joint_vars_psm3=self.psm3.measured_js()
-        jaw_angle_psm3=self.psm3.gripper.measured_jp()
-
-        self.joint_vars_psm1=[joint_vars_psm1[4],joint_vars_psm1[5],joint_vars_psm1[6],jaw_angle_psm1]
-        self.joint_vars_psm3=[joint_vars_psm3[4],joint_vars_psm3[5],joint_vars_psm3[6],jaw_angle_psm3]
-
-
-        ################Move Instruments if Playback is Pushed###############
-        if self.render_on:
+        if self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
+            #Maybe move these commands under if statements in next block
+            #Getting Current Poses (ecmini_T_ecm = curr ecm w.r.t. initial ecm), ecm_T_psm1=psm1 w.r.t. ecm, ecm_T_psm3 = psm3 w.r.t. ecm
+            ecm_pose=self.ecm.measured_cp()
+            ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
+            ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
+            self.ecmini_T_ecm=glm.transpose(self.ecm_init_pose)*ecm_pose
+            self.si_T_ecm=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm
             if self.PSM1_on:
-                #PSM1:
-                self.instrument_kinematics(self.joint_vars_psm1_recorded,start_pose,'PSM1')
+                psm1_pose=self.psm1.measured_cp()
+                psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
+                self.ecm_T_psm1=utils.convertPyDK_To_GLM(psm1_pose)
+                joint_vars_psm1=self.psm1.measured_jp()
+                jaw_angle_psm1=self.psm1.jaw.measured_jp()
+                self.joint_vars_psm1=[joint_vars_psm1[0],joint_vars_psm1[1],joint_vars_psm1[2],joint_vars_psm1[3],joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
+                self.si_T_psm1=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*self.ecm_T_psm1
+            
             if self.PSM3_on:
-                #PSM3:
-                self.instrument_kinematics(self.joint_vars_psm3_recorded,start_pose2,'PSM3')
 
-            self.move_objects() 
-        
+                psm3_pose=self.psm3.measured_cp()
+                psm3_pose=utils.enforceOrthogonalPyKDL(psm3_pose)
+                self.ecm_T_psm3=utils.convertPyDK_To_GLM(psm3_pose)
+
+                #Get joint positions
+                joint_vars_psm3=self.psm3.measured_jp()
+                jaw_angle_psm3=self.psm3.jaw.measured_jp()
+                self.joint_vars_psm3=[joint_vars_psm3[0],joint_vars_psm3[1],joint_vars_psm3[2],joint_vars_psm3[3],joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
+                self.si_T_psm3=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*self.ecm_T_psm3
+
+            ################Move Instruments if Playback is Pushed###############
+            if self.render_on:
+                if self.PSM1_on:
+                    #PSM1:
+                    self.instrument_kinematics(self.joint_vars_psm1_recorded,start_pose,'PSM1')
+                if self.PSM3_on:
+                    #PSM3:
+                    self.instrument_kinematics(self.joint_vars_psm3_recorded,start_pose2,'PSM3')
+
+                self.move_objects() 
+            
+            ######################Recording Surgeon Movements#####################
+            if self.record_motions_on:
+                self.record_time+=self.delta_time
+                #We update the motions .csv
+                with open(self.record_filename,'a',newline='') as file_object:
+                    writer_object=csv.writer(file_object)
+
+                    si_T_ecm_numpy=np.array(self.si_T_ecm.to_list())
+                    si_T_ecm_list=utils.convertHomogeneousToCSVROW(si_T_ecm_numpy)
+                    
+                    if self.PSM1_on and self.PSM3_on:
+                        si_T_psm3_numpy=np.array(self.si_T_psm3.to_list())
+                        si_T_psm3_list=utils.convertHomogeneousToCSVROW(si_T_psm3_numpy)
+
+                        si_T_psm1_numpy=np.array(self.si_T_psm1.to_list())
+                        si_T_psm1_list=utils.convertHomogeneousToCSVROW(si_T_psm1_numpy)
+
+                        joint_list_psm1=[str(num) for num in self.joint_vars_psm1]
+                        joint_list_psm3=[str(num) for num in self.joint_vars_psm3]
+
+                        row_to_write=[str(self.record_time),""]+si_T_psm1_list+[""]+si_T_psm3_list+[""]+si_T_ecm_list+[""]+joint_list_psm1+[""]+joint_list_psm3
+                        writer_object.writerow(row_to_write)
+                    elif self.PSM1_on:
+
+                        si_T_psm1_numpy=np.array(self.si_T_psm1.to_list())
+                        si_T_psm1_list=utils.convertHomogeneousToCSVROW(si_T_psm1_numpy)
+
+                        joint_list_psm1=[str(num) for num in self.joint_vars_psm1]
+
+                        row_to_write=[str(self.record_time),""]+si_T_psm1_list+[""]+[""]*12+[""]+si_T_ecm_list+[""]+joint_list_psm1+[""]+[""]*7
+                        writer_object.writerow(row_to_write)
+
+                    elif self.PSM3_on:
+                        si_T_psm3_numpy=np.array(self.si_T_psm3.to_list())
+                        si_T_psm3_list=utils.convertHomogeneousToCSVROW(si_T_psm3_numpy)
+
+                        joint_list_psm3=[str(num) for num in self.joint_vars_psm3]
+
+                        row_to_write=[str(self.record_time),""]+[""]*12+[""]+si_T_psm3_list+[""]+si_T_ecm_list+[""]+[""]*7+[""]+joint_list_psm3
+                        writer_object.writerow(row_to_write)
+
+                    else:
+                        row_to_write=[str(self.record_time),""]+[""]*12+[""]+[""]*12+[""]+si_T_ecm_list+[""]+[""]*7+[""]+[""]*12
+                        writer_object.writerow(row_to_write)
+
+
+                    file_object.close()
+
 
 
         ###########################Render Left Window##########################
@@ -699,7 +823,7 @@ class Renderer:
                         NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
                         self.writeToNDIVal(NDI_dat)
       
-                if self.si_T_lci is not None: #We show scene coord system                      
+                if self.si_T_lci is not None and (not self.calib_gaze_on) and (not self.record_motions_on) and (not self.render_on) and (not self.playback_ecm_on): #We show scene coord system                      
                     
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
                                       self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
@@ -746,7 +870,7 @@ class Renderer:
                     self.aruco_tracker_right.calibrateScene()
                     self.si_T_rci=self.aruco_tracker_right.si_T_ci
 
-                if self.si_T_rci is not None:
+                if (self.si_T_rci is not None) and (not self.calib_gaze_on) and (not self.record_motions_on) and (not self.render_on) and (not self.playback_ecm_on):
 
                     cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                       self.aruco_tracker_right.dist,self.aruco_tracker_right.rvec_scene,self.aruco_tracker_right.tvec_scene,0.05) #Look at rvec and tvec, look at frame_right_converted, look at calibrate on
@@ -855,6 +979,7 @@ class Renderer:
 
     def instrument_kinematics(self,joint_angles,T4,PSM_Type):
         '''
+        Update: q5=q4, q6=q5, q7=q6, and jaw based on the way that the dVRK reports it
         Input: 
         - list of angles of the intrument joints: shaft rotation (q5), body rotation (q6), jaw rotation (q7), jaw seperation (theta_j)
         - Shaft Base Frame (T4)

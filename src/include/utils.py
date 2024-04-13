@@ -31,10 +31,14 @@ def convertRvecTvectoHomo(rvec,tvec):
     transform[0:3,3]=tvec
     return transform
 
+def EnforceOrthogonalityNumpy_FullTransform(transform):
+    transform[0:3,0:3]=EnforceOrthogonalityNumpy(transform[0:3,0:3])
+
+    return transform
 
 def EnforceOrthogonalityNumpy(R):
     #Function which enforces a rotation matrix to be orthogonal
-    #Input: R is a 3x3 numpy rotation
+    #Input: R is a 4x numpy rotation
 
     #Extracting columns of rotation matrix
     x=R[:,0] 
@@ -52,7 +56,7 @@ def EnforceOrthogonalityNumpy(R):
     return R_new
 
 
-def enforceOrthogonalPyKDL(self,pykdl_frame):
+def enforceOrthogonalPyKDL(pykdl_frame):
     #Takes in a pykdl frame and enforces orthogonality
     pykdl_frame_new=pm.toMatrix(pykdl_frame)
     pykdl_frame_new[0:3,0:3]=EnforceOrthogonalityNumpy(pykdl_frame_new[0:3,0:3])
@@ -60,7 +64,7 @@ def enforceOrthogonalPyKDL(self,pykdl_frame):
     return pykdl_frame_new
 
 
-def enforceOrthogonalGLM(self,GLM_frame):
+def enforceOrthogonalGLM(GLM_frame):
     #Takes in a pykdl frame and enforces orthogonality
     frame_new=np.array(GLM_frame.to_list())
     frame_new[0:3,0:3]=EnforceOrthogonalityNumpy(frame_new[0:3,0:3])
@@ -104,3 +108,13 @@ def convertPyDK_To_GLM(pykdl_frame):
     glm_frame=glm.mat4(*numpy_frame.flatten())
     return glm_frame
 
+def convertHomogeneousToCSVROW(transform):
+    #Input: 4x4 numpy array for homogeneous transform
+    #Output: 12x1 string list with: "Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"
+
+    string_list=[str(transform[0,3]),str(transform[1,3]),str(transform[2,3]),\
+                str(transform[0,0]),str(transform[0,1]),str(transform[0,2]),\
+                str(transform[1,0]),str(transform[1,1]),str(transform[1,2]),\
+                str(transform[2,0]),str(transform[2,1]),str(transform[2,2])]
+    
+    return string_list

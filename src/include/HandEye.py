@@ -9,7 +9,8 @@ class HandEye:
     # A=tip to endoscope
     # X=transform from camera to endoscope 
 
-    #def __init__(self):
+    def __init__(self):
+        print('welcome to the Hand Eye Class')
 
     def ComputeHandEye(self,A,B):
         #Takes in A and B
@@ -18,6 +19,8 @@ class HandEye:
 
         #Note that A and B are arrays of arrays, N=length of outer array=number of transformations
         #A and B must be the same lengths (N)
+        print("A: "+str(A))
+        print("B: "+str(B))
 
         N=len(A)
         if N>=2:
