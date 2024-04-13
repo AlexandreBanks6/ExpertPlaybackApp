@@ -48,6 +48,7 @@ import tf_conversions.posemath as pm
 import tf_conversions
 from sensor_msgs.msg import Joy
 import yaml
+import pandas as pd
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
@@ -104,11 +105,27 @@ C_r_jr=glm.mat4(glm.vec4(1,0,0,0),
                glm.vec4(0,-1,0,0),
                glm.vec4(0,0,0,1))  #Transform between Cjr and Cr (left jaw frame)
 
+tool_tip_offset=0.0102 #meters
+
+T_tip_trans=glm.mat4(glm.ve4(1,0,0,0),
+                     glm.ve4(0,1,0,0),
+                     glm.ve4(0,0,1,0),
+                     glm.ve4(0,0,-1*tool_tip_offset,1)) #Translation from reported tool tip to how we define C7
+T_7rep_t=glm.mat4(glm.ve4(0,0,1,0),
+                     glm.ve4(0,-1,0,0),
+                     glm.ve4(1,0,0,0),
+                     glm.ve4(0,0,0,1))
+T_7rep_7=T_tip_trans*T_7rep_t   #How we translate between reported tool tip coordinates and our coordinates
+
 obj_names=['shaft','body','jaw_right','jaw_left']
 
-tool_tip_offset=0.0102 #meters
-tool_tip_translation=PyKDL.Vector(0,0,0.0102)
 
+
+#Transformation to convert OpenCV camera frame to OpenGL frame
+CV_T_GL=glm.mat4(glm.ve4(1,0,0,0),
+                     glm.ve4(0,-1,0,0),
+                     glm.ve4(0,0,-1,0),
+                     glm.ve4(0,0,0,1))
 
 ###For Testing:
 start_pose=glm.mat4(glm.vec4(1,0,0,0),
@@ -310,10 +327,9 @@ class Renderer:
         self.message_box = tk.Text(self.gui_window, height=10, width=80)
         self.message_box.config(state='disabled')
         self.message_box.grid(row=5, column=0, columnspan=3, sticky='nsew', padx=10, pady=10)
-        self.displayMessage("Ensure calibration parameters are in file: ../resources/Calib_Best/ \n \
-                            Also, motions will be played from the newest folder\n \
-                             ../resources/Motions/Motion_num where _num is the highest number directory in folder. \n \
-                            Make sure to change the number of the desired motions to the largest value")
+        self.displayMessage("Ensure calibration parameters are in file: ../resources/Calib_Best/  \
+                            Also, motions will be played from the 'Best' folder: \
+                             ../resources/Motions/Motion_Best")
 
         #Button for NDI Validation
         self.ndi_toggle_button=tk.Button(self.gui_window,text="Start NDI Tracker and Validate",command=self.ToggleTrackerCallback)
@@ -369,8 +385,8 @@ class Renderer:
         #################Frame Transformations#####################
 
         #Recorded Value for PSMs with respect to base frame (si)
-        self.si_T_psm3_recorded=None
-        self.si_T_psm1_recorded=None
+        self.si_T_psm3_recorded=None    #Gives T7
+        self.si_T_psm1_recorded=None    #Gives T7
 
         #CUrrent Value for PSMw with respect to base frame
         self.si_T_psm1=None
@@ -433,6 +449,10 @@ class Renderer:
         ##Time Variables
         self.delta_time=None
         self.record_time=0
+        self.render_time=0
+
+        self.render_filename=None #Filename of the .csv that we are rendering from
+        self.render_times_list=None #Variable that holds a list of the recorded times
         rospy.sleep(0.2)
 
     def displayMessage(self,message):
@@ -484,6 +504,28 @@ class Renderer:
 
     def renderButtonPressCallback(self):
         self.render_on=not self.render_on
+        #Set render time to zero (where we are in the rendering)
+        self.render_time=0
+        self.render_filename=MOTIONS_ROOT+'Motion_Best.csv'
+
+        #We extract the first column of the csv which is the time recorded
+        with open(self.render_filename,'r') as file_object:
+            csv_reader=csv.reader(file_object)
+
+            #Skip the first 9 rows because we don't care about that info
+            for _ in range(9):
+                next(csv_reader,None)
+            
+            #Read the first column
+            self.render_times_list=[float(row[0]) for row in csv_reader if row] #Loops for the rows and returns time as a list of floats
+            self.render_times_list=np.array(self.render_times_list)
+
+
+            file_object.close()
+
+
+
+
 
     def rocordMotionsCallback(self):
         self.record_motions_on=not self.record_motions_on
@@ -724,7 +766,7 @@ class Renderer:
                 joint_vars_psm1=self.psm1.measured_jp()
                 jaw_angle_psm1=self.psm1.jaw.measured_jp()
                 self.joint_vars_psm1=[joint_vars_psm1[0],joint_vars_psm1[1],joint_vars_psm1[2],joint_vars_psm1[3],joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
-                self.si_T_psm1=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*self.ecm_T_psm1
+                self.si_T_psm1=self.si_T_ecm*self.ecm_T_psm1
             
             if self.PSM3_on:
 
@@ -736,16 +778,31 @@ class Renderer:
                 joint_vars_psm3=self.psm3.measured_jp()
                 jaw_angle_psm3=self.psm3.jaw.measured_jp()
                 self.joint_vars_psm3=[joint_vars_psm3[0],joint_vars_psm3[1],joint_vars_psm3[2],joint_vars_psm3[3],joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
-                self.si_T_psm3=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*self.ecm_T_psm3
+                self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3
 
             ################Move Instruments if Playback is Pushed###############
             if self.render_on:
+                self.render_time+=self.delta_time   #Update the time since start of rendering
+                #Get the row of recording with time closest to rendering time
+                index=np.argmin(np.abs(self.render_times_list-self.render_time))    #Gets index of row in recorded time closest to current time
+                data_row=pd.read_csv(self.render_filename,skiprows=9+index,nrows=1)
+                data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
+
+
+
                 if self.PSM1_on:
                     #PSM1:
-                    self.instrument_kinematics(self.joint_vars_psm1_recorded,start_pose,'PSM1')
+                    self.si_T_psm1_recorded=data_list[2:13]
+                    self.si_T_psm1_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm1_recorded)
+                    self.joint_vars_psm1_recorded=data_list[44:47]
+                    self.instrument_kinematics(self.joint_vars_psm1_recorded,self.si_T_psm1_recorded,'PSM1')
                 if self.PSM3_on:
                     #PSM3:
-                    self.instrument_kinematics(self.joint_vars_psm3_recorded,start_pose2,'PSM3')
+                    self.si_T_psm3_recorded=data_list[15:26]
+                    self.si_T_psm3_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm3_recorded)
+                    self.joint_vars_psm3_recorded=data_list[52:55]
+
+                    self.instrument_kinematics(self.joint_vars_psm3_recorded[3:-1],self.si_T_psm3_recorded,'PSM3')
 
                 self.move_objects() 
             
@@ -841,9 +898,12 @@ class Renderer:
             self.ctx_left.enable(mgl.DEPTH_TEST)
 
         ######Rendering Left Screen Instruments
-        if self.render_on:
+        if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             self.camera_left.update(None) 
             cam_left_pose=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*glm.transpose(self.lc_T_ecm)
+
+            #Convert opencv frame to opengl frame
+            cam_left_pose=cam_left_pose*CV_T_GL
             self.camera_left.update(cam_left_pose)
             #self.scene.render(self.ctx_left)
             if self.PSM1_on:
@@ -889,9 +949,13 @@ class Renderer:
         
         #Render the right screen 
 
-        if self.render_on:
+        if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             self.camera_right.update(None)
             cam_right_pose=self.si_T_rci*self.rc_T_ecm*self.ecmini_T_ecm*glm.transpose(self.rc_T_ecm)
+
+            #Convert cam pose in opencv to opengl pose
+            cam_right_pose=cam_right_pose*CV_T_GL
+
             self.camera_left.update(cam_right_pose)
             #self.scene.render(self.ctx_right)
             if self.PSM1_on:
@@ -977,12 +1041,12 @@ class Renderer:
 
                 self.scene_PSM3.move_obj(obj_name,move_mat)
 
-    def instrument_kinematics(self,joint_angles,T4,PSM_Type):
+    def instrument_kinematics(self,joint_angles,T7_rep,PSM_Type):
         '''
         Update: q5=q4, q6=q5, q7=q6, and jaw based on the way that the dVRK reports it
         Input: 
         - list of angles of the intrument joints: shaft rotation (q5), body rotation (q6), jaw rotation (q7), jaw seperation (theta_j)
-        - Shaft Base Frame (T4)
+        - Reported Tool Tip pose
         Output: 
         - Frames for each instrument segment: shaft frame (Ts), body frame (Tb), left jaw (Tl), right jaw (Tr)  
 
@@ -993,13 +1057,25 @@ class Renderer:
         if joint_angles[3]<0:
             joint_angles[3]=0
 
+        #First convert reported tool-tip pose (T7_rep) to our tool tip coodinate system (T7) using DH parameters
+        T7=T7_rep*T_7rep_7
 
-        #First get frames by applying forward kinematics using conventional DH coordinates frames
+        #Then work backwards from tool tip to get each frame
+        T6=T7*glm.transpose(self.transform_6_T_7(joint_angles[2]))
+        T5=T6*glm.transpose(self.transform_5_T_6(joint_angles[1]))
+        #T4=T5*glm.transpose(self.transform_4_T_5(joint_angles[0]))
+        Tjl=T7*self.Rotz(-joint_angles[3]/2)
+        Tjr=T7*self.Rotz(joint_angles[3]/2)
+
+
+        #This is going forward (if we are given T4), maybe revert to this later
+        '''
         T5=T4*self.transform_4_T_5(joint_angles[0])
         T6=T5*self.transform_5_T_6(joint_angles[1])
         T7=T6*self.transform_6_T_7(joint_angles[2])
         Tjl=T7*self.Rotz(-joint_angles[3]/2)
         Tjr=T7*self.Rotz(joint_angles[3]/2)
+        '''
 
         #Next we convert these standard coordinates to the coordinates of our 3D objects (these are augmented)
         
@@ -1061,6 +1137,12 @@ class Renderer:
                          glm.vec4(0,0,1,0),
                          glm.vec4(0,0,0,1))
         return rot_mat    
+    def ConvertDataRow_ToGLMPose(self,data_list):
+        data_list_new=[float(item) for item in data_list]
+        transform=glm.mat4(glm.vec4(data_list_new[3],data_list_new[6],data_list_new[9],0),
+                           glm.vec4(data_list_new[4],data_list_new[7],data_list_new[10],0),
+                           glm.vec4(data_list_new[5],data_list_new[8],data_list_new[11],0),
+                           glm.vec4(data_list_new[0],data_list_new[1],data_list_new[2],1))
 
 
 
