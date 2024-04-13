@@ -205,6 +205,8 @@ class ArucoTracker:
                 self.calibrate_done=True
                 si_T_ci=utils.convertRvecTvectoHomo(rotation_vector,translation_vector[0]) #Returns as numpy array
                 si_T_ci=utils.EnforceOrthogonalityNumpy_FullTransform(si_T_ci)
+                ###So rvec and tvec are object wiriti camera (c_T_o) what we need is (o_T_c) so we invert
+                #si_T_ci=utils.invHomogeneousNumpy(si_T_ci)
                 self.si_T_ci=glm.mat4(*si_T_ci.flatten())
                 
                 

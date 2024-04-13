@@ -599,7 +599,7 @@ class CameraCalibGUI:
                     #print("tvec: "+str(translation_vector))
                     #Convert rotation_vector and translation_vector to homogeneous transform
                     cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector[0])
-                    scene_T_cam=utils.invHomogeneous(cam_T_scene)
+                    scene_T_cam=utils.invHomogeneousNumpy(cam_T_scene)
                     
                     #Get the frame number to index the corresponding ecm_T_psm pose
                     #name,ext=filename.split('.')   #Splits off the name
@@ -623,8 +623,8 @@ class CameraCalibGUI:
         A=[]
         B=[]
         for i in range(len(rb_T_ecm_right)-1):
-            A_i=np.dot(np.transpose(scene_T_rightcam[i]),scene_T_rightcam[i+1])
-            B_i=np.dot(np.transpose(rb_T_ecm_right[i]),rb_T_ecm_right[i+1])
+            A_i=np.dot(utils.invHomogeneousNumpy(scene_T_rightcam[i]),scene_T_rightcam[i+1])
+            B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i]),rb_T_ecm_right[i+1])
             A.append(A_i)
             B.append(B_i)
         
@@ -639,8 +639,8 @@ class CameraCalibGUI:
         A=[]
         B=[]
         for i in range(len(rb_T_ecm_left)-1):
-            A_i=np.dot(np.transpose(scene_T_leftcam[i]),scene_T_leftcam[i+1])
-            B_i=np.dot(np.transpose(rb_T_ecm_left[i]),rb_T_ecm_left[i+1])
+            A_i=np.dot(utils.invHomogeneousNumpy(scene_T_leftcam[i]),scene_T_leftcam[i+1])
+            B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_left[i]),rb_T_ecm_left[i+1])
             A.append(A_i)
             B.append(B_i)
         

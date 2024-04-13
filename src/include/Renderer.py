@@ -81,8 +81,8 @@ T_6_alpha=glm.pi()/2
 T_6_cos_alpha=glm.cos(T_6_alpha)
 T_6_sin_alpha=glm.sin(T_6_alpha)
 
-T_6_a=METERS_TO_RENDER_SCALE*0.0091 #body length 
-
+T_6_a=0.0091 #body length 
+#T_6_a=0.0091
 
 #Rotation Matrices to convert between the standard DH frames and the frame system of the 3D models
 C_5_s=glm.mat4(glm.vec4(1,0,0,0),
@@ -107,14 +107,14 @@ C_r_jr=glm.mat4(glm.vec4(1,0,0,0),
 
 tool_tip_offset=0.0102 #meters
 
-T_tip_trans=glm.mat4(glm.ve4(1,0,0,0),
-                     glm.ve4(0,1,0,0),
-                     glm.ve4(0,0,1,0),
-                     glm.ve4(0,0,-1*tool_tip_offset,1)) #Translation from reported tool tip to how we define C7
-T_7rep_t=glm.mat4(glm.ve4(0,0,1,0),
-                     glm.ve4(0,-1,0,0),
-                     glm.ve4(1,0,0,0),
-                     glm.ve4(0,0,0,1))
+T_tip_trans=glm.mat4(glm.vec4(1,0,0,0),
+                     glm.vec4(0,1,0,0),
+                     glm.vec4(0,0,1,0),
+                     glm.vec4(0,0,-1*tool_tip_offset,1)) #Translation from reported tool tip to how we define C7
+T_7rep_t=glm.mat4(glm.vec4(0,0,1,0),
+                     glm.vec4(0,-1,0,0),
+                     glm.vec4(1,0,0,0),
+                     glm.vec4(0,0,0,1))
 T_7rep_7=T_tip_trans*T_7rep_t   #How we translate between reported tool tip coordinates and our coordinates
 
 obj_names=['shaft','body','jaw_right','jaw_left']
@@ -122,10 +122,10 @@ obj_names=['shaft','body','jaw_right','jaw_left']
 
 
 #Transformation to convert OpenCV camera frame to OpenGL frame
-CV_T_GL=glm.mat4(glm.ve4(1,0,0,0),
-                     glm.ve4(0,-1,0,0),
-                     glm.ve4(0,0,-1,0),
-                     glm.ve4(0,0,0,1))
+CV_T_GL=glm.mat4(glm.vec4(1,0,0,0),
+                     glm.vec4(0,-1,0,0),
+                     glm.vec4(0,0,-1,0),
+                     glm.vec4(0,0,0,1))
 
 ###For Testing:
 start_pose=glm.mat4(glm.vec4(1,0,0,0),
@@ -431,18 +431,28 @@ class Renderer:
 
         self.lc_T_ecm=left_handeye['leftcam_T_ecm']
         self.lc_T_ecm=np.array(self.lc_T_ecm,dtype='float32')
-        #self.lc_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(self.lc_T_ecm)
+        
+        self.lc_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(self.lc_T_ecm)
+        print("left hand eye: "+str(self.lc_T_ecm))
         self.lc_T_ecm=glm.mat4(*self.lc_T_ecm.flatten())
-
+        self.lc_T_ecm=glm.mat4()
+        
         self.rc_T_ecm=right_handeye['rightcam_T_ecm']
         self.rc_T_ecm=np.array(self.rc_T_ecm,dtype='float32')
-        #self.rc_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(self.rc_T_ecm)
+        
+        self.rc_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(self.rc_T_ecm)
+        print("right hand eye: "+str(self.rc_T_ecm))
         self.rc_T_ecm=glm.mat4(*self.rc_T_ecm.flatten())
+        self.rc_T_ecm=glm.mat4()
+        
 
+        print("left cam to right cam: "+str(self.lc_T_ecm*utils.invHomogeneousGLM(self.rc_T_ecm)))
         ##Getting current ecm pose
         ecm_pose=self.ecm.measured_cp()
+        #print("Initial PyKDL Pose: "+str(ecm_pose.M))
         ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
         ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
+        #print("Initial GLM Pose: "+str(ecm_pose))
         self.ecm_init_pose=ecm_pose
 
 
@@ -673,7 +683,8 @@ class Renderer:
     
     
     def on_key_press(self,symbol,modifiers):
-        #print("Key Pressed")
+
+        print("Key Pressed")
         if symbol==key.ESCAPE: #Close app when escape key is pressed
             print("Escape Pressed")
             self.mesh.destroy()
@@ -702,7 +713,7 @@ class Renderer:
             self.key_dict['E']=True
     
     def on_key_release(self,symbol,modifiers):
-
+        print("Key Released")
         #Update dict  that key is released
         if symbol==key.W:
             self.key_dict['W']=False
@@ -749,20 +760,26 @@ class Renderer:
         #self.get_time() 
         #print("delta time: "+str(self.delta_time))
         self.delta_time=dt
-        print("dt: "+str(dt))
-
+        #print("dt: "+str(dt))
+        #print("Calibration Done Left? "+str(self.aruco_tracker_left.calibrate_done))
+        #print("Calibration Done Right? "+str(self.aruco_tracker_right.calibrate_done))
         if self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             #Maybe move these commands under if statements in next block
             #Getting Current Poses (ecmini_T_ecm = curr ecm w.r.t. initial ecm), ecm_T_psm1=psm1 w.r.t. ecm, ecm_T_psm3 = psm3 w.r.t. ecm
             ecm_pose=self.ecm.measured_cp()
+            #print("Updated PyKDL Pose: "+str(ecm_pose.M))
             ecm_pose=utils.enforceOrthogonalPyKDL(ecm_pose)
             ecm_pose=utils.convertPyDK_To_GLM(ecm_pose)
-            self.ecmini_T_ecm=glm.transpose(self.ecm_init_pose)*ecm_pose
+            #print("Updated GLM Pose: "+str(ecm_pose))
+            self.ecmini_T_ecm=utils.invHomogeneousGLM(self.ecm_init_pose)*ecm_pose
+            #print("ecmini_T_ecm: "+str(self.ecmini_T_ecm))
             self.si_T_ecm=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm
             if self.PSM1_on:
                 psm1_pose=self.psm1.measured_cp()
                 psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
                 self.ecm_T_psm1=utils.convertPyDK_To_GLM(psm1_pose)
+                #print("ecm_T_psm1: "+str(self.ecm_T_psm1))
+
                 joint_vars_psm1=self.psm1.measured_jp()
                 jaw_angle_psm1=self.psm1.jaw.measured_jp()
                 self.joint_vars_psm1=[joint_vars_psm1[0],joint_vars_psm1[1],joint_vars_psm1[2],joint_vars_psm1[3],joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
@@ -773,6 +790,7 @@ class Renderer:
                 psm3_pose=self.psm3.measured_cp()
                 psm3_pose=utils.enforceOrthogonalPyKDL(psm3_pose)
                 self.ecm_T_psm3=utils.convertPyDK_To_GLM(psm3_pose)
+                #print("ecm_T_psm3: "+str(self.ecm_T_psm3))
 
                 #Get joint positions
                 joint_vars_psm3=self.psm3.measured_jp()
@@ -785,24 +803,29 @@ class Renderer:
                 self.render_time+=self.delta_time   #Update the time since start of rendering
                 #Get the row of recording with time closest to rendering time
                 index=np.argmin(np.abs(self.render_times_list-self.render_time))    #Gets index of row in recorded time closest to current time
+                print("Index: "+str(index))
                 data_row=pd.read_csv(self.render_filename,skiprows=9+index,nrows=1)
                 data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
+                if index>=(len(self.render_times_list)-1):    #Reset the rendering time, so this inherently does looping for us
+                    self.render_time=0.0
 
 
 
                 if self.PSM1_on:
                     #PSM1:
-                    self.si_T_psm1_recorded=data_list[2:13]
+                    self.si_T_psm1_recorded=data_list[2:14]
+                    #print("si_T_psm1_list: "+str(self.si_T_psm1_recorded))
                     self.si_T_psm1_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm1_recorded)
-                    self.joint_vars_psm1_recorded=data_list[44:47]
+                    self.joint_vars_psm1_recorded=data_list[44:48]
+                    #print("joint vars psm1: "+str(self.joint_vars_psm1_recorded))
                     self.instrument_kinematics(self.joint_vars_psm1_recorded,self.si_T_psm1_recorded,'PSM1')
                 if self.PSM3_on:
                     #PSM3:
-                    self.si_T_psm3_recorded=data_list[15:26]
+                    self.si_T_psm3_recorded=data_list[15:27]
                     self.si_T_psm3_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm3_recorded)
-                    self.joint_vars_psm3_recorded=data_list[52:55]
+                    self.joint_vars_psm3_recorded=data_list[52:58]
 
-                    self.instrument_kinematics(self.joint_vars_psm3_recorded[3:-1],self.si_T_psm3_recorded,'PSM3')
+                    self.instrument_kinematics(self.joint_vars_psm3_recorded,self.si_T_psm3_recorded,'PSM3')
 
                 self.move_objects() 
             
@@ -899,17 +922,20 @@ class Renderer:
 
         ######Rendering Left Screen Instruments
         if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
-            self.camera_left.update(None) 
-            cam_left_pose=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*glm.transpose(self.lc_T_ecm)
+            #self.camera_left.update(None) 
+            cam_left_pose=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*utils.invHomogeneousGLM(self.lc_T_ecm)
 
             #Convert opencv frame to opengl frame
             cam_left_pose=cam_left_pose*CV_T_GL
-            self.camera_left.update(cam_left_pose)
+            #print("Camera Left Pose: "+str(cam_left_pose))
+            self.camera_left.update(None)
+            #self.camera_left.update(cam_left_pose)
             #self.scene.render(self.ctx_left)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_left)
             if self.PSM3_on:
                 self.scene_PSM3.render(self.ctx_left)
+            print("Render Update Left")
                 
         
         ###########################Render the Right Window##########################
@@ -951,18 +977,19 @@ class Renderer:
 
         if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             self.camera_right.update(None)
-            cam_right_pose=self.si_T_rci*self.rc_T_ecm*self.ecmini_T_ecm*glm.transpose(self.rc_T_ecm)
+            cam_right_pose=self.si_T_rci*self.rc_T_ecm*self.ecmini_T_ecm*utils.invHomogeneousGLM(self.rc_T_ecm)
 
             #Convert cam pose in opencv to opengl pose
             cam_right_pose=cam_right_pose*CV_T_GL
 
-            self.camera_left.update(cam_right_pose)
+            #self.camera_left.update(cam_right_pose)
+            print("Camera Right Pose: "+str(cam_right_pose))
             #self.scene.render(self.ctx_right)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_right)
             if self.PSM3_on:
                 self.scene_PSM3.render(self.ctx_right)
-
+            #print("Render Update Right")
                    
         ####Updates Gui
 
@@ -1054,6 +1081,7 @@ class Renderer:
         Also note, T4 is the base of the instrument, and T5 is the shaft rotated frame, T6 is the body rotated frame, T7 is the jaw base (no seperation)
         '''
         #Enforce >=0 jaw angle
+        #print("Joint Angles: "+str(joint_angles))
         if joint_angles[3]<0:
             joint_angles[3]=0
 
@@ -1061,9 +1089,9 @@ class Renderer:
         T7=T7_rep*T_7rep_7
 
         #Then work backwards from tool tip to get each frame
-        T6=T7*glm.transpose(self.transform_6_T_7(joint_angles[2]))
-        T5=T6*glm.transpose(self.transform_5_T_6(joint_angles[1]))
-        #T4=T5*glm.transpose(self.transform_4_T_5(joint_angles[0]))
+        T6=T7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))
+        T5=T6*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))
+        #T4=T5*utils.invHomogeneousGLM(self.transform_4_T_5(joint_angles[0]))
         Tjl=T7*self.Rotz(-joint_angles[3]/2)
         Tjr=T7*self.Rotz(joint_angles[3]/2)
 
@@ -1138,24 +1166,24 @@ class Renderer:
                          glm.vec4(0,0,0,1))
         return rot_mat    
     def ConvertDataRow_ToGLMPose(self,data_list):
-        data_list_new=[float(item) for item in data_list]
-        transform=glm.mat4(glm.vec4(data_list_new[3],data_list_new[6],data_list_new[9],0),
-                           glm.vec4(data_list_new[4],data_list_new[7],data_list_new[10],0),
-                           glm.vec4(data_list_new[5],data_list_new[8],data_list_new[11],0),
-                           glm.vec4(data_list_new[0],data_list_new[1],data_list_new[2],1))
+        transform=glm.mat4(glm.vec4(data_list[3],data_list[6],data_list[9],0),
+                           glm.vec4(data_list[4],data_list[7],data_list[10],0),
+                           glm.vec4(data_list[5],data_list[8],data_list[11],0),
+                           glm.vec4(data_list[0],data_list[1],data_list[2],1))
+        return transform
 
 
 
     
     ############ Main Render Loop
-    def run(self,delay=100):
+    def run(self,frame_rate=100):
         #self.get_time()
         #self.check_events()
         #self.instrument_kinematics([glm.pi()/6,glm.pi()/6,glm.pi()/6,glm.pi()/6],start_pose)
         #self.move_objects()
         #self.camera.update()
         #self.render()
-        pyglet.clock.schedule_interval(self.render,1/delay)
+        pyglet.clock.schedule_interval(self.render,1/frame_rate)
         pyglet.app.run()
         #glfwPollEvents()
         #self.delta_time=self.clock.tick(delay)

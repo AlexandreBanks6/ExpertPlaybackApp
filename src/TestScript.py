@@ -64,5 +64,5 @@ X=hand_eye_obj.ComputeHandEye(A,B)
 
 
 repeat_string=["Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"] #First number is row of R, second number is column
-MOTION_HEADER=["Time","si_T_psm1"]+repeat_string+["si_T_psm3"]+repeat_string+["si_T_ecm"]+repeat_string+["joint_vars_psm1"]+["q1,q2,q3,q4,q5,q6,jaw"]
+MOTION_HEADER=["Time","si_T_psm1"]+repeat_string+["si_T_psm3"]+repeat_string+["si_T_ecm"]+repeat_string+["joint_vars_psm1"]+["q1,q2,q3,q4,q5,q6,jaw"]+["joint_vars_psm3"]+["q1,q2,q3,q4,q5,q6,jaw"]
 

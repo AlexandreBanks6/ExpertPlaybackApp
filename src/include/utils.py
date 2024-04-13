@@ -8,7 +8,7 @@ import cv2
 
 
 
-def invHomogeneous(transform):
+def invHomogeneousNumpy(transform):
     #Input: Homogeneous transform (numpy)
     #Output: Inverse of homogeneous transform (numpy)
 
@@ -20,6 +20,11 @@ def invHomogeneous(transform):
     inverted_transform=np.identity(4)
     inverted_transform[0:3,0:3]=R_trans
     inverted_transform[0:3,3]=neg_R_trans_d
+    return inverted_transform
+def invHomogeneousGLM(transform):
+    frame_new=np.array(transform.to_list())
+    inverted_transform=invHomogeneousNumpy(frame_new)
+    inverted_transform=glm.mat4(*inverted_transform.flatten())
     return inverted_transform
 
 def convertRvecTvectoHomo(rvec,tvec):

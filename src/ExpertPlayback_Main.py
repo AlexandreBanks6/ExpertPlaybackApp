@@ -39,4 +39,4 @@ if __name__ == '__main__':
     #rospy.Subscriber(Clutch_Topic,Joy,tool_renderer.clutchPedalCallback,queue_size=1,buff_size=1000000)
     #rospy.Subscriber(Camera_Topic,Joy,tool_renderer.cameraPedalCallback,queue_size=1,buff_size=1000000)
     #Running Application
-    tool_renderer.run(delay=100)
+    tool_renderer.run(frame_rate=1000)
