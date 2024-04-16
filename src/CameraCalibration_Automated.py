@@ -13,7 +13,6 @@ import dvrk
 import tf_conversions.posemath as pm
 import PyKDL
 from include import utils
-
 #####To Do: Add a functionality to calibrate using an ArUco board, also add functionality to change size of checkerboard
 
 
@@ -36,8 +35,8 @@ ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
 CALIBRATION_DIR="../resources/Calib/" #Where we store calibration parameters and images
 
 
-RIGHT_FRAMES_FILEDIR="/chessboard_images_right/"
-LEFT_FRAMES_FILEDIR="/chessboard_images_left/"
+RIGHT_FRAMES_FILEDIR='/chessboard_images_right/'
+LEFT_FRAMES_FILEDIR='/chessboard_images_left/'
 
 #Where the calibration parameters are saved
 RIGHT_CAMERA_CALIB_DIR="/calibration_params_right/"
@@ -185,7 +184,7 @@ class CameraCalibGUI:
 
         #Hand-Eye Parameteres
         self.hand_eye=HandEye.HandEye() #Creates hand-eye calibration object
-        self.rb_T_ecm_list=[]   #List of robot base to ecm transforms
+        self.rb_T_ecm_list=[]   #List of robot base (cart) to ecm transforms
         
         self.mtx_right=None
         self.mtx_left=None
@@ -480,6 +479,7 @@ class CameraCalibGUI:
         #Does Both the Right and Left Cameras hand-eye+general calibration
 
         self.getFolderName()    #Gets Most Recent File Directory
+        print("Root Name: "+self.rootName)
         frames_right_path=self.rootName+RIGHT_FRAMES_FILEDIR
         frames_left_path=self.rootName+LEFT_FRAMES_FILEDIR
 
@@ -561,8 +561,8 @@ class CameraCalibGUI:
         rb_T_ecm_right=[]
         rb_T_ecm_left=[]
 
-        scene_T_rightcam=[]
-        scene_T_leftcam=[]
+        rightcam_T_scene=[]
+        leftcam_T_scene=[]
 
         objp = np.zeros((CHECKERBOARD_DIM[0]*CHECKERBOARD_DIM[1],3), np.float32)
         objp[:,:2] = np.mgrid[0:CHECKERBOARD_DIM[0], 0:CHECKERBOARD_DIM[1]].T.reshape(-1, 2)*CHECKER_WIDTH
@@ -576,16 +576,21 @@ class CameraCalibGUI:
             calibration_params_path=params_path[i]
             checkerboard_frames_path=frames_path[i]
             if i==0:
+                #print("i="+str(i))
                 mtx=self.mtx_right
                 dist=self.dst_right
                 frame_name='frame_right'
+                #print("frame="+frame_name)
             elif i==1:
+                #print("i="+str(i))
                 frame_name='frame_left'
                 mtx=self.mtx_left
                 dist=self.dst_left
+                #print("frame="+frame_name)
             
             #Loops for each checkerboard that we previously captured
             for frame_num in range(NUM_FRAMES_CAPTURED):
+                #print("Frame_num: "+str(frame_num))
                 filename=checkerboard_frames_path+frame_name+str(frame_num)+".jpg"
                 img = cv2.imread(filename) # Capture frame-by-frame
                 gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
@@ -596,25 +601,27 @@ class CameraCalibGUI:
                     success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(objp,corners2,mtx,dist,\
                                                                                     iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
                     
-                    #print("tvec: "+str(translation_vector))
                     #Convert rotation_vector and translation_vector to homogeneous transform
-                    cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector[0])
-                    scene_T_cam=utils.invHomogeneousNumpy(cam_T_scene)
-                    
-                    #Get the frame number to index the corresponding ecm_T_psm pose
-                    #name,ext=filename.split('.')   #Splits off the name
-                    #frame_num=[int(s) for s in name if s.isdigit()]
-                    #combined_number = int("".join(str(number) for number in frame_num))
-                    rb_T_ecm=rb_T_ecm_list[frame_num]
-                    #print('rb_T_ecm: '+str(rb_T_ecm))
+                    if success:
+                        
+                        #print("rotation_vector: "+str(rotation_vector))
+                        #print("translation_vector: "+str(translation_vector))
+                        cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                        #print("cam_T_scene: "+str(cam_T_scene))
+                        #Get the frame number to index the corresponding ecm_T_psm pose
+                        #name,ext=filename.split('.')   #Splits off the name
+                        #frame_num=[int(s) for s in name if s.isdigit()]
+                        #combined_number = int("".join(str(number) for number in frame_num))
+                        rb_T_ecm=rb_T_ecm_list[frame_num]
+                       #print('rb_T_ecm: '+str(rb_T_ecm))
 
-                    #Updating the lists
-                    if i==0: #right
-                        rb_T_ecm_right.append(rb_T_ecm)
-                        scene_T_rightcam.append(scene_T_cam)
-                    elif i==1:
-                        rb_T_ecm_left.append(rb_T_ecm)
-                        scene_T_leftcam.append(scene_T_cam)
+                        #Updating the lists
+                        if i==0: #right
+                            rb_T_ecm_right.append(rb_T_ecm)
+                            rightcam_T_scene.append(cam_T_scene)
+                        elif i==1:
+                            rb_T_ecm_left.append(rb_T_ecm)
+                            leftcam_T_scene.append(cam_T_scene)
 
 
         #Solving Hand-Eye Calibration for both the right and left cameras
@@ -622,25 +629,45 @@ class CameraCalibGUI:
         #Do Right First
         A=[]
         B=[]
+        R_gripper2base=[]
+        t_gripper2base=[]
+        R_target2cam=[]
+        t_target2cam=[]
         for i in range(len(rb_T_ecm_right)-1):
-            A_i=np.dot(utils.invHomogeneousNumpy(scene_T_rightcam[i]),scene_T_rightcam[i+1])
+            #A_i=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i+1]),rightcam_T_scene[i]) #Initial
+            A_i=np.dot(rightcam_T_scene[i],utils.invHomogeneousNumpy(rightcam_T_scene[i+1]))
+            # B_i=np.dot(rb_T_ecm_right[i+1],utils.invHomogeneousNumpy(rb_T_ecm_right[i])) #Initial
             B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i]),rb_T_ecm_right[i+1])
+            R_gripper2base.append(utils.invHomogeneousNumpy(rb_T_ecm_right[i])[0:3,0:3])
+            t_gripper2base.append(utils.invHomogeneousNumpy(rb_T_ecm_right[i])[0:3,3])
+
+            R_target2cam.append(rightcam_T_scene[i][0:3,0:3])
+            t_target2cam.append(rightcam_T_scene[i][0:3,3])
+
             A.append(A_i)
             B.append(B_i)
         
         #Solve hand-eye problem
         A=np.array(A)
         B=np.array(B)
+        R_gripper2base=np.array(R_gripper2base)
+        t_gripper2base=np.array(t_gripper2base)
+        R_target2cam=np.array(R_target2cam)
+        t_target2cam=np.array(t_target2cam)
         
         rightcam_T_ecm=self.hand_eye.ComputeHandEye(A,B)
-        data_right = {'rightcam_T_ecm': rightcam_T_ecm.tolist()}
+        print("rightcam_T_ecm: "+str(rightcam_T_ecm))
+        data_right = {'ecm_T_rightcam': rightcam_T_ecm.tolist()}
 
+        rightcam_T_ecm_cv=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam)
+        print("rightcam_T_ecm_cv: "+str(rightcam_T_ecm_cv))
         #Do Left Next
         A=[]
         B=[]
         for i in range(len(rb_T_ecm_left)-1):
-            A_i=np.dot(utils.invHomogeneousNumpy(scene_T_leftcam[i]),scene_T_leftcam[i+1])
-            B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_left[i]),rb_T_ecm_left[i+1])
+            #A_i=np.dot(utils.invHomogeneousNumpy(leftcam_T_scene[i+1]),leftcam_T_scene[i])
+            A_i=np.dot(leftcam_T_scene[i],utils.invHomogeneousNumpy(leftcam_T_scene[i+1]))
+            B_i=np.dot(rb_T_ecm_left[i+1],utils.invHomogeneousNumpy(rb_T_ecm_left[i]))
             A.append(A_i)
             B.append(B_i)
         
@@ -648,7 +675,8 @@ class CameraCalibGUI:
         A=np.array(A)
         B=np.array(B)
         leftcam_T_ecm=self.hand_eye.ComputeHandEye(A,B)
-        data_left = {'leftcam_T_ecm': leftcam_T_ecm.tolist()}
+        print("leftcam_T_ecm: "+str(leftcam_T_ecm))
+        data_left = {'ecm_T_leftcam': leftcam_T_ecm.tolist()}
 
         #Store these values
         with open(calibration_params_right+"hand_eye_calibration_right.yaml","w") as f:
@@ -661,6 +689,7 @@ class CameraCalibGUI:
         #Gets the most recent folder where we store checkerboards and base_T_ecm poses
         folder_count=1
         root_directory=CALIBRATION_DIR+'Calib_'+str(folder_count)
+        print("Root Directory: "+root_directory)
         old_root=root_directory
         if os.path.isdir(root_directory):
             while True:
@@ -686,13 +715,6 @@ class CameraCalibGUI:
                 break
         os.mkdir(root_directory)
         self.rootName=root_directory
-
-    def convertRvecTvectoHomo(self,rvec,tvec):
-        Rot,_=cv2.Rodrigues(rvec)
-        transform=np.identity(4)
-        transform[0:3,0:3]=Rot
-        transform[0:3,3]=tvec
-        return transform
     
 
 

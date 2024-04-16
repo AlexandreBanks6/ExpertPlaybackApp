@@ -28,12 +28,16 @@ def invHomogeneousGLM(transform):
     return inverted_transform
 
 def convertRvecTvectoHomo(rvec,tvec):
+    tvec=tvec.flatten()
+    #print("tvec new: "+str(tvec))
     #Input: OpenCV rvec (rotation) and tvec (translation)
     #Output: Homogeneous Transform
     Rot,_=cv2.Rodrigues(rvec)
+    #print("Rotation Matrix: "+str(Rot))
     transform=np.identity(4)
     transform[0:3,0:3]=Rot
     transform[0:3,3]=tvec
+    transform=EnforceOrthogonalityNumpy_FullTransform(transform)
     return transform
 
 def EnforceOrthogonalityNumpy_FullTransform(transform):

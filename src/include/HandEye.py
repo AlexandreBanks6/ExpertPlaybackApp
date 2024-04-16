@@ -20,7 +20,7 @@ class HandEye:
         #Note that A and B are arrays of arrays, N=length of outer array=number of transformations
         #A and B must be the same lengths (N)
         print("A: "+str(A))
-        print("B: "+str(B))
+        #print("B: "+str(B))
 
         N=len(A)
         if N>=2:
@@ -40,23 +40,32 @@ class HandEye:
             q=self.solveHomoSVD(L)
 
             #Compute dual part of the dual quaternion
-            A=L
-            B=-1*np.matmul(A,q.T)
+            A=L #Correct
+            B=-1*np.dot(L_prime,q)
+            print("L_prime Shape: "+str(L_prime.shape))
+            print("q Shape: "+str(q.shape))
+            print("B Shape: "+str(B.shape))
             q_prime,residuals,_,_=np.linalg.lstsq(A,B,rcond=None)
 
             #Solve translation part:
-            q_conj=np.array([q[0]]+list(-q[1:4]))
+            q_conj=np.array([q[0]]+list(-1*q[1:4]))
             mult_res=self.quaternionMultiply(2*q_prime,q_conj)
             trans=mult_res[1:4]
 
             #Get the rotation part:
-            R=Rotation.from_quat(list(q))
+            R=Rotation.from_quat([q[1],q[2],q[3],q[0]])
             R=R.as_matrix()
 
             #Build the homogeneous transform matrix
             X=np.identity(4)
             X[0:3,0:3]=R
             X[0:3,3]=trans
+
+            print("L: "+str(L))
+            print("q_prime: "+str(q_prime))
+
+            result_verifier=np.dot(L,q_prime.T)+np.dot(L_prime,q.T)
+            print("result_verifier: "+str(result_verifier))
 
             return X
 
@@ -78,7 +87,7 @@ class HandEye:
         return np.array([w, x, y, z])
     def solveHomoSVD(self,L):
         U,S,Vh=np.linalg.svd(L)
-        #The solutio n "S" or the singular values are sorted in decending order, so we just take the 
+        #The solution "S" or the singular values are sorted in decending order, so we just take the 
         #final column of Vh
         return Vh[-1]
 
@@ -86,7 +95,6 @@ class HandEye:
         #Takes the real part of two dual quaternions to construct the K matrix to build the L matrix for SVD decomposition
         #See reference: Robust Hand-Eye Calibration for Computer Aided Medical Endoscopy
         #Assume input is two numpy arrays
-
         a0=a[0] #Real part of quaternion
         a_bar=a[1:4]    #Complex part of quaternion
 
@@ -102,12 +110,74 @@ class HandEye:
 
         K_mat[1:4,1:4]=bottom_right
         K_mat[0,0]=a0-b0
-        K_mat[0,1:4]=-(a_minus_b)
+        K_mat[0,1:4]=-1*(a_minus_b)
         K_mat[1:4,0]=a_minus_b
 
 
         return K_mat
     
+    def HomoToDualQuat(self,A):
+        #Takes in a homogenous transform matrix, A, and converts it to a dual quaternion
+        #A is a 4x4 numpy array (homogeneous transform)
+        #Returns: a,a'(the real/dual parts of the dual quaternion)
+        RA=A[0:3,0:3] #Rotation of A
+        tA=A[0:3,3] #Translation of A
+        RA=utils.EnforceOrthogonalityNumpy(RA)
+        RA_scipy=Rotation.from_matrix(RA)
+        r_vec_scipy=RA_scipy.as_rotvec() #Returns rotation axis and angle encoded
+        rotation_angle=np.linalg.norm(r_vec_scipy)
+        rotation_axis=r_vec_scipy/rotation_angle if rotation_angle!=0 else r_vec_scipy
+        
+        w=np.cos(rotation_angle/2)
+        x,y,z=np.sin(rotation_angle/2)*rotation_axis
+        a=np.array([w,x,y,z])
+
+        trans_quat = np.array([0] + list(tA))  # Translation as a quaternion
+        a_prime = 0.5 * self.quaternionMultiply(trans_quat,a)
+        return a,a_prime
+
+
+
+
+    '''
+
+    def HomoToDualQuat(self,A):
+        #Takes in a homogenous transform matrix, A, and converts it to a dual quaternion
+        #A is a 4x4 numpy array (homogeneous transform)
+        #Returns: a,a'(the real/dual parts of the dual quaternion)
+        print("A in homotodualquat: "+str(A))
+        RA=A[0:3,0:3] #Rotation of A
+        print("RA: "+str(RA))
+        tA=A[0:3,3] #Translation of A
+        print("tA: "+str(tA))
+        RA=utils.EnforceOrthogonalityNumpy(RA)
+        print("RA Normalized: "+str(RA))
+
+        #We convert the rotation to rotation axis and rotation angle using scipy
+        RA_scipy=Rotation.from_matrix(RA)
+        r_vec_scipy=RA_scipy.as_rotvec() #Returns rotation axis and angle encoded
+        rotation_angle=np.linalg.norm(r_vec_scipy)
+        rotation_axis=r_vec_scipy/rotation_angle if rotation_angle!=0 else r_vec_scipy
+        print("rotation_angle: "+str(rotation_angle))
+        print("rotation_axis: "+str(rotation_axis))
+        print("Norm of rotation axis: "+str(np.linalg.norm(rotation_axis)))
+        #Real part of dual quaternion
+        w=np.sin(rotation_angle/2)
+        x,y,z=np.cos(rotation_angle/2)*rotation_axis
+        a=np.array([w,x,y,z])
+        print("a: "+str(a))
+        m=0.5*(np.cross(tA,rotation_axis)+(1/np.tan(rotation_angle/2))*np.cross(rotation_axis,np.cross(tA,rotation_axis)))
+        print("m: "+str(m))
+        d=np.dot(tA,rotation_axis)
+        print("d: "+str(d))
+        a_prime=np.hstack([-(d/2)*np.sin(rotation_angle/2),np.sin(rotation_angle/2)*m+(d/2)*np.cos(rotation_angle/2)*rotation_axis])
+        print("a_prime: "+str(a_prime))
+        return a,a_prime
+
+    '''
+
+
+    '''
     def HomoToDualQuat(self,A):
         #Takes in a homogenous transform matrix, A, and converts it to a dual quaternion
         #A is a 4x4 numpy array (homogeneous transform)
@@ -147,10 +217,11 @@ class HandEye:
         else:
             print("Not a Rotation Matrix")
             return None,None
+        '''
         
 
 ##############Maybe use this method instead
-        '''
+'''
 def homogeneous_to_dual_quat(transform):
     # Extract rotation matrix and translation vector
     rotation_matrix = transform[0:3, 0:3]
