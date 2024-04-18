@@ -88,7 +88,7 @@ class ArucoTracker:
         self.calibrate_done=False #Returns true when the calibration is done
 
         #Transformation matrices to return:
-        self.si_T_ci=None #Transformation from scene to camera coordinate system (initial)
+        self.ci_T_si=None #Transformation from scene to camera coordinate system (initial)
         self.rvec_scene=None
         self.tvec_scene=None
 
@@ -203,11 +203,11 @@ class ArucoTracker:
                 #cv2.drawFrameAxes(self.app.frame_left_converted,self.mtx_left,self.dist_left,rotation_vector,translation_vector,0.05)
                 #print("Calib Success")
                 self.calibrate_done=True
-                si_T_ci=utils.convertRvecTvectoHomo(rotation_vector,translation_vector[0]) #Returns as numpy array
-                si_T_ci=utils.EnforceOrthogonalityNumpy_FullTransform(si_T_ci)
+                ci_T_si=utils.convertRvecTvectoHomo(rotation_vector,translation_vector[0]) #Returns as numpy array
+                ci_T_si=utils.EnforceOrthogonalityNumpy_FullTransform(ci_T_si)
                 ###So rvec and tvec are object wiriti camera (c_T_o) what we need is (o_T_c) so we invert
-                #si_T_ci=utils.invHomogeneousNumpy(si_T_ci)
-                self.si_T_ci=glm.mat4(*si_T_ci.flatten())
+                #ci_T_si=utils.invHomogeneousNumpy(ci_T_si)
+                self.ci_T_si=glm.mat4(*ci_T_si.flatten())
                 
                 
 

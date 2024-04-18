@@ -82,47 +82,55 @@ T_6_cos_alpha=glm.cos(T_6_alpha)
 T_6_sin_alpha=glm.sin(T_6_alpha)
 
 T_6_a=0.0091 #body length 
-#T_6_a=0.0091
+
 
 #Rotation Matrices to convert between the standard DH frames and the frame system of the 3D models
-C_5_s=glm.mat4(glm.vec4(1,0,0,0),
+T_5_s=glm.mat4(glm.vec4(1,0,0,0),
                glm.vec4(0,0,1,0),
                glm.vec4(0,-1,0,0),
                glm.vec4(0,0,0,1))  #Transform between C5 and Cs (shaft frame)
 
-C_6_b=glm.mat4(glm.vec4(1,0,0,0),
+T_6shift_6=glm.mat4(glm.vec4(1,0,0,0),
+               glm.vec4(0,1,0,0),
+               glm.vec4(0,0,1,0),
+               glm.vec4(T_6_a,0,0,1))
+
+T_6shift_b=glm.mat4(glm.vec4(1,0,0,0),
                glm.vec4(0,0,-1,0),
                glm.vec4(0,1,0,0),
                glm.vec4(0,0,0,1))  #Transform between C6 and Cb (body frame)
 
-C_l_jl=glm.mat4(glm.vec4(1,0,0,0),
+T_6_b=utils.invHomogeneousGLM(T_6shift_6)*T_6shift_b
+
+T_jl_jlocal=glm.mat4(glm.vec4(1,0,0,0),
                glm.vec4(0,0,1,0),
                glm.vec4(0,-1,0,0),
                glm.vec4(0,0,0,1))  #Transform between Cjl and Cl (left jaw frame)
 
-C_r_jr=glm.mat4(glm.vec4(1,0,0,0),
+T_jr_jrlocal=glm.mat4(glm.vec4(1,0,0,0),
                glm.vec4(0,0,1,0),
                glm.vec4(0,-1,0,0),
                glm.vec4(0,0,0,1))  #Transform between Cjr and Cr (left jaw frame)
 
 tool_tip_offset=0.0102 #meters
 
-T_tip_trans=glm.mat4(glm.vec4(1,0,0,0),
+T_7_7trans=glm.mat4(glm.vec4(1,0,0,0),
                      glm.vec4(0,1,0,0),
                      glm.vec4(0,0,1,0),
-                     glm.vec4(0,0,-1*tool_tip_offset,1)) #Translation from reported tool tip to how we define C7
-T_7rep_t=glm.mat4(glm.vec4(0,0,1,0),
+                     glm.vec4(tool_tip_offset,0,0,1)) #Translation from reported tool tip to how we define C7
+T_7trans_tpsm=glm.mat4(glm.vec4(0,0,1,0),
                      glm.vec4(0,-1,0,0),
                      glm.vec4(1,0,0,0),
                      glm.vec4(0,0,0,1))
-T_7rep_7=T_tip_trans*T_7rep_t   #How we translate between reported tool tip coordinates and our coordinates
+T_7_psm=T_7_7trans*T_7trans_tpsm   #How we translate between reported tool tip coordinates and our coordinates
+T_psm_7=utils.invHomogeneousGLM(T_7_psm)
 
 obj_names=['shaft','body','jaw_right','jaw_left']
 
 
 
 #Transformation to convert OpenCV camera frame to OpenGL frame
-CV_T_GL=glm.mat4(glm.vec4(1,0,0,0),
+opengl_T_opencv=glm.mat4(glm.vec4(1,0,0,0),
                      glm.vec4(0,-1,0,0),
                      glm.vec4(0,0,-1,0),
                      glm.vec4(0,0,0,1))
@@ -385,8 +393,8 @@ class Renderer:
         #################Frame Transformations#####################
 
         #Recorded Value for PSMs with respect to base frame (si)
-        self.si_T_psm3_recorded=None    #Gives T7
-        self.si_T_psm1_recorded=None    #Gives T7
+        self.si_T_psm3_recorded=None    #Gives w_T_7
+        self.si_T_psm1_recorded=None    #Gives w_T_7
 
         #CUrrent Value for PSMw with respect to base frame
         self.si_T_psm1=None
@@ -399,11 +407,11 @@ class Renderer:
         self.si_T_ecm=None
 
         #####Current Values (updated every loop, or pre-defined)
-        self.si_T_lci=None #The left camera w.r.t. scene base frame (calibrated origin)
-        self.si_T_rci=None #The right camera w.r.t. scene base frame (calibrated origin)
+        self.lci_T_si=None #The left camera w.r.t. scene base frame (calibrated origin)
+        self.rci_T_si=None #The right camera w.r.t. scene base frame (calibrated origin)
 
-        self.lc_T_ecm=None #left hand-eye
-        self.rc_T_ecm=None #right hand-eye
+        self.ecm_T_lc=None #left hand-eye
+        self.ecm_T_rc=None #right hand-eye
 
         self.ecmini_T_ecm=None #current ecm pose w.r.t. initial ecm pose
 
@@ -429,24 +437,21 @@ class Renderer:
         with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_left/hand_eye_calibration_left.yaml','r') as file:
             left_handeye=yaml.load(file)
 
-        self.lc_T_ecm=left_handeye['leftcam_T_ecm']
-        self.lc_T_ecm=np.array(self.lc_T_ecm,dtype='float32')
+        self.ecm_T_lc=left_handeye['ecm_T_leftcam']
+        self.ecm_T_lc=np.array(self.ecm_T_lc,dtype='float32')
         
-        self.lc_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(self.lc_T_ecm)
+        self.ecm_T_lc=utils.EnforceOrthogonalityNumpy_FullTransform(self.ecm_T_lc)
         print("left hand eye: "+str(self.lc_T_ecm))
-        self.lc_T_ecm=glm.mat4(*self.lc_T_ecm.flatten())
-        self.lc_T_ecm=glm.mat4()
+        self.ecm_T_lc=glm.mat4(*self.ecm_T_lc.flatten())
         
-        self.rc_T_ecm=right_handeye['rightcam_T_ecm']
-        self.rc_T_ecm=np.array(self.rc_T_ecm,dtype='float32')
+        self.ecm_T_rc=right_handeye['ecm_T_rightcam']
+        self.ecm_T_rc=np.array(self.ecm_T_rc,dtype='float32')
         
-        self.rc_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(self.rc_T_ecm)
-        print("right hand eye: "+str(self.rc_T_ecm))
-        self.rc_T_ecm=glm.mat4(*self.rc_T_ecm.flatten())
-        self.rc_T_ecm=glm.mat4()
+        self.ecm_T_rc=utils.EnforceOrthogonalityNumpy_FullTransform(self.ecm_T_rc)
+        print("right hand eye: "+str(self.ecm_T_rc))
+        self.ecm_T_rc=glm.mat4(*self.ecm_T_rc.flatten())
         
 
-        print("left cam to right cam: "+str(self.lc_T_ecm*utils.invHomogeneousGLM(self.rc_T_ecm)))
         ##Getting current ecm pose
         ecm_pose=self.ecm.measured_cp()
         #print("Initial PyKDL Pose: "+str(ecm_pose.M))
@@ -563,28 +568,28 @@ class Renderer:
                 writer_object.writerow(MOTION_HEADER)    #Writing the Header
 
                 #Writing si_T_lci (scene to left camera initial)
-                writer_object.writerow(['si_T_lci'])
-                si_T_lci_numpy=np.array(self.si_T_lci.to_list())
-                si_T_lci_list=utils.convertHomogeneousToCSVROW(si_T_lci_numpy)
-                writer_object.writerow(["0"]+si_T_lci_list)
+                writer_object.writerow(['lci_T_si'])
+                lci_T_si_numpy=np.array(self.lci_T_si.to_list())
+                lci_T_si_list=utils.convertHomogeneousToCSVROW(lci_T_si_numpy)
+                writer_object.writerow(["0"]+lci_T_si_list)
 
                 #Writing si_T_rci (scene to right camera initial)
-                writer_object.writerow(['si_T_rci'])
-                si_T_rci_numpy=np.array(self.si_T_rci.to_list())
-                si_T_rci_list=utils.convertHomogeneousToCSVROW(si_T_rci_numpy)
-                writer_object.writerow(["0"]+si_T_rci_list)
+                writer_object.writerow(['rci_T_si'])
+                rci_T_si_numpy=np.array(self.rci_T_si.to_list())
+                rci_T_si_list=utils.convertHomogeneousToCSVROW(rci_T_si_numpy)
+                writer_object.writerow(["0"]+rci_T_si_list)
 
                 #Writing lc_T_ecm (hand-eye left)
-                writer_object.writerow(['lc_T_ecm'])
-                lc_T_ecm_numpy=np.array(self.lc_T_ecm.to_list())
-                lc_T_ecm_list=utils.convertHomogeneousToCSVROW(lc_T_ecm_numpy)
-                writer_object.writerow(["0"]+lc_T_ecm_list)
+                writer_object.writerow(['ecm_T_lc'])
+                ecm_T_lc_numpy=np.array(self.ecm_T_lc.to_list())
+                ecm_T_lc_list=utils.convertHomogeneousToCSVROW(ecm_T_lc_numpy)
+                writer_object.writerow(["0"]+ecm_T_lc_list)
 
                 #Writing rc_T_ecm (hand-eye right)
-                writer_object.writerow(['rc_T_ecm'])
-                rc_T_ecm_numpy=np.array(self.rc_T_ecm.to_list())
-                rc_T_ecm_list=utils.convertHomogeneousToCSVROW(rc_T_ecm_numpy)
-                writer_object.writerow(["0"]+rc_T_ecm_list)
+                writer_object.writerow(['ecm_T_rc'])
+                ecm_T_rc_numpy=np.array(self.ecm_T_rc.to_list())
+                ecm_T_rc_list=utils.convertHomogeneousToCSVROW(ecm_T_rc_numpy)
+                writer_object.writerow(["0"]+ecm_T_rc_list)
 
 
 
@@ -744,11 +749,6 @@ class Renderer:
           #      self.mesh.destroy()
            #     pg.quit()
             #    sys.exit()
-    def enforceOrthogonalPyKDL(self,pykdl_frame):
-        pykdl_frame_new=pm.toMatrix(pykdl_frame)
-        pykdl_frame_new[0:3,0:3]=HandEye.EnforceOrthogonality(pykdl_frame_new[0:3,0:3])
-        pykdl_frame_new=pm.fromMatrix(pykdl_frame_new)
-        return pykdl_frame_new
 
 
 
@@ -773,7 +773,7 @@ class Renderer:
             #print("Updated GLM Pose: "+str(ecm_pose))
             self.ecmini_T_ecm=utils.invHomogeneousGLM(self.ecm_init_pose)*ecm_pose
             #print("ecmini_T_ecm: "+str(self.ecmini_T_ecm))
-            self.si_T_ecm=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm
+            self.si_T_ecm=utils.invHomogeneousGLM(self.lci_T_si)*utils.invHomogeneousGLM(self.ecm_T_lc)*self.ecmini_T_ecm
             if self.PSM1_on:
                 psm1_pose=self.psm1.measured_cp()
                 psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
@@ -830,7 +830,7 @@ class Renderer:
                 self.move_objects() 
             
             ######################Recording Surgeon Movements#####################
-            if self.record_motions_on:
+            if self.record_motions_on and not self.render_on:
                 self.record_time+=self.delta_time
                 #We update the motions .csv
                 with open(self.record_filename,'a',newline='') as file_object:
@@ -894,16 +894,16 @@ class Renderer:
                 #If Scene Calibration is On
                 if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame 
 
-                    self.si_T_lci=None
+                    self.lci_T_si=None
                     self.aruco_tracker_left.calibrateScene()
-                    self.si_T_lci=self.aruco_tracker_left.si_T_ci
+                    self.lci_T_si=self.aruco_tracker_left.ci_T_si
 
                     #Writing to CSV For Validation
                     if self.NDI_TrackerToggle:
                         NDI_dat=self.ndi_tracker.get_frame() #Grabs the NDI tracker data
                         self.writeToNDIVal(NDI_dat)
       
-                if self.si_T_lci is not None and (not self.calib_gaze_on) and (not self.record_motions_on) and (not self.render_on) and (not self.playback_ecm_on): #We show scene coord system                      
+                if self.lci_T_si is not None and (not self.calib_gaze_on) and (not self.record_motions_on) and (not self.render_on) and (not self.playback_ecm_on): #We show scene coord system                      
                     
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
                                       self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
@@ -923,13 +923,13 @@ class Renderer:
         ######Rendering Left Screen Instruments
         if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             #self.camera_left.update(None) 
-            cam_left_pose=self.si_T_lci*self.lc_T_ecm*self.ecmini_T_ecm*utils.invHomogeneousGLM(self.lc_T_ecm)
+            lc_T_si=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(self.ecmini_T_ecm)*self.ecm_T_lc*self.lci_T_si
 
             #Convert opencv frame to opengl frame
-            cam_left_pose=cam_left_pose*CV_T_GL
+            lc_T_si=opengl_T_opencv*lc_T_si
             #print("Camera Left Pose: "+str(cam_left_pose))
             self.camera_left.update(None)
-            #self.camera_left.update(cam_left_pose)
+            #self.camera_left.update(lc_T_si)
             #self.scene.render(self.ctx_left)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_left)
@@ -952,11 +952,11 @@ class Renderer:
                 #If Scene Calibration is On
                 if self.calibrate_on and (not self.aruco_tracker_right.calibrate_done): #Sets Scene Base Frame
 
-                    self.si_T_rci=None
+                    self.rci_T_si=None
                     self.aruco_tracker_right.calibrateScene()
-                    self.si_T_rci=self.aruco_tracker_right.si_T_ci
+                    self.rci_T_si=self.aruco_tracker_right.ci_T_si
 
-                if (self.si_T_rci is not None) and (not self.calib_gaze_on) and (not self.record_motions_on) and (not self.render_on) and (not self.playback_ecm_on):
+                if (self.rci_T_si is not None) and (not self.calib_gaze_on) and (not self.record_motions_on) and (not self.render_on) and (not self.playback_ecm_on):
 
                     cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                       self.aruco_tracker_right.dist,self.aruco_tracker_right.rvec_scene,self.aruco_tracker_right.tvec_scene,0.05) #Look at rvec and tvec, look at frame_right_converted, look at calibrate on
@@ -977,13 +977,13 @@ class Renderer:
 
         if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             self.camera_right.update(None)
-            cam_right_pose=self.si_T_rci*self.rc_T_ecm*self.ecmini_T_ecm*utils.invHomogeneousGLM(self.rc_T_ecm)
+            rc_T_si=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmini_T_ecm)*self.ecm_T_rc*self.rci_T_si
 
             #Convert cam pose in opencv to opengl pose
-            cam_right_pose=cam_right_pose*CV_T_GL
+            rc_T_si=opengl_T_opencv*rc_T_si
 
-            #self.camera_left.update(cam_right_pose)
-            print("Camera Right Pose: "+str(cam_right_pose))
+            #self.camera_left.update(rc_T_si)
+            #print("Camera Right Pose: "+str(cam_right_pose))
             #self.scene.render(self.ctx_right)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_right)
@@ -1068,12 +1068,12 @@ class Renderer:
 
                 self.scene_PSM3.move_obj(obj_name,move_mat)
 
-    def instrument_kinematics(self,joint_angles,T7_rep,PSM_Type):
+    def instrument_kinematics(self,joint_angles,w_T_psm,PSM_Type):
         '''
         Update: q5=q4, q6=q5, q7=q6, and jaw based on the way that the dVRK reports it
         Input: 
         - list of angles of the intrument joints: shaft rotation (q5), body rotation (q6), jaw rotation (q7), jaw seperation (theta_j)
-        - Reported Tool Tip pose
+        - Tool tip with respect to world (w_T_psm)
         Output: 
         - Frames for each instrument segment: shaft frame (Ts), body frame (Tb), left jaw (Tl), right jaw (Tr)  
 
@@ -1085,15 +1085,20 @@ class Renderer:
         if joint_angles[3]<0:
             joint_angles[3]=0
 
+        w_T_jlocal=w_T_psm*T_psm_7*self.Rotz(-joint_angles[3]/2)*T_jl_jlocal    #Finds world to jaw left in object coords (local)
+        w_T_jrlocal=w_T_psm*T_psm_7*self.Rotz(joint_angles[3]/2)*T_jr_jrlocal   #Finds world to right jaw
+        w_T_bodylocal=w_T_psm*T_psm_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*T_6shift_b
+        w_T_shaftlocal=w_T_psm*T_psm_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))*T_5_s
+
         #First convert reported tool-tip pose (T7_rep) to our tool tip coodinate system (T7) using DH parameters
-        T7=T7_rep*T_7rep_7
+        #T7=T7_rep*T_7rep_7
 
         #Then work backwards from tool tip to get each frame
-        T6=T7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))
-        T5=T6*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))
+        #T6=T7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))
+        #T5=T6*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))
         #T4=T5*utils.invHomogeneousGLM(self.transform_4_T_5(joint_angles[0]))
-        Tjl=T7*self.Rotz(-joint_angles[3]/2)
-        Tjr=T7*self.Rotz(joint_angles[3]/2)
+        #Tjl=T7*self.Rotz(-joint_angles[3]/2)
+        #Tjr=T7*self.Rotz(joint_angles[3]/2)
 
 
         #This is going forward (if we are given T4), maybe revert to this later
@@ -1107,24 +1112,26 @@ class Renderer:
 
         #Next we convert these standard coordinates to the coordinates of our 3D objects (these are augmented)
         
-        Ts=T5*C_5_s
-        Tb=glm.translate(T6,glm.vec3(-T_6_a,0,0))*C_6_b #Brings back body frame to base of 3D model        
-        Tl=Tjl*C_l_jl
-        Tr=Tjr*C_r_jr
+        #Ts=T5*C_5_s
+        #Tb=glm.translate(T6,glm.vec3(-T_6_a,0,0))*C_6_b #Brings back body frame to base of 3D model        
+        #Tl=Tjl*C_l_jl
+        #Tr=Tjr*C_r_jr
+
+
         if PSM_Type=='PSM1':
             self.instrument_dict_PSM1={
-                'shaft': Ts,
-                'body': Tb,
-                'jaw_right': Tr,
-                'jaw_left':Tl
+                'shaft': w_T_shaftlocal,
+                'body': w_T_bodylocal,
+                'jaw_right': w_T_jrlocal,
+                'jaw_left': w_T_jlocal
             }
 
         elif PSM_Type=='PSM3':
             self.instrument_dict_PSM3={
-                'shaft': Ts,
-                'body': Tb,
-                'jaw_right': Tr,
-                'jaw_left':Tl
+                'shaft': w_T_shaftlocal,
+                'body': w_T_bodylocal,
+                'jaw_right': w_T_jrlocal,
+                'jaw_left': w_T_jlocal
             }
         
 
