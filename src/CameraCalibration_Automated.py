@@ -8,6 +8,7 @@ import threading
 import os
 import yaml
 from include import HandEye
+from scipy.spatial.transform import Rotation
 
 import dvrk
 import tf_conversions.posemath as pm
@@ -624,59 +625,87 @@ class CameraCalibGUI:
                             leftcam_T_scene.append(cam_T_scene)
 
 
-        #Solving Hand-Eye Calibration for both the right and left cameras
+        #Solving Hand-Eye Calibration for both the right and left cameras (for now just use the OpenCV method)
         
         #Do Right First
-        A=[]
-        B=[]
+        #A=[]
+        #B=[]
         R_gripper2base=[]
         t_gripper2base=[]
         R_target2cam=[]
         t_target2cam=[]
         for i in range(len(rb_T_ecm_right)-1):
             #A_i=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i+1]),rightcam_T_scene[i]) #Initial
-            A_i=np.dot(rightcam_T_scene[i],utils.invHomogeneousNumpy(rightcam_T_scene[i+1]))
-            # B_i=np.dot(rb_T_ecm_right[i+1],utils.invHomogeneousNumpy(rb_T_ecm_right[i])) #Initial
-            B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i]),rb_T_ecm_right[i+1])
-            R_gripper2base.append(utils.invHomogeneousNumpy(rb_T_ecm_right[i])[0:3,0:3])
-            t_gripper2base.append(utils.invHomogeneousNumpy(rb_T_ecm_right[i])[0:3,3])
+            #A_i=np.dot(rightcam_T_scene[i],utils.invHomogeneousNumpy(rightcam_T_scene[i+1])) #Best
+            #B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i+1]),rb_T_ecm_right[i]) #Initial
+            #B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i]),rb_T_ecm_right[i+1]) #Best
+
+            R_gripper2base.append(rb_T_ecm_right[i][0:3,0:3])
+            t_gripper2base.append(rb_T_ecm_right[i][0:3,3])
 
             R_target2cam.append(rightcam_T_scene[i][0:3,0:3])
             t_target2cam.append(rightcam_T_scene[i][0:3,3])
 
-            A.append(A_i)
-            B.append(B_i)
+            #A.append(A_i)
+            #B.append(B_i)
         
         #Solve hand-eye problem
-        A=np.array(A)
-        B=np.array(B)
+        #A=np.array(A)
+        #B=np.array(B)
         R_gripper2base=np.array(R_gripper2base)
         t_gripper2base=np.array(t_gripper2base)
         R_target2cam=np.array(R_target2cam)
         t_target2cam=np.array(t_target2cam)
         
-        rightcam_T_ecm=self.hand_eye.ComputeHandEye(A,B)
-        print("rightcam_T_ecm: "+str(rightcam_T_ecm))
-        data_right = {'ecm_T_rightcam': rightcam_T_ecm.tolist()}
+        #ecm_T_rightcam=self.hand_eye.ComputeHandEye(A,B)
+        #print("ecm_T_rightcam: "+str(ecm_T_rightcam))
+        #data_right = {'ecm_T_rightcam': ecm_T_rightcam.tolist()}
 
-        rightcam_T_ecm_cv=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam)
-        print("rightcam_T_ecm_cv: "+str(rightcam_T_ecm_cv))
+
+        R_cam2gripper,t_cam2gripper=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam,method=cv2.CALIB_HAND_EYE_DANIILIDIS)
+        ecm_T_rightcam_cv=np.identity(4)
+        ecm_T_rightcam_cv[0:3,0:3]=R_cam2gripper
+        ecm_T_rightcam_cv[0:3,3]=t_cam2gripper.flatten()
+        data_right = {'ecm_T_rightcam': ecm_T_rightcam_cv.tolist()}
+        #print("rightcam_T_ecm_cv: "+str(ecm_T_rightcam_cv))
+
+        #print("Frobenius norm of difference: "+str(np.linalg.norm(ecm_T_rightcam-ecm_T_rightcam_cv,'fro')))
+        
+        #angle_diff,translation_diff=decomposed_difference(ecm_T_rightcam,ecm_T_rightcam_cv)
+        #print("Angle Difference: "+str(angle_diff))
+        #print("Translation Difference: "+str(translation_diff))
+        
         #Do Left Next
-        A=[]
-        B=[]
+        #A=[]
+        #B=[]
+        R_gripper2base=[]
+        t_gripper2base=[]
+        R_target2cam=[]
+        t_target2cam=[]
         for i in range(len(rb_T_ecm_left)-1):
             #A_i=np.dot(utils.invHomogeneousNumpy(leftcam_T_scene[i+1]),leftcam_T_scene[i])
-            A_i=np.dot(leftcam_T_scene[i],utils.invHomogeneousNumpy(leftcam_T_scene[i+1]))
-            B_i=np.dot(rb_T_ecm_left[i+1],utils.invHomogeneousNumpy(rb_T_ecm_left[i]))
-            A.append(A_i)
-            B.append(B_i)
+            #A_i=np.dot(leftcam_T_scene[i],utils.invHomogeneousNumpy(leftcam_T_scene[i+1]))
+            #B_i=np.dot(rb_T_ecm_left[i+1],utils.invHomogeneousNumpy(rb_T_ecm_left[i]))
+            #A.append(A_i)
+            #B.append(B_i)
+            R_gripper2base.append(rb_T_ecm_left[i][0:3,0:3])
+            t_gripper2base.append(rb_T_ecm_left[i][0:3,3])
+
+            R_target2cam.append(rb_T_ecm_left[i][0:3,0:3])
+            t_target2cam.append(rb_T_ecm_left[i][0:3,3])
         
         #Solve hand-eye problem
-        A=np.array(A)
-        B=np.array(B)
-        leftcam_T_ecm=self.hand_eye.ComputeHandEye(A,B)
-        print("leftcam_T_ecm: "+str(leftcam_T_ecm))
-        data_left = {'ecm_T_leftcam': leftcam_T_ecm.tolist()}
+        #A=np.array(A)
+        #B=np.array(B)
+        #ecm_T_leftcam=self.hand_eye.ComputeHandEye(A,B)
+        #print("leftcam_T_ecm: "+str(ecm_T_leftcam))
+        #data_left = {'ecm_T_leftcam': ecm_T_leftcam.tolist()}
+
+        R_cam2gripper,t_cam2gripper=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam,method=cv2.CALIB_HAND_EYE_DANIILIDIS)
+        ecm_T_leftcam_cv=np.identity(4)
+        ecm_T_leftcam_cv[0:3,0:3]=R_cam2gripper
+        ecm_T_leftcam_cv[0:3,3]=t_cam2gripper.flatten()
+        data_left = {'ecm_T_leftcam': ecm_T_leftcam_cv.tolist()}
 
         #Store these values
         with open(calibration_params_right+"hand_eye_calibration_right.yaml","w") as f:
@@ -715,7 +744,23 @@ class CameraCalibGUI:
                 break
         os.mkdir(root_directory)
         self.rootName=root_directory
-    
+
+def decomposed_difference(A, B):
+    # Extract rotation matrices and translation vectors
+    RA, RB = A[:3, :3], B[:3, :3]
+    tA, tB = A[:3, 3], B[:3, 3]
+
+    # Convert rotation matrices to quaternions
+    quatA, quatB = Rotation.from_matrix(RA).as_quat(), Rotation.from_matrix(RB).as_quat()
+
+    # Calculate the angular difference between quaternions
+    rotation_diff = Rotation.from_quat(quatA).inv() * Rotation.from_quat(quatB)
+    angle_diff = rotation_diff.magnitude()
+
+    # Calculate the Euclidean distance between translation vectors
+    translation_diff = np.linalg.norm(tA - tB)
+
+    return angle_diff, translation_diff
 
 
 if __name__=='__main__':
