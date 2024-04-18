@@ -54,11 +54,7 @@ CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
 
 MOVE_SPEED=0.5
-METERS_TO_RENDER_SCALE=1000
-
-##########Parameters for Teleoperation###########
-#PSM Position Motion Scale Factor
-PSM_SCALE_FACTOR=0.5
+METERS_TO_RENDER_SCALE=1000 #Maybe add in later (multiply l_pitch2yaw by this)
 
 ##########Parameters for NDI Validation##########
 
