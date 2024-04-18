@@ -87,7 +87,7 @@ class HandEye:
         #print("L: "+str(L))
         #print("Singular Values: "+str(S))
         #print("Vh Values: "+str(Vh))
-        return_q=Vh[:,-1]
+        return_q=Vh.T[:,-1]
         #print("return_q: "+str(return_q))
         #The solution "S" or the singular values are sorted in decending order, so we just take the 
         #final column of Vh
