@@ -1,6 +1,25 @@
 import tkinter as tk
 import glm
 import numpy as np
+import dvrk
+import rospy
+
+psm1=dvrk.psm("PSM1") #Mapped to left hand
+
+psm1.enable()
+psm1.home()
+rospy.sleep(1)
+
+
+
+while(1):
+    #joint_vars_psm1=psm1.measured_js()[0]
+    jaw_angle_psm1=psm1.jaw.measured_js()[0]
+    #print("Joint Vars: "+str(joint_vars_psm1*(180/np.pi)))
+    print("Jaw Angle: "+str(jaw_angle_psm1*(180/np.pi)))
+    rospy.sleep(3)
+
+
 
 '''
 CHECKERBOARD_DIM=(8,8)
@@ -82,10 +101,11 @@ class TestGUI:
 
 test_gui=TestGUI()
 '''
-
+'''
 glm_matrix=glm.mat4(1)
 numpy_array = np.array(glm_matrix.to_list())
 print(numpy_array)
 
 glm_matrix=glm.mat4(*numpy_array.flatten())
 print(glm_matrix)
+'''

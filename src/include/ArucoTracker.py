@@ -183,7 +183,7 @@ class ArucoTracker:
             image_points=None
             for ids,corners in zip(self.ids_scene_list,self.corner_scene_list): #Looping over corners/ids for each frame
                 #corner_found=False
-                for id,corner, in zip(ids,corners): #Looping over each id/corner in a given frame
+                for id,corner in zip(ids,corners): #Looping over each id/corner in a given frame
                     
                     if image_points is None:
                         image_points=corner[0]
@@ -207,7 +207,7 @@ class ArucoTracker:
                 ci_T_si=utils.EnforceOrthogonalityNumpy_FullTransform(ci_T_si)
                 ###So rvec and tvec are object wiriti camera (c_T_o) what we need is (o_T_c) so we invert
                 #ci_T_si=utils.invHomogeneousNumpy(ci_T_si)
-                self.ci_T_si=glm.mat4(*ci_T_si.flatten())
+                self.ci_T_si=glm.mat4(*ci_T_si.T.flatten())
                 
                 
 

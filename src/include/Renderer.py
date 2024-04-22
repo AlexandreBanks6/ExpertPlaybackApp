@@ -77,7 +77,7 @@ T_6_alpha=glm.pi()/2
 T_6_cos_alpha=glm.cos(T_6_alpha)
 T_6_sin_alpha=glm.sin(T_6_alpha)
 
-T_6_a=0.0091 #body length 
+T_6_a=0.0091*METERS_TO_RENDER_SCALE #body length 
 
 
 #Rotation Matrices to convert between the standard DH frames and the frame system of the 3D models
@@ -114,13 +114,20 @@ T_7_7trans=glm.mat4(glm.vec4(1,0,0,0),
                      glm.vec4(0,1,0,0),
                      glm.vec4(0,0,1,0),
                      glm.vec4(tool_tip_offset,0,0,1)) #Translation from reported tool tip to how we define C7
+'''
+T_7trans_tpsm=glm.mat4(glm.vec4(0,0,-1,0),
+                     glm.vec4(0,1,0,0),
+                     glm.vec4(1,0,0,0),
+                     glm.vec4(0,0,0,1))
+'''
 T_7trans_tpsm=glm.mat4(glm.vec4(0,0,1,0),
                      glm.vec4(0,-1,0,0),
                      glm.vec4(1,0,0,0),
                      glm.vec4(0,0,0,1))
-T_7_psm=T_7_7trans*T_7trans_tpsm   #How we translate between reported tool tip coordinates and our coordinates
-T_psm_7=utils.invHomogeneousGLM(T_7_psm)
 
+T_7_psm=T_7_7trans*T_7trans_tpsm
+#T_7_psm=T_7_7trans*T_7trans_tpsm   #How we translate between reported tool tip coordinates and our coordinates
+T_psm_7=utils.invHomogeneousGLM(T_7_psm)
 obj_names=['shaft','body','jaw_right','jaw_left']
 
 
@@ -437,7 +444,7 @@ class Renderer:
         self.ecm_T_lc=np.array(self.ecm_T_lc,dtype='float32')
         
         self.ecm_T_lc=utils.EnforceOrthogonalityNumpy_FullTransform(self.ecm_T_lc)
-        print("left hand eye: "+str(self.lc_T_ecm))
+        print("left hand eye: "+str(self.ecm_T_lc))
         self.ecm_T_lc=glm.mat4(*self.ecm_T_lc.flatten())
         
         self.ecm_T_rc=right_handeye['ecm_T_rightcam']
@@ -529,7 +536,7 @@ class Renderer:
             
             #Read the first column
             self.render_times_list=[float(row[0]) for row in csv_reader if row] #Loops for the rows and returns time as a list of floats
-            self.render_times_list=np.array(self.render_times_list)
+            self.render_times_list=np.array(self.render_times_list,dtype='float32')
 
 
             file_object.close()
@@ -565,25 +572,25 @@ class Renderer:
 
                 #Writing si_T_lci (scene to left camera initial)
                 writer_object.writerow(['lci_T_si'])
-                lci_T_si_numpy=np.array(self.lci_T_si.to_list())
+                lci_T_si_numpy=np.array(glm.transpose(self.lci_T_si).to_list(),dtype='float32')
                 lci_T_si_list=utils.convertHomogeneousToCSVROW(lci_T_si_numpy)
                 writer_object.writerow(["0"]+lci_T_si_list)
 
                 #Writing si_T_rci (scene to right camera initial)
                 writer_object.writerow(['rci_T_si'])
-                rci_T_si_numpy=np.array(self.rci_T_si.to_list())
+                rci_T_si_numpy=np.array(glm.transpose(self.rci_T_si).to_list(),dtype='float32')
                 rci_T_si_list=utils.convertHomogeneousToCSVROW(rci_T_si_numpy)
                 writer_object.writerow(["0"]+rci_T_si_list)
 
                 #Writing lc_T_ecm (hand-eye left)
                 writer_object.writerow(['ecm_T_lc'])
-                ecm_T_lc_numpy=np.array(self.ecm_T_lc.to_list())
+                ecm_T_lc_numpy=np.array(glm.transpose(self.ecm_T_lc).to_list(),dtype='float32')
                 ecm_T_lc_list=utils.convertHomogeneousToCSVROW(ecm_T_lc_numpy)
                 writer_object.writerow(["0"]+ecm_T_lc_list)
 
                 #Writing rc_T_ecm (hand-eye right)
                 writer_object.writerow(['ecm_T_rc'])
-                ecm_T_rc_numpy=np.array(self.ecm_T_rc.to_list())
+                ecm_T_rc_numpy=np.array(glm.transpose(self.ecm_T_rc).to_list(),dtype='float32')
                 ecm_T_rc_list=utils.convertHomogeneousToCSVROW(ecm_T_rc_numpy)
                 writer_object.writerow(["0"]+ecm_T_rc_list)
 
@@ -770,29 +777,31 @@ class Renderer:
             self.ecmini_T_ecm=utils.invHomogeneousGLM(self.ecm_init_pose)*ecm_pose
             #print("ecmini_T_ecm: "+str(self.ecmini_T_ecm))
             self.si_T_ecm=utils.invHomogeneousGLM(self.lci_T_si)*utils.invHomogeneousGLM(self.ecm_T_lc)*self.ecmini_T_ecm
-            if self.PSM1_on:
-                psm1_pose=self.psm1.measured_cp()
-                psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
-                self.ecm_T_psm1=utils.convertPyDK_To_GLM(psm1_pose)
-                #print("ecm_T_psm1: "+str(self.ecm_T_psm1))
+            if not self.render_on:
+                if self.PSM1_on:
+                    psm1_pose=self.psm1.measured_cp()
+                    psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
+                    self.ecm_T_psm1=utils.convertPyDK_To_GLM(psm1_pose)
+                    #print("ecm_T_psm1: "+str(self.ecm_T_psm1))
 
-                joint_vars_psm1=self.psm1.measured_jp()
-                jaw_angle_psm1=self.psm1.jaw.measured_jp()
-                self.joint_vars_psm1=[joint_vars_psm1[0],joint_vars_psm1[1],joint_vars_psm1[2],joint_vars_psm1[3],joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
-                self.si_T_psm1=self.si_T_ecm*self.ecm_T_psm1
-            
-            if self.PSM3_on:
+                    joint_vars_psm1=self.psm1.measured_js()[0]
+                    jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                    self.joint_vars_psm1=[joint_vars_psm1[0],joint_vars_psm1[1],joint_vars_psm1[2],joint_vars_psm1[3],joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
+                    #print("joint vars psm1: "+str(self.joint_vars_psm1))
+                    self.si_T_psm1=self.si_T_ecm*self.ecm_T_psm1
+                
+                if self.PSM3_on:
 
-                psm3_pose=self.psm3.measured_cp()
-                psm3_pose=utils.enforceOrthogonalPyKDL(psm3_pose)
-                self.ecm_T_psm3=utils.convertPyDK_To_GLM(psm3_pose)
-                #print("ecm_T_psm3: "+str(self.ecm_T_psm3))
+                    psm3_pose=self.psm3.measured_cp()
+                    psm3_pose=utils.enforceOrthogonalPyKDL(psm3_pose)
+                    self.ecm_T_psm3=utils.convertPyDK_To_GLM(psm3_pose)
+                    #print("ecm_T_psm3: "+str(self.ecm_T_psm3))
 
-                #Get joint positions
-                joint_vars_psm3=self.psm3.measured_jp()
-                jaw_angle_psm3=self.psm3.jaw.measured_jp()
-                self.joint_vars_psm3=[joint_vars_psm3[0],joint_vars_psm3[1],joint_vars_psm3[2],joint_vars_psm3[3],joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
-                self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3
+                    #Get joint positions
+                    joint_vars_psm3=self.psm3.measured_js()[0]
+                    jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                    self.joint_vars_psm3=[joint_vars_psm3[0],joint_vars_psm3[1],joint_vars_psm3[2],joint_vars_psm3[3],joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
+                    self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3
 
             ################Move Instruments if Playback is Pushed###############
             if self.render_on:
@@ -813,7 +822,7 @@ class Renderer:
                     #print("si_T_psm1_list: "+str(self.si_T_psm1_recorded))
                     self.si_T_psm1_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm1_recorded)
                     self.joint_vars_psm1_recorded=data_list[44:48]
-                    #print("joint vars psm1: "+str(self.joint_vars_psm1_recorded))
+                    #print("joint vars psm1 recorded: "+str(self.joint_vars_psm1_recorded))
                     self.instrument_kinematics(self.joint_vars_psm1_recorded,self.si_T_psm1_recorded,'PSM1')
                 if self.PSM3_on:
                     #PSM3:
@@ -832,14 +841,13 @@ class Renderer:
                 with open(self.record_filename,'a',newline='') as file_object:
                     writer_object=csv.writer(file_object)
 
-                    si_T_ecm_numpy=np.array(self.si_T_ecm.to_list())
+                    si_T_ecm_numpy=np.array(glm.transpose(self.si_T_ecm).to_list(),dtype='float32')
                     si_T_ecm_list=utils.convertHomogeneousToCSVROW(si_T_ecm_numpy)
                     
                     if self.PSM1_on and self.PSM3_on:
-                        si_T_psm3_numpy=np.array(self.si_T_psm3.to_list())
+                        si_T_psm3_numpy=np.array(glm.transpose(self.si_T_psm3).to_list(),dtype='float32')
                         si_T_psm3_list=utils.convertHomogeneousToCSVROW(si_T_psm3_numpy)
-
-                        si_T_psm1_numpy=np.array(self.si_T_psm1.to_list())
+                        si_T_psm1_numpy=np.array(glm.transpose(self.si_T_psm1).to_list(),dtype='float32')
                         si_T_psm1_list=utils.convertHomogeneousToCSVROW(si_T_psm1_numpy)
 
                         joint_list_psm1=[str(num) for num in self.joint_vars_psm1]
@@ -849,7 +857,7 @@ class Renderer:
                         writer_object.writerow(row_to_write)
                     elif self.PSM1_on:
 
-                        si_T_psm1_numpy=np.array(self.si_T_psm1.to_list())
+                        si_T_psm1_numpy=np.array(glm.transpose(self.si_T_psm1).to_list(),dtype='float32')
                         si_T_psm1_list=utils.convertHomogeneousToCSVROW(si_T_psm1_numpy)
 
                         joint_list_psm1=[str(num) for num in self.joint_vars_psm1]
@@ -858,7 +866,7 @@ class Renderer:
                         writer_object.writerow(row_to_write)
 
                     elif self.PSM3_on:
-                        si_T_psm3_numpy=np.array(self.si_T_psm3.to_list())
+                        si_T_psm3_numpy=np.array(glm.transpose(self.si_T_psm3).to_list(),dtype='float32')
                         si_T_psm3_list=utils.convertHomogeneousToCSVROW(si_T_psm3_numpy)
 
                         joint_list_psm3=[str(num) for num in self.joint_vars_psm3]
@@ -931,7 +939,7 @@ class Renderer:
                 self.scene_PSM1.render(self.ctx_left)
             if self.PSM3_on:
                 self.scene_PSM3.render(self.ctx_left)
-            print("Render Update Left")
+            #print("Render Update Left")
                 
         
         ###########################Render the Right Window##########################
@@ -1076,14 +1084,16 @@ class Renderer:
         !!!! Note, input "shaft base" should be a 4x4 frame matrix (orientation and pose)
         Also note, T4 is the base of the instrument, and T5 is the shaft rotated frame, T6 is the body rotated frame, T7 is the jaw base (no seperation)
         '''
+        print("Joint Angles: "+str(joint_angles))
         #Enforce >=0 jaw angle
         #print("Joint Angles: "+str(joint_angles))
         if joint_angles[3]<0:
             joint_angles[3]=0
-
+        print("w_T_psm: "+str(w_T_psm))
+        print("T_psm_7: "+str(T_psm_7))
         w_T_jlocal=w_T_psm*T_psm_7*self.Rotz(-joint_angles[3]/2)*T_jl_jlocal    #Finds world to jaw left in object coords (local)
         w_T_jrlocal=w_T_psm*T_psm_7*self.Rotz(joint_angles[3]/2)*T_jr_jrlocal   #Finds world to right jaw
-        w_T_bodylocal=w_T_psm*T_psm_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*T_6shift_b
+        w_T_bodylocal=w_T_psm*T_psm_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*T_6_b
         w_T_shaftlocal=w_T_psm*T_psm_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))*T_5_s
 
         #First convert reported tool-tip pose (T7_rep) to our tool tip coodinate system (T7) using DH parameters

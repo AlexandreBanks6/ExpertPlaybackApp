@@ -273,8 +273,8 @@ class CameraCalibGUI:
                     print("corner: "+str(corner))
                     corners_filtered.append(corner)
                     ids_filtered.append([id[0]])
-            ids=np.array(ids_filtered)
-            corners=np.array(corners_filtered)
+            ids=np.array(ids_filtered,dtype='float32')
+            corners=np.array(corners_filtered,dtype='float32')
             if len(ids_filtered)>0:
                 print("Corners Found: "+str(corners))
                 print("ids Found: "+str(ids))
@@ -376,7 +376,7 @@ class CameraCalibGUI:
         print("Num Frames: "+str(self.frame_number))
         #Store the rb_T_ecm poses in a yaml file
         os.mkdir(self.rootName+BASE_TO_ECM_DIR)
-        rb_T_ecm_store=np.array(self.rb_T_ecm_list)
+        rb_T_ecm_store=np.array(self.rb_T_ecm_list,dtype='float32')
         np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm',rb_T_ecm_store)
 
         self.calbration_message_label.config(text="Frame Grabbing Done")
@@ -642,7 +642,7 @@ class CameraCalibGUI:
             for j in range(len(model_points)):
                 imgpoints2, _ = cv2.projectPoints(model_points[j], rvecs[j], tvecs[j], mtx, dist)
                 imgpoints2 = imgpoints2.reshape(-1, 2)
-                error = cv2.norm(np.array(image_points[j]), imgpoints2, cv2.NORM_L2)/len(imgpoints2)
+                error = cv2.norm(np.array(image_points[j],dtype='float32'), imgpoints2, cv2.NORM_L2)/len(imgpoints2)
                 mean_error += error
             data = {'camera_matrix': np.asarray(mtx).tolist(),
                         'dist_coeff': np.asarray(dist).tolist(),
@@ -781,12 +781,12 @@ class CameraCalibGUI:
             B.append(B_i)
         
         #Solve hand-eye problem
-        A=np.array(A)
-        B=np.array(B)
-        R_gripper2base=np.array(R_gripper2base)
-        t_gripper2base=np.array(t_gripper2base)
-        R_target2cam=np.array(R_target2cam)
-        t_target2cam=np.array(t_target2cam)
+        A=np.array(A,dtype='float32')
+        B=np.array(B,dtype='float32')
+        R_gripper2base=np.array(R_gripper2base,dtype='float32')
+        t_gripper2base=np.array(t_gripper2base,dtype='float32')
+        R_target2cam=np.array(R_target2cam,dtype='float32')
+        t_target2cam=np.array(t_target2cam,dtype='float32')
         
         ecm_T_rightcam=self.hand_eye.ComputeHandEye(A,B)
         print("ecm_T_rightcam: "+str(ecm_T_rightcam))

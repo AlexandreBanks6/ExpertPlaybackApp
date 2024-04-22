@@ -11,7 +11,6 @@ import cv2
 def invHomogeneousNumpy(transform):
     #Input: Homogeneous transform (numpy)
     #Output: Inverse of homogeneous transform (numpy)
-
     R=transform[0:3,0:3]
 
     R_trans=np.transpose(R)
@@ -22,8 +21,9 @@ def invHomogeneousNumpy(transform):
     inverted_transform[0:3,3]=neg_R_trans_d
     return inverted_transform
 def invHomogeneousGLM(transform):
-    frame_new=np.array(transform.to_list())
+    frame_new=np.array(glm.transpose(transform).to_list(),dtype='float32')
     inverted_transform=invHomogeneousNumpy(frame_new)
+    inverted_transform=inverted_transform.T
     inverted_transform=glm.mat4(*inverted_transform.flatten())
     return inverted_transform
 
@@ -75,8 +75,9 @@ def enforceOrthogonalPyKDL(pykdl_frame):
 
 def enforceOrthogonalGLM(GLM_frame):
     #Takes in a pykdl frame and enforces orthogonality
-    frame_new=np.array(GLM_frame.to_list())
+    frame_new=np.array(glm.transpose(GLM_frame).to_list(),dtype='float32')
     frame_new[0:3,0:3]=EnforceOrthogonalityNumpy(frame_new[0:3,0:3])
+    frame_new=frame_new.T
     frame_new=glm.mat4(*frame_new.flatten())
     return frame_new
 
@@ -86,21 +87,21 @@ def rotationX(theta):
     #Rotate about x axis by theta
     R=np.array([[1,0,0],
                [0,np.cos(theta),-np.sin(theta)],
-               [0,np.sin(theta),np.cos(theta)]])
+               [0,np.sin(theta),np.cos(theta)]],dtype='float32')
     return R
 
 def rotationY(theta):
     #Rotate about x axis by theta
     R=np.array([[1,0,0],
                [0,np.cos(theta),-np.sin(theta)],
-               [0,np.sin(theta),np.cos(theta)]])
+               [0,np.sin(theta),np.cos(theta)]],dtype='float32')
     return R
 
 def rotationZ(theta):
     #Rotate about z axis by theta
     R=np.array([[np.cos(theta),0,np.sin(theta)],
                [0,0,0],
-               [-np.sin(theta),0,np.cos(theta)]])
+               [-np.sin(theta),0,np.cos(theta)]],dtype='float32')
     return R
 
 
@@ -108,12 +109,13 @@ def SkewSymmetricMatrix(v):
     #Takes the skew symmetric matrix of a vector
     skew_mat=np.array([[0,-v[2],v[1]],
                         [v[2],0,-v[0]],
-                        [-v[1],v[0],0]])       
+                        [-v[1],v[0],0]],dtype='float32')       
     
     return skew_mat
 
 def convertPyDK_To_GLM(pykdl_frame):
     numpy_frame=pm.toMatrix(pykdl_frame)
+    numpy_frame=numpy_frame.T
     glm_frame=glm.mat4(*numpy_frame.flatten())
     return glm_frame
 
