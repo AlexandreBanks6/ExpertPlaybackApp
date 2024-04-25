@@ -3,6 +3,7 @@ import glm
 import numpy as np
 import dvrk
 import rospy
+from include import utils
 
 psm1=dvrk.psm("PSM1") #Mapped to left hand
 
@@ -14,9 +15,13 @@ rospy.sleep(1)
 
 while(1):
     #joint_vars_psm1=psm1.measured_js()[0]
-    jaw_angle_psm1=psm1.jaw.measured_js()[0]
+    #jaw_angle_psm1=psm1.jaw.measured_js()[0]
+    ecm_T_psm=psm1.measured_cp()
     #print("Joint Vars: "+str(joint_vars_psm1*(180/np.pi)))
-    print("Jaw Angle: "+str(jaw_angle_psm1*(180/np.pi)))
+    #print("Original Pose: "+str(ecm_T_psm))
+    ecm_T_psm=utils.enforceOrthogonalPyKDL(ecm_T_psm)
+    ecm_T_psm=utils.convertPyDK_To_GLM(ecm_T_psm)
+    print("Pose New: "+str(ecm_T_psm))
     rospy.sleep(3)
 
 

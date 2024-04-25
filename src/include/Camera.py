@@ -2,9 +2,9 @@ import glm
 #from glfw.GLFW import *
 #from glfw import _GLFWwindow as GLFWwindow
 
-FOV=50
+FOV=30
 NEAR=0.1
-FAR=1000
+FAR=2000
 SPEED=100
 SENSITIVITY=0.05 #Mouse sensitivity for orientation changes
 
@@ -126,3 +126,4 @@ class Camera:
 
     def get_projection_matrix(self):
         return glm.perspective(glm.radians(FOV),self.aspect_ratio,NEAR,FAR) #Returns the perspective matrix
+        #return glm.mat4()
