@@ -371,12 +371,15 @@ class CameraCalibGUI:
                 self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
                 #Grab the pose of ecm w.r.t. robot base
                 ecm_pose_new=self.ecm.measured_cp()
+                print("ecm_pose: "+str(ecm_pose_new))
                 rb_T_ecm=pm.toMatrix(ecm_pose_new)
+                print("ecm_pose numpy: "+str(rb_T_ecm))
                 self.rb_T_ecm_list.append(rb_T_ecm)
         print("Num Frames: "+str(self.frame_number))
         #Store the rb_T_ecm poses in a yaml file
         os.mkdir(self.rootName+BASE_TO_ECM_DIR)
         rb_T_ecm_store=np.array(self.rb_T_ecm_list,dtype='float32')
+        print("rb_T_ecm_store: "+str(rb_T_ecm_store))
         np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm',rb_T_ecm_store)
 
         self.calbration_message_label.config(text="Frame Grabbing Done")
@@ -550,13 +553,15 @@ class CameraCalibGUI:
         #Does Both the Right and Left Cameras hand-eye+general calibration (using ArUco Markers)
 
         self.getFolderName()    #Gets Most Recent File Directory
-        #print("Root Name: "+self.rootName)
+        print("Root Name: "+self.rootName)
         frames_right_path=self.rootName+RIGHT_FRAMES_FILEDIR
+        print("frames_right_path: "+frames_right_path)
         frames_left_path=self.rootName+LEFT_FRAMES_FILEDIR
-
+        print("frames_left_path: "+frames_left_path)
         calibration_params_right=self.rootName+RIGHT_CAMERA_CALIB_DIR
+        print("calibration_params_right: "+calibration_params_right)
         calibration_params_left=self.rootName+LEFT_CAMERA_CALIB_DIR
-
+        print("calibration_params_left: "+calibration_params_left)
         frames_path=[frames_right_path,frames_left_path]
         params_path=[calibration_params_right,calibration_params_left]
 
@@ -610,7 +615,6 @@ class CameraCalibGUI:
                                 else:
                                     image_points_inner=np.vstack((image_points_inner,corner))
                                     model_points_inner=np.vstack((model_points_inner,RINGOWIRE_MODELPOINTS[str(id[0])]))
-
                             model_points.append(model_points_inner)
                             image_points.append(image_points_inner)
 
@@ -667,6 +671,7 @@ class CameraCalibGUI:
 
         #Open Up the rb_T_ecm list
         rb_T_ecm_path=self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm.npy'
+        print("rb_T_ecm_path: "+str(rb_T_ecm_path))
         rb_T_ecm_list=np.load(rb_T_ecm_path)
         #print("rb_T_ecm_list: "+str(rb_T_ecm_list))
         #Loop twice, right first then left
@@ -737,7 +742,7 @@ class CameraCalibGUI:
                             #print("rotation_vector: "+str(rotation_vector))
                             #print("translation_vector: "+str(translation_vector))
                             cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
-                            #print("cam_T_scene: "+str(cam_T_scene))
+                            print("cam_T_scene: "+str(cam_T_scene))
                             #Get the frame number to index the corresponding ecm_T_psm pose
                             #name,ext=filename.split('.')   #Splits off the name
                             #frame_num=[int(s) for s in name if s.isdigit()]
@@ -792,19 +797,20 @@ class CameraCalibGUI:
         print("ecm_T_rightcam: "+str(ecm_T_rightcam))
         #data_right = {'ecm_T_rightcam': ecm_T_rightcam.tolist()}
 
-
+        print("R_gripper2base: "+str(R_gripper2base))
+        print("t_gripper2base: "+str(t_gripper2base))
         R_cam2gripper,t_cam2gripper=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam,method=cv2.CALIB_HAND_EYE_DANIILIDIS)
         ecm_T_rightcam_cv=np.identity(4)
         ecm_T_rightcam_cv[0:3,0:3]=R_cam2gripper
         ecm_T_rightcam_cv[0:3,3]=t_cam2gripper.flatten()
         data_right = {'ecm_T_rightcam': ecm_T_rightcam_cv.tolist()}
-        print("rightcam_T_ecm_cv: "+str(ecm_T_rightcam_cv))
+        print("ecm_T_rightcam: "+str(ecm_T_rightcam_cv))
 
-        print("Frobenius norm of difference: "+str(np.linalg.norm(ecm_T_rightcam-ecm_T_rightcam_cv,'fro')))
+        #print("Frobenius norm of difference: "+str(np.linalg.norm(ecm_T_rightcam-ecm_T_rightcam_cv,'fro')))
         
         angle_diff,translation_diff=decomposed_difference(ecm_T_rightcam,ecm_T_rightcam_cv)
-        print("Angle Difference: "+str(angle_diff))
-        print("Translation Difference: "+str(translation_diff))
+        #print("Angle Difference: "+str(angle_diff))
+        #print("Translation Difference: "+str(translation_diff))
         
         #Do Left Next
         #A=[]
@@ -814,22 +820,27 @@ class CameraCalibGUI:
         R_target2cam=[]
         t_target2cam=[]
         for i in range(len(rb_T_ecm_left)-1):
-            #A_i=np.dot(utils.invHomogeneousNumpy(leftcam_T_scene[i+1]),leftcam_T_scene[i])
-            #A_i=np.dot(leftcam_T_scene[i],utils.invHomogeneousNumpy(leftcam_T_scene[i+1]))
-            #B_i=np.dot(rb_T_ecm_left[i+1],utils.invHomogeneousNumpy(rb_T_ecm_left[i]))
+            A_i=np.dot(leftcam_T_scene[i],utils.invHomogeneousNumpy(leftcam_T_scene[i+1])) #Best
+            #B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i+1]),rb_T_ecm_right[i]) #Initial
+            B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_left[i]),rb_T_ecm_left[i+1]) #Best
             #A.append(A_i)
             #B.append(B_i)
             R_gripper2base.append(rb_T_ecm_left[i][0:3,0:3])
             t_gripper2base.append(rb_T_ecm_left[i][0:3,3])
 
-            R_target2cam.append(rb_T_ecm_left[i][0:3,0:3])
-            t_target2cam.append(rb_T_ecm_left[i][0:3,3])
+            R_target2cam.append(leftcam_T_scene[i][0:3,0:3])
+            t_target2cam.append(leftcam_T_scene[i][0:3,3])
         
         #Solve hand-eye problem
-        #A=np.array(A)
-        #B=np.array(B)
-        #ecm_T_leftcam=self.hand_eye.ComputeHandEye(A,B)
-        #print("leftcam_T_ecm: "+str(ecm_T_leftcam))
+        A=np.array(A,dtype='float32')
+        B=np.array(B,dtype='float32')
+        R_gripper2base=np.array(R_gripper2base,dtype='float32')
+        t_gripper2base=np.array(t_gripper2base,dtype='float32')
+        R_target2cam=np.array(R_target2cam,dtype='float32')
+        t_target2cam=np.array(t_target2cam,dtype='float32')
+
+        ecm_T_leftcam=self.hand_eye.ComputeHandEye(A,B)
+        print("ecm_T_leftcam: "+str(ecm_T_leftcam))
         #data_left = {'ecm_T_leftcam': ecm_T_leftcam.tolist()}
 
         R_cam2gripper,t_cam2gripper=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam,method=cv2.CALIB_HAND_EYE_DANIILIDIS)
@@ -837,7 +848,7 @@ class CameraCalibGUI:
         ecm_T_leftcam_cv[0:3,0:3]=R_cam2gripper
         ecm_T_leftcam_cv[0:3,3]=t_cam2gripper.flatten()
         data_left = {'ecm_T_leftcam': ecm_T_leftcam_cv.tolist()}
-
+        print("ecm_T_leftcam: "+str(ecm_T_leftcam_cv))
         #Store these values
         with open(calibration_params_right+"hand_eye_calibration_right.yaml","w") as f:
                 yaml.dump(data_right,f)
@@ -850,7 +861,6 @@ class CameraCalibGUI:
         #Gets the most recent folder where we store checkerboards and base_T_ecm poses
         folder_count=1
         root_directory=CALIBRATION_DIR+'Calib_'+str(folder_count)
-        print("Root Directory: "+root_directory)
         old_root=root_directory
         if os.path.isdir(root_directory):
             while True:

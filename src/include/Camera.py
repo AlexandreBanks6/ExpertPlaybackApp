@@ -2,9 +2,9 @@ import glm
 #from glfw.GLFW import *
 #from glfw import _GLFWwindow as GLFWwindow
 
-FOV=30
+FOV=70
 NEAR=0.1
-FAR=2000
+FAR=3000
 SPEED=100
 SENSITIVITY=0.05 #Mouse sensitivity for orientation changes
 

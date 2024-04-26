@@ -301,12 +301,16 @@ class CameraCalibGUI:
                 self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
                 #Grab the pose of ecm w.r.t. robot base
                 ecm_pose_new=self.ecm.measured_cp()
+                print("ecm_pose: "+str(ecm_pose_new))
                 rb_T_ecm=pm.toMatrix(ecm_pose_new)
+                print("ecm_pose numpy: "+str(rb_T_ecm))
                 self.rb_T_ecm_list.append(rb_T_ecm)
+        
         print("Num Frames: "+str(self.frame_number))
         #Store the rb_T_ecm poses in a yaml file
         os.mkdir(self.rootName+BASE_TO_ECM_DIR)
         rb_T_ecm_store=np.array(self.rb_T_ecm_list)
+        print("rb_T_ecm_store: "+str(rb_T_ecm_store))
         np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm',rb_T_ecm_store)
 
         self.calbration_message_label.config(text="Frame Grabbing Done")

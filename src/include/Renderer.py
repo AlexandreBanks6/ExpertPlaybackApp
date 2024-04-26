@@ -121,6 +121,18 @@ T_7trans_tpsm=glm.mat4(glm.vec4(0,0,-1,0),
                      glm.vec4(0,0,0,1)) #Best so far
 
 '''
+T_7trans_tpsm=glm.mat4(glm.vec4(0,-1,0,0),
+                     glm.vec4(1,0,0,0),
+                     glm.vec4(0,0,1,0),
+                     glm.vec4(0,0,0,1)) 
+
+T_7trans_tpsm=glm.mat4(glm.vec4(0,1,0,0),
+                     glm.vec4(1,0,0,0),
+                     glm.vec4(0,0,-1,0),
+                     glm.vec4(0,0,0,1)) 
+
+'''
+'''
 T_7trans_tpsm=glm.mat4(glm.vec4(0,0,1,0),
                      glm.vec4(0,-1,0,0),
                      glm.vec4(1,0,0,0),
@@ -131,6 +143,7 @@ T_7trans_tpsm=glm.mat4(glm.vec4(0,0,1,0),
 T_7_psm=T_7trans_tpsm
 #T_7_psm=T_7_7trans*T_7trans_tpsm   #How we translate between reported tool tip coordinates and our coordinates
 T_psm_7=utils.invHomogeneousGLM(T_7_psm)
+#T_psm_7=T_psm_7
 obj_names=['shaft','body','jaw_right','jaw_left']
 
 
@@ -141,6 +154,12 @@ opengl_T_opencv=glm.mat4(glm.vec4(1,0,0,0),
                      glm.vec4(0,0,-1,0),
                      glm.vec4(0,0,0,1))
 
+'''
+opengl_T_opencv=glm.mat4(glm.vec4(1,0,0,0),
+                     glm.vec4(0,0,1,0),
+                     glm.vec4(0,-1,0,0),
+                     glm.vec4(0,0,0,1))
+'''
 ###For Testing:
 start_pose=glm.mat4(glm.vec4(1,0,0,0),
                 glm.vec4(0,1,0,0),
@@ -575,25 +594,25 @@ class Renderer:
                 writer_object.writerow(['lci_T_si'])
                 lci_T_si_numpy=np.array(glm.transpose(self.lci_T_si).to_list(),dtype='float32')
                 lci_T_si_list=utils.convertHomogeneousToCSVROW(lci_T_si_numpy)
-                writer_object.writerow(["0"]+lci_T_si_list)
+                writer_object.writerow(["",""]+lci_T_si_list)
 
                 #Writing si_T_rci (scene to right camera initial)
                 writer_object.writerow(['rci_T_si'])
                 rci_T_si_numpy=np.array(glm.transpose(self.rci_T_si).to_list(),dtype='float32')
                 rci_T_si_list=utils.convertHomogeneousToCSVROW(rci_T_si_numpy)
-                writer_object.writerow(["0"]+rci_T_si_list)
+                writer_object.writerow(["",""]+rci_T_si_list)
 
                 #Writing lc_T_ecm (hand-eye left)
                 writer_object.writerow(['ecm_T_lc'])
                 ecm_T_lc_numpy=np.array(glm.transpose(self.ecm_T_lc).to_list(),dtype='float32')
                 ecm_T_lc_list=utils.convertHomogeneousToCSVROW(ecm_T_lc_numpy)
-                writer_object.writerow(["0"]+ecm_T_lc_list)
+                writer_object.writerow(["",""]+ecm_T_lc_list)
 
                 #Writing rc_T_ecm (hand-eye right)
                 writer_object.writerow(['ecm_T_rc'])
                 ecm_T_rc_numpy=np.array(glm.transpose(self.ecm_T_rc).to_list(),dtype='float32')
                 ecm_T_rc_list=utils.convertHomogeneousToCSVROW(ecm_T_rc_numpy)
-                writer_object.writerow(["0"]+ecm_T_rc_list)
+                writer_object.writerow(["",""]+ecm_T_rc_list)
 
 
 
@@ -798,8 +817,9 @@ class Renderer:
                 if self.PSM1_on:
                     #PSM1:
                     self.si_T_psm1_recorded=data_list[2:14]
-                    #print("si_T_psm1_list: "+str(self.si_T_psm1_recorded))
+                    print("si_T_psm1_list: "+str(self.si_T_psm1_recorded))
                     self.si_T_psm1_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm1_recorded)
+                    print("si_T_psm1_recorded: "+str(self.si_T_psm1_recorded))
                     self.joint_vars_psm1_recorded=data_list[44:48]
                     #print("joint vars psm1 recorded: "+str(self.joint_vars_psm1_recorded))
                     self.instrument_kinematics(self.joint_vars_psm1_recorded,self.si_T_psm1_recorded,'PSM1')
@@ -930,11 +950,12 @@ class Renderer:
         ######Rendering Left Screen Instruments and Camera
         if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             lc_T_si=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(self.ecmini_T_ecm)*self.ecm_T_lc*self.lci_T_si
-            lc_T_si=utils.scaleGLMTranform(lc_T_si,METERS_TO_RENDER_SCALE)
+            
 
 
             #Convert opencv frame to opengl frame
             lc_T_si=opengl_T_opencv*lc_T_si
+            lc_T_si=utils.scaleGLMTranform(lc_T_si,METERS_TO_RENDER_SCALE)
             #print("Camera Left Pose: "+str(cam_left_pose))
             #self.camera_left.update(None)
             self.camera_left.update(lc_T_si)
@@ -986,9 +1007,10 @@ class Renderer:
         if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             
             rc_T_si=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmini_T_ecm)*self.ecm_T_rc*self.rci_T_si
-
+            
             #Convert cam pose in opencv to opengl pose
             rc_T_si=opengl_T_opencv*rc_T_si
+            rc_T_si=utils.scaleGLMTranform(rc_T_si,METERS_TO_RENDER_SCALE)
             #self.camera_right.update(None)
             self.camera_left.update(rc_T_si)
             #print("Camera Right Pose: "+str(cam_right_pose))
@@ -1093,24 +1115,26 @@ class Renderer:
             joint_angles[3]=0
 
         #Scale the w_T_psm to have translation in glm coords
-        #w_T_psm=utils.scaleGLMTranform(w_T_psm,METERS_TO_RENDER_SCALE)
+        w_T_psm=utils.scaleGLMTranform(w_T_psm,100)
         
-        #print("w_T_psm after scale: "+str(w_T_psm))
-
+        print("w_T_psm: "+str(w_T_psm))
+        
         w_T_7=w_T_psm*T_psm_7
 
         w_T_jlocal=w_T_7*self.Rotz(-joint_angles[3]/2)*T_jl_jlocal    #Finds world to jaw left in object coords (local)
-        #w_T_jlocal=T_jl_jlocal*self.Rotz(-joint_angles[3]/2)*T_psm_7*w_T_psm
+
+
         w_T_jrlocal=w_T_7*self.Rotz(joint_angles[3]/2)*T_jr_jrlocal   #Finds world to right jaw
-        #w_T_jrlocal=T_jr_jrlocal*self.Rotz(joint_angles[3]/2)*T_psm_7*w_T_psm
+
+        w_T_6=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))
         
-        w_T_6=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2])) #*T_6_b
+
         w_T_bodylocal=glm.translate(w_T_6,glm.vec3(-T_6_a,0,0))*T_6shift_b
         #w_T_shaftlocal=w_T_psm*T_psm_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))*T_5_s
         #print("T_psm_7: "+str(T_psm_7))
         #print("7_T_6: "+str(utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))))
         #print("6_T_5: "+str(self.transform_5_T_6(joint_angles[1])))
-        w_T_5=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*utils.invHomogeneousGLM(self.transform_5_T_6(-joint_angles[1]))
+        w_T_5=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))
         #print("w_T_5: "+str(w_T_5))
         w_T_shaftlocal=w_T_5*T_5_s
         #print("w_T_shaftlocal: "+str(w_T_shaftlocal))

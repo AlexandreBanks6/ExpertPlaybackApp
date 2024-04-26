@@ -134,8 +134,8 @@ def convertHomogeneousToCSVROW(transform):
 def scaleGLMTranform(glm_transform,scale_factor):
     #Input: 4x4 transformation matrix (glm_transform), and a scale factor (scale_factor)
     #Output: 4x4 transformation matrix with the translation part scaled
-    glm_transform[3,0]=glm_transform[3,0]*scale_factor
-    glm_transform[3,1]=glm_transform[3,1]*scale_factor
-    glm_transform[3,2]=glm_transform[3,2]*scale_factor
+    glm_transform[3][0]=glm_transform[3][0]*scale_factor
+    glm_transform[3][1]=glm_transform[3][1]*scale_factor
+    glm_transform[3][2]=glm_transform[3][2]*scale_factor
 
     return glm_transform
