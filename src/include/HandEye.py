@@ -168,7 +168,7 @@ class HandEye:
     
 
 
-
+    
     
     '''
     def HomoToDualQuat(self,A):

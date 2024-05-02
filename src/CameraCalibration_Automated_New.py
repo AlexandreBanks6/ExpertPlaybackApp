@@ -23,8 +23,8 @@ import cv2.aruco as aruco
 ARUCO_IDs=[4,5,6,7] #List containing the IDs of the aruco markers that we are tracking
 NUM_FRAME_DETECTIONS=8 #How many sets of aruco "frames" need to be detected, ToDo for later
 
-RANSAC_SCENE_REPROJECTION_ERROR=0.004 #Reprojection error for scene localization RANSAC (in meters)
-RANSAC_SCENE_ITERATIONS=600 #Number of iterations for scene localization RANSAC
+RANSAC_SCENE_REPROJECTION_ERROR=0.0000005 #Reprojection error for scene localization RANSAC (in meters)
+RANSAC_SCENE_ITERATIONS=10000 #Number of iterations for scene localization RANSAC
 
 #Rigid Body Definition of Ring Over Wire Aruco Holder, each four coordinates define an ArUco marker with corresponding ID:
 #Marker corners are defined clockwise from top left
@@ -216,7 +216,7 @@ class CameraCalibGUI:
 
 
         #Checkerboard subpix criteria:
-        self.criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        self.criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 500, 0.001)
 
 
         
@@ -585,14 +585,26 @@ class CameraCalibGUI:
                     img = cv2.imread(path) # Capture frame-by-frame
                     frame_gray=cv2.cvtColor(img.copy(),cv2.COLOR_BGR2GRAY)
                     corners,ids,rejected=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
-                    num_markers=len(ids)
-                    #print("Unchanged Corners: "+str(corners))
-                    corners = np.array(corners, dtype=np.float32).reshape(-1, 1, 2)
-                    corners=cv2.cornerSubPix(frame_gray,corners,(11,11),(-1,-1),self.criteria)
+                    print(corners)
+
+                    corners=np.array(list(corners),dtype='float32')
+                    corners=corners.reshape(-1,4,2)
+                    dim1=corners.shape[0]
+                    dim2=corners.shape[1]
+                    corners=corners.reshape(dim1*dim2,2)
+
+                    corners=cv2.cornerSubPix(frame_gray,corners,(5,5),(-1,-1),self.criteria)
+                    corners=corners.reshape(dim1,dim2,2)
+                    corners=corners.reshape(dim1,1,dim2,2)
+                    corners=tuple(corners.tolist())
+                    print(corners)
                     #print("corners after subpix: "+str(corners))
-                    corners=corners.reshape(num_markers,4,2)
-                    corners=[np.array(corner,dtype='float32') for corner in corners]
-                    #print("final corners: "+str(corners))
+                    #corners=corners.reshape(num_markers,4,2)
+                    #corners=[np.array(corner,dtype='float32') for corner in corners]
+                    #corners=tuple(corners)
+                    #corners=corners.reshape(-1,1,4,2)
+
+
                     corners_filtered=[]
                     ids_filtered=[]
 
@@ -617,13 +629,15 @@ class CameraCalibGUI:
                                     model_points_inner=np.vstack((model_points_inner,RINGOWIRE_MODELPOINTS[str(id[0])]))
                             model_points.append(model_points_inner)
                             image_points.append(image_points_inner)
-
+                            #print(image_points)
+                            #print(corners_filtered)
                             #Now we show the aruco markers:
-                            #frame_converted=aruco.drawDetectedMarkers(img,corners=corners_filtered,ids=np.array(ids_filtered))
-                            #cv2.imshow('ArUco Frame', frame_converted)
-                            #cv2.waitKey(0)
+                            print("ids_filtered:"+str(np.array(ids_filtered)))
+                            frame_converted=aruco.drawDetectedMarkers(img,corners=image_points,ids=np.array(ids_filtered))
+                            cv2.imshow('ArUco Frame', frame_converted)
+                            cv2.waitKey(0)
                             found+=1
-            #cv2.destroyWindow('ArUco Frame')
+            cv2.destroyWindow('ArUco Frame')
             
             if found>=REQUIRED_CHECKERBOARD_NUM:
                 #print("model_points: "+str(model_points))
@@ -648,8 +662,10 @@ class CameraCalibGUI:
                 imgpoints2 = imgpoints2.reshape(-1, 2)
                 error = cv2.norm(np.array(image_points[j],dtype='float32'), imgpoints2, cv2.NORM_L2)/len(imgpoints2)
                 mean_error += error
-            data = {'camera_matrix': np.asarray(mtx).tolist(),
-                        'dist_coeff': np.asarray(dist).tolist(),
+
+
+            data = {'camera_matrix': np.array(mtx,dtype='float32').tolist(),
+                        'dist_coeff': np.array(dist,dtype='float32').tolist(),
                         'mean reprojection error': [mean_error/len(model_points)]}
             #print("Reprojection error: "+str(mean_error/len(model_points)))
             
@@ -698,6 +714,7 @@ class CameraCalibGUI:
                 img = cv2.imread(filename) # Capture frame-by-frame
                 frame_gray=cv2.cvtColor(img.copy(),cv2.COLOR_BGR2GRAY)
                 corners,ids,rejected=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
+                
                 #num_markers=len(ids)
                 #corners = np.array(corners, dtype=np.float32).reshape(-1, 1, 2)
                 #corners=cv2.cornerSubPix(frame_gray,corners,(11,11),(-1,-1),self.criteria)
@@ -742,7 +759,7 @@ class CameraCalibGUI:
                             #print("rotation_vector: "+str(rotation_vector))
                             #print("translation_vector: "+str(translation_vector))
                             cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
-                            print("cam_T_scene: "+str(cam_T_scene))
+                            #print("cam_T_scene: "+str(cam_T_scene))
                             #Get the frame number to index the corresponding ecm_T_psm pose
                             #name,ext=filename.split('.')   #Splits off the name
                             #frame_num=[int(s) for s in name if s.isdigit()]
@@ -794,27 +811,47 @@ class CameraCalibGUI:
         t_target2cam=np.array(t_target2cam,dtype='float32')
         
         ecm_T_rightcam=self.hand_eye.ComputeHandEye(A,B)
-        print("ecm_T_rightcam: "+str(ecm_T_rightcam))
+        #print("ecm_T_rightcam: "+str(ecm_T_rightcam))
         #data_right = {'ecm_T_rightcam': ecm_T_rightcam.tolist()}
 
-        print("R_gripper2base: "+str(R_gripper2base))
-        print("t_gripper2base: "+str(t_gripper2base))
+        #print("R_gripper2base: "+str(R_gripper2base))
+        #print("t_gripper2base: "+str(t_gripper2base))
         R_cam2gripper,t_cam2gripper=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam,method=cv2.CALIB_HAND_EYE_DANIILIDIS)
         ecm_T_rightcam_cv=np.identity(4)
         ecm_T_rightcam_cv[0:3,0:3]=R_cam2gripper
         ecm_T_rightcam_cv[0:3,3]=t_cam2gripper.flatten()
-        data_right = {'ecm_T_rightcam': ecm_T_rightcam_cv.tolist()}
-        print("ecm_T_rightcam: "+str(ecm_T_rightcam_cv))
+        ecm_T_rightcam_cv_list=ecm_T_rightcam_cv.tolist()
+        data_right = {'ecm_T_rightcam': ecm_T_rightcam.tolist()}
+        #print("ecm_T_rightcam: "+str(ecm_T_rightcam_cv))
 
         #print("Frobenius norm of difference: "+str(np.linalg.norm(ecm_T_rightcam-ecm_T_rightcam_cv,'fro')))
         
-        angle_diff,translation_diff=decomposed_difference(ecm_T_rightcam,ecm_T_rightcam_cv)
+        #angle_diff,translation_diff=decomposed_difference(ecm_T_rightcam,ecm_T_rightcam_cv)
         #print("Angle Difference: "+str(angle_diff))
         #print("Translation Difference: "+str(translation_diff))
         
+
+        #Calculate accuracy of Right transformation 
+        angle_diff_list=[]
+        translation_diff_list=[]
+        for i in range(len(rb_T_ecm_right)-1):
+            A_raw=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i]),rightcam_T_scene[i+1])
+            A_calc=utils.invHomogeneousNumpy(ecm_T_rightcam)@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@rb_T_ecm_right[i+1]@ecm_T_rightcam
+            angle_diff,translation_diff=decomposed_difference(A_raw,A_calc)
+            angle_diff_list.append(angle_diff)
+            translation_diff_list.append(translation_diff)
+        angle_diff_list=np.array(angle_diff_list,dtype='float32')
+        translation_diff_list=np.array(translation_diff_list,dtype='float32')
+        angle_diff=np.mean(angle_diff_list)
+        translation_diff=np.mean(translation_diff_list)
+        print("Angle Difference Right: "+str(angle_diff*(180/np.pi)))
+        print("Translation Difference Right: "+str(translation_diff))
+
+
+
         #Do Left Next
-        #A=[]
-        #B=[]
+        A=[]
+        B=[]
         R_gripper2base=[]
         t_gripper2base=[]
         R_target2cam=[]
@@ -823,8 +860,8 @@ class CameraCalibGUI:
             A_i=np.dot(leftcam_T_scene[i],utils.invHomogeneousNumpy(leftcam_T_scene[i+1])) #Best
             #B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i+1]),rb_T_ecm_right[i]) #Initial
             B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_left[i]),rb_T_ecm_left[i+1]) #Best
-            #A.append(A_i)
-            #B.append(B_i)
+            A.append(A_i)
+            B.append(B_i)
             R_gripper2base.append(rb_T_ecm_left[i][0:3,0:3])
             t_gripper2base.append(rb_T_ecm_left[i][0:3,3])
 
@@ -840,15 +877,39 @@ class CameraCalibGUI:
         t_target2cam=np.array(t_target2cam,dtype='float32')
 
         ecm_T_leftcam=self.hand_eye.ComputeHandEye(A,B)
-        print("ecm_T_leftcam: "+str(ecm_T_leftcam))
+        #print("ecm_T_leftcam: "+str(ecm_T_leftcam))
         #data_left = {'ecm_T_leftcam': ecm_T_leftcam.tolist()}
 
         R_cam2gripper,t_cam2gripper=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam,method=cv2.CALIB_HAND_EYE_DANIILIDIS)
         ecm_T_leftcam_cv=np.identity(4)
         ecm_T_leftcam_cv[0:3,0:3]=R_cam2gripper
         ecm_T_leftcam_cv[0:3,3]=t_cam2gripper.flatten()
-        data_left = {'ecm_T_leftcam': ecm_T_leftcam_cv.tolist()}
-        print("ecm_T_leftcam: "+str(ecm_T_leftcam_cv))
+        ecm_T_leftcam_cv_list=ecm_T_leftcam_cv.tolist()
+        data_left = {'ecm_T_leftcam': ecm_T_leftcam.tolist()}
+        #print("ecm_T_leftcam: "+str(ecm_T_leftcam_cv))
+
+        
+        #Calculate accuracy of Left transformation 
+        angle_diff_list=[]
+        translation_diff_list=[]
+        for i in range(len(rb_T_ecm_left)-1):
+            A_raw=np.dot(utils.invHomogeneousNumpy(leftcam_T_scene[i]),leftcam_T_scene[i+1])
+            A_calc=utils.invHomogeneousNumpy(ecm_T_leftcam)@utils.invHomogeneousNumpy(rb_T_ecm_left[i])@rb_T_ecm_left[i+1]@ecm_T_leftcam
+            angle_diff,translation_diff=decomposed_difference(A_raw,A_calc)
+            angle_diff_list.append(angle_diff)
+            translation_diff_list.append(translation_diff)
+
+
+        angle_diff_list=np.array(angle_diff_list,dtype='float32')
+        translation_diff_list=np.array(translation_diff_list,dtype='float32')
+        angle_diff=np.mean(angle_diff_list)
+        translation_diff=np.mean(translation_diff_list)
+        print("Angle Difference Left: "+str(angle_diff*(180/np.pi)))
+        print("Translation Difference Left: "+str(translation_diff))
+
+
+
+
         #Store these values
         with open(calibration_params_right+"hand_eye_calibration_right.yaml","w") as f:
                 yaml.dump(data_right,f)
