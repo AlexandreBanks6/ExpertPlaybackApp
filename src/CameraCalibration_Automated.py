@@ -20,7 +20,7 @@ from include import utils
 ##################Change These Variables If Needed#############################
 #These Dimensions should be in meters, should change over to meters
 CHECKERBOARD_DIM=(8,8) #Number of inner corners in the checkerboard (corners height, corners width)
-CHECKER_WIDTH=0.0078232 #Width of each checker in the checkerboard
+CHECKER_WIDTH=0.0078232 #Width of each checker in the checkerboard (in meters)
 
 
 RANSAC_SCENE_REPROJECTION_ERROR=0.005 #Reprojection error for scene localization RANSAC (in meters)

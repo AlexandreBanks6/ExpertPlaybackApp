@@ -2,6 +2,7 @@ import numpy as np
 import math
 from include import utils
 from scipy.spatial.transform import Rotation
+from sklearn import datasets, linear_model
 
 class HandEye:
     #This is for solution to classic hand-eye problem of AX=XB
@@ -44,12 +45,19 @@ class HandEye:
             #Compute dual part of the dual quaternion
             A=L #Correct
             B=-1*np.dot(L_prime,q)
-            q_prime,residuals,_,_=np.linalg.lstsq(A,B,rcond=None)
+            #ransac=linear_model.RANSACRegressor(max_trials=1000,residual_threshold=0.05)
+            #ransac=RANSACRegressor(base_estimator=base_estimator,min_samples=10,max_trials=1000,residual_threshold=0.1)
 
+            q_prime,residuals,_,_=np.linalg.lstsq(A,B,rcond=None)
+            #ransac.fit(A,B)
+            #q_prime=ransac.estimator_.coef_
+            #print("q_prime: "+str(q_prime))
+            #print("q_prime_new: "+str(q_prime_new))
             #Solve translation part:
             q_conj=np.array([q[0]]+list(-1*q[1:4]))
-            print("q: "+str(q))
-            print("q_conj: "+str(q_conj))
+            #print("q: "+str(q
+            
+            #print("q_conj: "+str(q_conj))
             mult_res=self.quaternionMultiply(2*q_prime,q_conj)
             trans=mult_res[1:4]
 

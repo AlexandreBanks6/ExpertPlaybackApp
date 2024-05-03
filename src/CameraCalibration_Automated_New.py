@@ -23,8 +23,8 @@ import cv2.aruco as aruco
 ARUCO_IDs=[4,5,6,7] #List containing the IDs of the aruco markers that we are tracking
 NUM_FRAME_DETECTIONS=8 #How many sets of aruco "frames" need to be detected, ToDo for later
 
-RANSAC_SCENE_REPROJECTION_ERROR=0.0000005 #Reprojection error for scene localization RANSAC (in meters)
-RANSAC_SCENE_ITERATIONS=10000 #Number of iterations for scene localization RANSAC
+RANSAC_SCENE_REPROJECTION_ERROR=0.0005 #Reprojection error for scene localization RANSAC (in meters)
+RANSAC_SCENE_ITERATIONS=100000 #Number of iterations for scene localization RANSAC
 
 #Rigid Body Definition of Ring Over Wire Aruco Holder, each four coordinates define an ArUco marker with corresponding ID:
 #Marker corners are defined clockwise from top left
@@ -105,8 +105,8 @@ We define these as numpy frames, they are later converted to PyKDL frames
 
 '''
 
-z_translation=0.005 #Amount that we translate along z (1.5 centimeters)
-Z_MOTION=[0,z_translation,z_translation*2]
+z_translation=0.0075 #Amount that we translate along z (1.5 centimeters)
+Z_MOTION=[0,z_translation,z_translation*2,z_translation*3]
 planar_translation=0.005 #Amount that we translate in plane parallel to endoscope
 rotation_angle=2*(np.pi/180) #20 degrees in Rad
 
@@ -149,7 +149,7 @@ T7[1,3]=planar_translation
 print("T5: "+str(T7))
 MOTIONS=[T1,T2,T3,T4,T5,T6,T7]
 
-NUM_FRAMES_CAPTURED=21 #We capture 21 frames
+NUM_FRAMES_CAPTURED=28 #We capture 21 frames
 
 class CameraCalibGUI:
 
@@ -270,14 +270,11 @@ class CameraCalibGUI:
         if ids is not None:
             for id,corner in zip(ids,corners):
                 if id[0] in ARUCO_IDs:
-                    print("corner: "+str(corner))
                     corners_filtered.append(corner)
                     ids_filtered.append([id[0]])
             ids=np.array(ids_filtered,dtype='float32')
             corners=np.array(corners_filtered,dtype='float32')
             if len(ids_filtered)>0:
-                print("Corners Found: "+str(corners))
-                print("ids Found: "+str(ids))
                 return ids,corners
             else:
                 self.calbration_message_label.config(text="ArUco Out of View. Make sure to position ECM far enough above")
@@ -342,13 +339,17 @@ class CameraCalibGUI:
         translation_sign=-1
         
         ecm_pose_init=self.ecm.measured_cp()
+        print("measured_cp")
         for i in range(len(Z_MOTION)): #Loop for 3 z values
             translation_sign=-1*translation_sign
             for j in range(len(MOTIONS)): #Loop for motions in this plane                
                 #Move it back to central location before translating again
+                print("starting move")
                 self.ecm.move_cp(ecm_pose_init).wait()
-                rospy.sleep(0.9)
+                print("moving")
+                rospy.sleep(0.7)
                 ecm_pose_curr=self.ecm.measured_cp()
+                print("moved")
 
                 #print("ECM Position="+str(ecm_pose_curr.p))
                 #print("ECM Rotation="+str(ecm_pose_curr.M))
@@ -363,18 +364,20 @@ class CameraCalibGUI:
                 
                 ecm_pose_curr.M=ecm_pose_curr.M*motion_mat.M
                 self.ecm.move_cp(ecm_pose_curr).wait()
-                rospy.sleep(1)                
-                cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
-                cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
+                rospy.sleep(1.5)                
 
-                self.frame_number+=1
-                self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
                 #Grab the pose of ecm w.r.t. robot base
                 ecm_pose_new=self.ecm.measured_cp()
                 print("ecm_pose: "+str(ecm_pose_new))
                 rb_T_ecm=pm.toMatrix(ecm_pose_new)
                 print("ecm_pose numpy: "+str(rb_T_ecm))
                 self.rb_T_ecm_list.append(rb_T_ecm)
+
+                cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
+                cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
+
+                self.frame_number+=1
+                self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
         print("Num Frames: "+str(self.frame_number))
         #Store the rb_T_ecm poses in a yaml file
         os.mkdir(self.rootName+BASE_TO_ECM_DIR)
@@ -569,6 +572,7 @@ class CameraCalibGUI:
         #Repeats Twice, right first then left
         
         for i in range(2):
+            
             calibration_params_path=params_path[i]
             checkerboard_frames_path=frames_path[i]
 
@@ -578,6 +582,7 @@ class CameraCalibGUI:
             model_points=[]
             image_points=[]
             found=0
+            shown=False
             for file in os.listdir(checkerboard_frames_path): #Loop for all stored images
                 filename=os.fsdecode(file)
                 if filename.endswith(".jpg"):
@@ -585,30 +590,25 @@ class CameraCalibGUI:
                     img = cv2.imread(path) # Capture frame-by-frame
                     frame_gray=cv2.cvtColor(img.copy(),cv2.COLOR_BGR2GRAY)
                     corners,ids,rejected=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
-                    print(corners)
-
-                    corners=np.array(list(corners),dtype='float32')
-                    corners=corners.reshape(-1,4,2)
-                    dim1=corners.shape[0]
-                    dim2=corners.shape[1]
-                    corners=corners.reshape(dim1*dim2,2)
-
-                    corners=cv2.cornerSubPix(frame_gray,corners,(5,5),(-1,-1),self.criteria)
-                    corners=corners.reshape(dim1,dim2,2)
-                    corners=corners.reshape(dim1,1,dim2,2)
-                    corners=tuple(corners.tolist())
-                    print(corners)
-                    #print("corners after subpix: "+str(corners))
-                    #corners=corners.reshape(num_markers,4,2)
-                    #corners=[np.array(corner,dtype='float32') for corner in corners]
-                    #corners=tuple(corners)
-                    #corners=corners.reshape(-1,1,4,2)
-
-
-                    corners_filtered=[]
-                    ids_filtered=[]
-
                     if ids is not None: #We found IDs
+
+                        corners=np.array(list(corners),dtype='float32')
+                        corners=corners.reshape(-1,4,2)
+                        dim1=corners.shape[0]
+                        dim2=corners.shape[1]
+                        corners=corners.reshape(dim1*dim2,2)
+
+                        corners=cv2.cornerSubPix(frame_gray,corners,(5,5),(-1,-1),self.criteria)
+                        
+                        corners=corners.reshape(dim1,dim2,2)
+                        
+                        corners=corners.reshape(dim1,1,dim2,2)
+                        
+                        corners=tuple(corners)
+
+
+                        corners_filtered=[]
+                        ids_filtered=[]                    
 
                         #Keeps only the ids that we want
                         for id,corner in zip(ids,corners):
@@ -616,28 +616,34 @@ class CameraCalibGUI:
                             if id[0] in ARUCO_IDs:
                                 corners_filtered.append(corner)
                                 ids_filtered.append([id[0]])
-                        if len(ids_filtered)>0: #We found IDs after filtering
+
+                        
+                        if len(ids_filtered)>0: #We found all four AruCo markers after filtering, now we match image points to our rigid body
+                            ids_print=np.array(ids_filtered)
+                            corners_print=np.array(corners_filtered,dtype='float32')
+                            #Display the corners:
+                            frame_converted=aruco.drawDetectedMarkers(img,corners=corners_print,ids=ids_print)
+                            cv2.imshow('ArUco Frame', frame_converted)
+                            cv2.waitKey(250)
+                            shown=True
+
                             #Now we append the corresponding model and object points to these two arrays:
                             image_points_inner=None
                             model_points_inner=None
                             for id,corner in zip(ids_filtered,corners_filtered):
                                 if image_points_inner is None:
-                                    image_points_inner=corner
+                                    image_points_inner=corner[0]
                                     model_points_inner=RINGOWIRE_MODELPOINTS[str(id[0])]
                                 else:
-                                    image_points_inner=np.vstack((image_points_inner,corner))
+                                    image_points_inner=np.vstack((image_points_inner,corner[0]))
                                     model_points_inner=np.vstack((model_points_inner,RINGOWIRE_MODELPOINTS[str(id[0])]))
                             model_points.append(model_points_inner)
                             image_points.append(image_points_inner)
-                            #print(image_points)
-                            #print(corners_filtered)
-                            #Now we show the aruco markers:
-                            print("ids_filtered:"+str(np.array(ids_filtered)))
-                            frame_converted=aruco.drawDetectedMarkers(img,corners=image_points,ids=np.array(ids_filtered))
-                            cv2.imshow('ArUco Frame', frame_converted)
-                            cv2.waitKey(0)
-                            found+=1
-            cv2.destroyWindow('ArUco Frame')
+
+
+                            found+=1    #We found at least one aruco in the image
+            if shown:
+                cv2.destroyWindow('ArUco Frame')
             
             if found>=REQUIRED_CHECKERBOARD_NUM:
                 #print("model_points: "+str(model_points))
@@ -709,11 +715,12 @@ class CameraCalibGUI:
             
             #Loops for each ArUco that we previously captured
             for frame_num in range(NUM_FRAMES_CAPTURED):
-                #print("Frame_num: "+str(frame_num))
                 filename=checkerboard_frames_path+frame_name+str(frame_num)+".jpg"
                 img = cv2.imread(filename) # Capture frame-by-frame
                 frame_gray=cv2.cvtColor(img.copy(),cv2.COLOR_BGR2GRAY)
                 corners,ids,rejected=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
+                
+
                 
                 #num_markers=len(ids)
                 #corners = np.array(corners, dtype=np.float32).reshape(-1, 1, 2)
@@ -721,18 +728,38 @@ class CameraCalibGUI:
                 #corners=corners.reshape(num_markers,4,2)
                 #corners=[np.array(corner,dtype='float32') for corner in corners]
                 #corners=cv2.cornerSubPix(frame_gray,corners,(11,11),(-1,-1),self.criteria)
-                corners_filtered=[]
-                ids_filtered=[]
+
 
                 if ids is not None: #We found IDs
+                    corners=np.array(list(corners),dtype='float32')
+                    corners=corners.reshape(-1,4,2)
+                    dim1=corners.shape[0]
+                    dim2=corners.shape[1]
+                    corners=corners.reshape(dim1*dim2,2)
+                    corners=cv2.cornerSubPix(frame_gray,corners,(5,5),(-1,-1),self.criteria)                    
+                    corners=corners.reshape(dim1,dim2,2)                    
+                    corners=corners.reshape(dim1,1,dim2,2)                    
+                    corners=tuple(corners)
+
+                    print("ids: "+str(ids))
                     #Keeps only the ids that we want
+                    corners_filtered=[]
+                    ids_filtered=[]
                     for id,corner in zip(ids,corners):
                         if id[0] in ARUCO_IDs:
                             corners_filtered.append(corner)
                             ids_filtered.append([id[0]])
+
+                    print("ids filtered: "+str(ids_filtered))
                     image_points=None
                     model_points=None
                     if len(ids_filtered)>0: #We found IDs after filtering
+                        ids_print=np.array(ids_filtered)
+                        corners_print=np.array(corners_filtered,dtype='float32')
+                        #Display the corners:
+                        frame_converted=aruco.drawDetectedMarkers(img,corners=corners_print,ids=ids_print)
+                        cv2.imshow('ArUco Frame', frame_converted)
+                        cv2.waitKey(500)
                         #Now we append the corresponding model and object points to these two arrays:
                         for id,corner in zip(ids_filtered,corners_filtered):
                             if image_points is None:
@@ -755,17 +782,15 @@ class CameraCalibGUI:
                             frame_converted=cv2.drawFrameAxes(frame_converted,mtx,\
                                       dist,rotation_vector,translation_vector,0.05)
                             cv2.imshow('Pose',frame_converted)
-                            cv2.waitKey(100)
+                            cv2.waitKey(50)
                             #print("rotation_vector: "+str(rotation_vector))
                             #print("translation_vector: "+str(translation_vector))
                             cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
-                            #print("cam_T_scene: "+str(cam_T_scene))
-                            #Get the frame number to index the corresponding ecm_T_psm pose
-                            #name,ext=filename.split('.')   #Splits off the name
-                            #frame_num=[int(s) for s in name if s.isdigit()]
-                            #combined_number = int("".join(str(number) for number in frame_num))
+                            cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
+
                             rb_T_ecm=rb_T_ecm_list[frame_num]
-                            #print('rb_T_ecm: '+str(rb_T_ecm))
+                            rb_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(rb_T_ecm)
+                            
 
                             #Updating the lists
                             if i==0: #right
@@ -790,7 +815,7 @@ class CameraCalibGUI:
         for i in range(len(rb_T_ecm_right)-1):
             #A_i=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i+1]),rightcam_T_scene[i]) #Initial
             A_i=np.dot(rightcam_T_scene[i],utils.invHomogeneousNumpy(rightcam_T_scene[i+1])) #Best
-            #B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i+1]),rb_T_ecm_right[i]) #Initial
+            #B_i=np.dot(rb_T_ecm_right[i+1],utils.invHomogeneousNumpy(rb_T_ecm_right[i])) #Initial
             B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i]),rb_T_ecm_right[i+1]) #Best
 
             R_gripper2base.append(rb_T_ecm_right[i][0:3,0:3])
