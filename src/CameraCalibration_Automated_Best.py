@@ -64,6 +64,8 @@ RINGOWIRE_MODELPOINTS={
 }
 
 
+FRAMES_TO_REMOVE_RIGHT=[1,8,9,10,14,15,19,20,23,26,27,28,32,33,35]   #These frames were determined to be garbage visually
+FRAMES_TO_REMOVE_LEFT=[4,13,14,15,19,20,23,26,27,28,29,30,31,32,33]
 
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
 ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
@@ -153,7 +155,7 @@ T7[1,3]=planar_translation
 print("T5: "+str(T7))
 MOTIONS=[T1,T2,T3,T4,T5,T6,T7]
 
-NUM_FRAMES_CAPTURED=28 #We capture 21 frames
+NUM_FRAMES_CAPTURED=36 #We capture 21 frames
 
 class CameraCalibGUI:
 
@@ -190,21 +192,29 @@ class CameraCalibGUI:
         #---Buttons
 
         #The grab frame callback automatically moves the robot to a new pose an grabs a frame
-        self.button_frame=tk.Button(text="Grab Frames",width=15,command=self.grabFramesCallback)
+        self.button_frame=tk.Button(text="Grab Frame(s)",width=15,command=self.grabFramesCallback)
         self.button_frame.grid(row=2,column=0,sticky="nsew")
+
+        self.button_savemanual=tk.Button(text="Save Manual",width=15,command=self.saveManualCallback)
+        self.button_savemanual.grid(row=2,column=1,sticky="nsew")
 
         self.button_calibrate=tk.Button(text="Calibrate",width=15,command=self.calibrateCameraCallback)
         self.button_calibrate.grid(row=3,column=0,sticky="nsew")
         
-        self.calibration_count_label=tk.Label(text="",width=60)
-        self.calibration_count_label.grid(row=3,column=1)
+        #Tick Box for Manual camera calibration
+        self.checkbox_manual=tk.Checkbutton(text="Manual",onvalue=1,offvalue=0,command=self.manualCheckbox)
+        self.checkbox_manual.grid(row=3,column=1,sticky='nsew')
+
+
 
         self.calbration_message_label=tk.Label(text="",width=60)
         self.calbration_message_label.grid(row=4,column=0)
 
+
         #Frames that we are reading from endoscope
         self.frameLeft=None
         self.frameRight=None
+        self.isManual=False
 
         #Subscribing to ROS topics
         rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackRight,queue_size=1,buff_size=2**18)
@@ -241,12 +251,16 @@ class CameraCalibGUI:
         self.mtx_left=None
         self.dst_right=None
         self.dist_left=None
+        self.rb_T_ecm_list=[]
 
         rospy.sleep(1)
 
         self.window.after(1,self.showFramesCallback)
         self.window.mainloop()
     
+    def manualCheckbox(self):
+        self.isManual=not self.isManual
+
     def showFramesCallback(self):
 
         if self.ranOnce>=2:
@@ -309,87 +323,125 @@ class CameraCalibGUI:
         cv2.waitKey(50)
         return e_x,e_y
 
-    def grabFramesCallback(self):
-        #Automatically grab the frames and save them
+    def saveManualCallback(self):
 
-        self.just_grabbed_frames=True
-        self.createSaveFolder()    #This Creates a new folder with an incremented folder number (Calib_num)
-        file_name_right=self.rootName+RIGHT_FRAMES_FILEDIR
-        file_name_left=self.rootName+LEFT_FRAMES_FILEDIR
-
-        #First we get user to align the ECM center with the checkerboard center
-        self.calbration_message_label.config(text="Move ArUco Object Center (red) to Camera Center (green)")
-        err_mag=ERROR_THRESHOLD+1
-        print("Entered Grabbed Frames")
-        while err_mag>ERROR_THRESHOLD: #Loops until center of LEFT ECM is within acceptable threshold
-            ids,corners=self.findArUcos(self.frameLeft)
-            if corners is not None:
-                e_x,e_y=self.findAxisErrors(self.frameLeft,ids,corners)
-                err_mag=np.sqrt((e_x**2)+(e_y**2))
-                print("err_mag: "+str(err_mag))
-
-        print("Aligned")
-        cv2.destroyWindow('Alignment Error')
-        rospy.sleep(5)  #Sleep to allow user to move away from ecm
-
-        #Now we capture the frames for the camera calibration
-        if not os.path.isdir(file_name_right):
-            os.mkdir(file_name_right)
-            os.mkdir(file_name_left)
-        print("File Name: "+str(file_name_right))
-        self.frame_number=0
-        #We loop through and move the ECM, then take frames, we also get the rb_T_ecm transform
-        self.rb_T_ecm_list=[]
-        translation_sign=-1
-        
-        ecm_pose_init=self.ecm.measured_cp()
-        print("measured_cp")
-        for i in range(len(Z_MOTION)): #Loop for 3 z values
-            translation_sign=-1*translation_sign
-            for j in range(len(MOTIONS)): #Loop for motions in this plane                
-                #Move it back to central location before translating again
-                print("starting move")
-                self.ecm.move_cp(ecm_pose_init).wait()
-                print("moving")
-                rospy.sleep(0.7)
-                ecm_pose_curr=self.ecm.measured_cp()
-                print("moved")
-
-                #print("ECM Position="+str(ecm_pose_curr.p))
-                #print("ECM Rotation="+str(ecm_pose_curr.M))
-                #print("z motion: "+str(Z_MOTION[i]))
-                #print("Tranform: "+str(MOTIONS[j]))
-                
-                motion_mat=pm.fromMatrix(MOTIONS[j])
-                
-                ecm_pose_curr.p[0]+=translation_sign*motion_mat.p[0]
-                ecm_pose_curr.p[1]+=translation_sign*motion_mat.p[1]
-                ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
-                
-                ecm_pose_curr.M=ecm_pose_curr.M*motion_mat.M
-                self.ecm.move_cp(ecm_pose_curr).wait()
-                rospy.sleep(1.5)                
-
-                #Grab the pose of ecm w.r.t. robot base
-                ecm_pose_new=self.ecm.measured_cp()
-                print("ecm_pose: "+str(ecm_pose_new))
-                rb_T_ecm=pm.toMatrix(ecm_pose_new)
-                print("ecm_pose numpy: "+str(rb_T_ecm))
-                self.rb_T_ecm_list.append(rb_T_ecm)
-
-                cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
-                cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
-
-                self.frame_number+=1
-                self.calibration_count_label.config(text="# of frames="+str(self.frame_number))
-        print("Num Frames: "+str(self.frame_number))
-        #Store the rb_T_ecm poses in a yaml file
         os.mkdir(self.rootName+BASE_TO_ECM_DIR)
         rb_T_ecm_store=np.array(self.rb_T_ecm_list,dtype='float32')
         print("rb_T_ecm_store: "+str(rb_T_ecm_store))
         np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm',rb_T_ecm_store)
 
         self.calbration_message_label.config(text="Frame Grabbing Done")
+
+        self.rb_T_ecm_list=[]
+        self.frame_number=0
+
+
+
+    def grabFramesCallback(self):
+        if self.isManual:
+            #Manually grab the frames
+            if self.frame_number==0:
+                #Initialize the save folder
+                self.createSaveFolder()
+                self.rb_T_ecm_list=[]
+            
+            file_name_right=self.rootName+RIGHT_FRAMES_FILEDIR
+            file_name_left=self.rootName+LEFT_FRAMES_FILEDIR     
+            if not os.path.isdir(file_name_right):
+                os.mkdir(file_name_right)
+                os.mkdir(file_name_left)
+            
+            ecm_pose=self.ecm.measured_cp()
+            rb_T_ecm=pm.toMatrix(ecm_pose)
+            self.rb_T_ecm_list.append(rb_T_ecm)
+
+            cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
+            cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
+
+            self.frame_number+=1
+            self.calbration_message_label.config(text="Frame Count: "+str(self.frame_number))
+        else:
+
+
+            #Automatically grab the frames and save them
+
+            self.just_grabbed_frames=True
+            self.createSaveFolder()    #This Creates a new folder with an incremented folder number (Calib_num)
+            file_name_right=self.rootName+RIGHT_FRAMES_FILEDIR
+            file_name_left=self.rootName+LEFT_FRAMES_FILEDIR
+
+            #First we get user to align the ECM center with the checkerboard center
+            self.calbration_message_label.config(text="Move ArUco Object Center (red) to Camera Center (green)")
+            err_mag=ERROR_THRESHOLD+1
+            print("Entered Grabbed Frames")
+            while err_mag>ERROR_THRESHOLD: #Loops until center of LEFT ECM is within acceptable threshold
+                ids,corners=self.findArUcos(self.frameLeft)
+                if corners is not None:
+                    e_x,e_y=self.findAxisErrors(self.frameLeft,ids,corners)
+                    err_mag=np.sqrt((e_x**2)+(e_y**2))
+                    print("err_mag: "+str(err_mag))
+
+            print("Aligned")
+            cv2.destroyWindow('Alignment Error')
+            rospy.sleep(5)  #Sleep to allow user to move away from ecm
+
+            #Now we capture the frames for the camera calibration
+            if not os.path.isdir(file_name_right):
+                os.mkdir(file_name_right)
+                os.mkdir(file_name_left)
+            print("File Name: "+str(file_name_right))
+            self.frame_number=0
+            #We loop through and move the ECM, then take frames, we also get the rb_T_ecm transform
+            self.rb_T_ecm_list=[]
+            translation_sign=-1
+            
+            ecm_pose_init=self.ecm.measured_cp()
+            print("measured_cp")
+            for i in range(len(Z_MOTION)): #Loop for 3 z values
+                translation_sign=-1*translation_sign
+                for j in range(len(MOTIONS)): #Loop for motions in this plane                
+                    #Move it back to central location before translating again
+                    print("starting move")
+                    self.ecm.move_cp(ecm_pose_init).wait()
+                    print("moving")
+                    rospy.sleep(0.7)
+                    ecm_pose_curr=self.ecm.measured_cp()
+                    print("moved")
+
+                    #print("ECM Position="+str(ecm_pose_curr.p))
+                    #print("ECM Rotation="+str(ecm_pose_curr.M))
+                    #print("z motion: "+str(Z_MOTION[i]))
+                    #print("Tranform: "+str(MOTIONS[j]))
+                    
+                    motion_mat=pm.fromMatrix(MOTIONS[j])
+                    
+                    ecm_pose_curr.p[0]+=translation_sign*motion_mat.p[0]
+                    ecm_pose_curr.p[1]+=translation_sign*motion_mat.p[1]
+                    ecm_pose_curr.p[2]+=Z_MOTION[i] #increments z pose
+                    
+                    ecm_pose_curr.M=ecm_pose_curr.M*motion_mat.M
+                    self.ecm.move_cp(ecm_pose_curr).wait()
+                    rospy.sleep(1.5)                
+
+                    #Grab the pose of ecm w.r.t. robot base
+                    ecm_pose_new=self.ecm.measured_cp()
+                    print("ecm_pose: "+str(ecm_pose_new))
+                    rb_T_ecm=pm.toMatrix(ecm_pose_new)
+                    print("ecm_pose numpy: "+str(rb_T_ecm))
+                    self.rb_T_ecm_list.append(rb_T_ecm)
+
+                    cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
+                    cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
+
+                    self.frame_number+=1
+            print("Num Frames: "+str(self.frame_number))
+            #Store the rb_T_ecm poses in a yaml file
+            os.mkdir(self.rootName+BASE_TO_ECM_DIR)
+            rb_T_ecm_store=np.array(self.rb_T_ecm_list,dtype='float32')
+            print("rb_T_ecm_store: "+str(rb_T_ecm_store))
+            np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm',rb_T_ecm_store)
+
+            self.calbration_message_label.config(text="Frame Grabbing Done")
 
                 
 
@@ -656,6 +708,7 @@ class CameraCalibGUI:
         rb_T_ecm_path=self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm.npy'
         print("rb_T_ecm_path: "+str(rb_T_ecm_path))
         rb_T_ecm_list=np.load(rb_T_ecm_path)
+
         #print("rb_T_ecm_list: "+str(rb_T_ecm_list))
         #Loop twice, right first then left
         for i in range(2):
@@ -676,6 +729,7 @@ class CameraCalibGUI:
             
             #Loops for each ArUco that we previously captured
             for frame_num in range(NUM_FRAMES_CAPTURED):
+                print('frame_num: '+str(frame_num))
                 filename=checkerboard_frames_path+frame_name+str(frame_num)+".jpg"
                 img = cv2.imread(filename) # Capture frame-by-frame
                 frame_gray=cv2.cvtColor(img.copy(),cv2.COLOR_BGR2GRAY)
@@ -684,6 +738,7 @@ class CameraCalibGUI:
 
 
                 if ids is not None: #We found IDs
+                    '''
                     corners=np.array(list(corners),dtype='float32')
                     corners=corners.reshape(-1,4,2)
                     dim1=corners.shape[0]
@@ -693,6 +748,7 @@ class CameraCalibGUI:
                     corners=corners.reshape(dim1,dim2,2)                    
                     corners=corners.reshape(dim1,1,dim2,2)                    
                     corners=tuple(corners)
+                    '''
 
 
                     #Keeps only the ids that we want
@@ -739,11 +795,16 @@ class CameraCalibGUI:
                             #print("rotation_vector: "+str(rotation_vector))
                             #print("translation_vector: "+str(translation_vector))
                             cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                            #cam_T_scene=utils.invHomogeneousNumpy(cam_T_scene)
                             cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
+                            #cam_T_scene=utils.invHomogeneousNumpy(cam_T_scene)
+                            #cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
 
                             rb_T_ecm=rb_T_ecm_list[frame_num]
+                            #print('rb_T_ecm: '+str(rb_T_ecm))
                             rb_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(rb_T_ecm)
-                            
+                            #rb_T_ecm=utils.invHomogeneousNumpy(rb_T_ecm)
+                            #rb_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(rb_T_ecm)
 
                             #Updating the lists
                             if i==0: #right
@@ -752,6 +813,27 @@ class CameraCalibGUI:
                             elif i==1:
                                 rb_T_ecm_left.append(rb_T_ecm)
                                 leftcam_T_scene.append(cam_T_scene)
+
+
+        #Filter out bad frames in left and right
+        rb_T_ecm_right_new=[]
+        rightcam_T_scene_new=[]
+        for i in range(len(rb_T_ecm_right)-1):
+            if i not in FRAMES_TO_REMOVE_RIGHT:
+                 rb_T_ecm_right_new.append(rb_T_ecm_right[i])
+                 rightcam_T_scene_new.append(rightcam_T_scene[i])
+        rb_T_ecm_right=rb_T_ecm_right_new
+        rightcam_T_scene=rightcam_T_scene_new
+
+
+        rb_T_ecm_left_new=[]
+        leftcam_T_scene_new=[]
+        for i in range(len(rb_T_ecm_left)-1):
+            if i not in FRAMES_TO_REMOVE_RIGHT:
+                 rb_T_ecm_left_new.append(rb_T_ecm_left[i])
+                 leftcam_T_scene_new.append(leftcam_T_scene[i])
+        rb_T_ecm_left=rb_T_ecm_left_new
+        leftcam_T_scene=leftcam_T_scene_new
 
 
 
@@ -765,11 +847,19 @@ class CameraCalibGUI:
         t_gripper2base=[]
         R_target2cam=[]
         t_target2cam=[]
+
+
+        #for i in range(len(rb_T_ecm_right)-1):
         for i in range(len(rb_T_ecm_right)-1):
+
             #A_i=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i+1]),rightcam_T_scene[i]) #Initial
-            A_i=np.dot(rightcam_T_scene[i],utils.invHomogeneousNumpy(rightcam_T_scene[i+1])) #Best
+            A_i=rightcam_T_scene[i]@utils.invHomogeneousNumpy(rightcam_T_scene[i+1]) #Best
+            A_i=utils.EnforceOrthogonalityNumpy_FullTransform(A_i)
+            #print("A_i: "+str(A_i))
             #B_i=np.dot(rb_T_ecm_right[i+1],utils.invHomogeneousNumpy(rb_T_ecm_right[i])) #Initial
-            B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i]),rb_T_ecm_right[i+1]) #Best
+            B_i=utils.invHomogeneousNumpy(rb_T_ecm_right[i])@rb_T_ecm_right[i+1] #Best
+            B_i=utils.EnforceOrthogonalityNumpy_FullTransform(B_i)
+            #print("B_i: "+str(B_i))
 
             R_gripper2base.append(rb_T_ecm_right[i][0:3,0:3])
             t_gripper2base.append(rb_T_ecm_right[i][0:3,3])
@@ -813,17 +903,25 @@ class CameraCalibGUI:
         angle_diff_list=[]
         translation_diff_list=[]
         for i in range(len(rb_T_ecm_right)-1):
-            A_raw=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i]),rightcam_T_scene[i+1])
-            A_calc=utils.invHomogeneousNumpy(ecm_T_rightcam_cv)@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@rb_T_ecm_right[i+1]@ecm_T_rightcam_cv
+            A_raw=rightcam_T_scene[i]@utils.invHomogeneousNumpy(rightcam_T_scene[i+1])
+            A_raw=utils.EnforceOrthogonalityNumpy_FullTransform(A_raw)
+            #A_raw=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i+1]),rightcam_T_scene[i]) 
+            A_calc=utils.invHomogeneousNumpy(ecm_T_rightcam)@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@rb_T_ecm_right[i+1]@ecm_T_rightcam
+            A_calc=utils.EnforceOrthogonalityNumpy_FullTransform(A_calc)
+            #A_calc=ecm_T_rightcam_cv@rb_T_ecm_right[i+1]@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@utils.invHomogeneousNumpy(ecm_T_rightcam_cv)
             angle_diff,translation_diff=decomposed_difference(A_raw,A_calc)
+            angle_diff=angle_diff*(180/np.pi)
             angle_diff_list.append(angle_diff)
             translation_diff_list.append(translation_diff)
         angle_diff_list=np.array(angle_diff_list,dtype='float32')
         translation_diff_list=np.array(translation_diff_list,dtype='float32')
         angle_diff=np.mean(angle_diff_list)
         translation_diff=np.mean(translation_diff_list)
-        print("Angle Difference Right: "+str(angle_diff*(180/np.pi)))
+        print("Angle Difference List Right: "+str(angle_diff_list))
+        print("Translation Difference List Right: "+str(translation_diff_list))
+        print("Angle Difference Right: "+str(angle_diff))
         print("Translation Difference Right: "+str(translation_diff))
+        
 
 
 
@@ -834,10 +932,14 @@ class CameraCalibGUI:
         t_gripper2base=[]
         R_target2cam=[]
         t_target2cam=[]
+        #for i in range(len(rb_T_ecm_left)-1):
         for i in range(len(rb_T_ecm_left)-1):
-            A_i=np.dot(leftcam_T_scene[i],utils.invHomogeneousNumpy(leftcam_T_scene[i+1])) #Best
-            #B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_right[i+1]),rb_T_ecm_right[i]) #Initial
-            B_i=np.dot(utils.invHomogeneousNumpy(rb_T_ecm_left[i]),rb_T_ecm_left[i+1]) #Best
+            A_i=leftcam_T_scene[i]@utils.invHomogeneousNumpy(leftcam_T_scene[i+1]) #Best
+            A_i=utils.EnforceOrthogonalityNumpy_FullTransform(A_i)
+            #print("A_i: "+str(A_i))
+            #B_i=np.dot(rb_T_ecm_right[i+1],utils.invHomogeneousNumpy(rb_T_ecm_right[i])) #Initial
+            B_i=utils.invHomogeneousNumpy(rb_T_ecm_left[i])@rb_T_ecm_left[i+1] #Best
+            B_i=utils.EnforceOrthogonalityNumpy_FullTransform(B_i)
             A.append(A_i)
             B.append(B_i)
             R_gripper2base.append(rb_T_ecm_left[i][0:3,0:3])
@@ -871,9 +973,14 @@ class CameraCalibGUI:
         angle_diff_list=[]
         translation_diff_list=[]
         for i in range(len(rb_T_ecm_left)-1):
-            A_raw=np.dot(utils.invHomogeneousNumpy(leftcam_T_scene[i]),leftcam_T_scene[i+1])
-            A_calc=utils.invHomogeneousNumpy(ecm_T_leftcam_cv)@utils.invHomogeneousNumpy(rb_T_ecm_left[i])@rb_T_ecm_left[i+1]@ecm_T_leftcam_cv
+            A_raw=leftcam_T_scene[i]@utils.invHomogeneousNumpy(leftcam_T_scene[i+1])
+            A_raw=utils.EnforceOrthogonalityNumpy_FullTransform(A_raw)
+            #A_raw=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i+1]),rightcam_T_scene[i]) 
+            A_calc=utils.invHomogeneousNumpy(ecm_T_leftcam)@utils.invHomogeneousNumpy(rb_T_ecm_left[i])@rb_T_ecm_left[i+1]@ecm_T_leftcam
+            A_calc=utils.EnforceOrthogonalityNumpy_FullTransform(A_calc)
+            #A_calc=ecm_T_rightcam_cv@rb_T_ecm_right[i+1]@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@utils.invHomogeneousNumpy(ecm_T_rightcam_cv)
             angle_diff,translation_diff=decomposed_difference(A_raw,A_calc)
+            angle_diff=angle_diff*(180/np.pi)
             angle_diff_list.append(angle_diff)
             translation_diff_list.append(translation_diff)
 
@@ -882,7 +989,9 @@ class CameraCalibGUI:
         translation_diff_list=np.array(translation_diff_list,dtype='float32')
         angle_diff=np.mean(angle_diff_list)
         translation_diff=np.mean(translation_diff_list)
-        print("Angle Difference Left: "+str(angle_diff*(180/np.pi)))
+        print("Angle Difference List Left: "+str(angle_diff_list))
+        print("Translation Difference List Left: "+str(translation_diff_list))
+        print("Angle Difference Left: "+str(angle_diff))
         print("Translation Difference Left: "+str(translation_diff))
 
 
@@ -930,6 +1039,7 @@ def decomposed_difference(A, B):
     # Extract rotation matrices and translation vectors
     RA, RB = A[:3, :3], B[:3, :3]
     tA, tB = A[:3, 3], B[:3, 3]
+    translation_diff = np.linalg.norm(tA - tB)
 
     # Convert rotation matrices to quaternions
     quatA, quatB = Rotation.from_matrix(RA).as_quat(), Rotation.from_matrix(RB).as_quat()
@@ -939,7 +1049,7 @@ def decomposed_difference(A, B):
     angle_diff = rotation_diff.magnitude()
 
     # Calculate the Euclidean distance between translation vectors
-    translation_diff = np.linalg.norm(tA - tB)
+    
 
     return angle_diff, translation_diff
 

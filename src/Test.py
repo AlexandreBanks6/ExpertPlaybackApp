@@ -5,23 +5,24 @@ import dvrk
 import rospy
 from include import utils
 
-psm1=dvrk.psm("PSM1") #Mapped to left hand
+ecm=dvrk.ecm("ECM")
 
-psm1.enable()
-psm1.home()
-rospy.sleep(1)
+ecm.enable()
+ecm.home()
+
+rospy.sleep(3)
 
 
 
 while(1):
     #joint_vars_psm1=psm1.measured_js()[0]
     #jaw_angle_psm1=psm1.jaw.measured_js()[0]
-    ecm_T_psm=psm1.measured_cp()
+    rb_T_ecm=ecm.measured_cp()
     #print("Joint Vars: "+str(joint_vars_psm1*(180/np.pi)))
     #print("Original Pose: "+str(ecm_T_psm))
-    ecm_T_psm=utils.enforceOrthogonalPyKDL(ecm_T_psm)
-    ecm_T_psm=utils.convertPyDK_To_GLM(ecm_T_psm)
-    print("Pose New: "+str(ecm_T_psm))
+    rb_T_ecm=utils.enforceOrthogonalPyKDL(rb_T_ecm)
+    rb_T_ecm=utils.convertPyDK_To_GLM(rb_T_ecm)
+    print("Pose: "+str(rb_T_ecm))
     rospy.sleep(3)
 
 

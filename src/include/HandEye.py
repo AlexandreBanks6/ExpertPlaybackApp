@@ -45,7 +45,7 @@ class HandEye:
             #Compute dual part of the dual quaternion
             A=L #Correct
             B=-1*np.dot(L_prime,q)
-            #ransac=linear_model.RANSACRegressor(max_trials=1000,residual_threshold=0.05)
+            #ransac=linear_model.RANSACRegressor(max_trials=10000,residual_threshold=0.025)
             #ransac=RANSACRegressor(base_estimator=base_estimator,min_samples=10,max_trials=1000,residual_threshold=0.1)
 
             q_prime,residuals,_,_=np.linalg.lstsq(A,B,rcond=None)
