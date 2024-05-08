@@ -77,7 +77,7 @@ T_6_alpha=glm.pi()/2
 T_6_cos_alpha=glm.cos(T_6_alpha)
 T_6_sin_alpha=glm.sin(T_6_alpha)
 
-T_6_a=0.0091*METERS_TO_RENDER_SCALE #body length 
+T_6_a=0.0091 #*METERS_TO_RENDER_SCALE #body length 
 
 
 #Rotation Matrices to convert between the standard DH frames and the frame system of the 3D models
@@ -230,7 +230,7 @@ class Renderer:
         self.ctx_left=mgl.create_context(require=330,standalone=False)
         self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
         self.ctx_left.enable(mgl.BLEND)
-        self.camera_left=Camera.Camera(self)
+        self.camera_left=Camera.Camera(self,'left')
 
         #Background Image
         self.background_program_left=self.ctx_left.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
@@ -250,7 +250,7 @@ class Renderer:
         self.ctx_right=mgl.create_context(require=330,standalone=False)
         self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
         self.ctx_right.enable(mgl.BLEND)
-        self.camera_right=Camera.Camera(self)
+        self.camera_right=Camera.Camera(self,'right')
 
         #Initializing right background
         self.window_right.switch_to()
@@ -467,12 +467,14 @@ class Renderer:
         
         self.ecm_T_lc=utils.EnforceOrthogonalityNumpy_FullTransform(self.ecm_T_lc)
         self.ecm_T_lc=glm.mat4(*self.ecm_T_lc.T.flatten())
+        print("ecm_T_lc: "+str(self.ecm_T_lc))
         
         self.ecm_T_rc=right_handeye['ecm_T_rightcam']
         self.ecm_T_rc=np.array(self.ecm_T_rc,dtype='float32')
         
         self.ecm_T_rc=utils.EnforceOrthogonalityNumpy_FullTransform(self.ecm_T_rc)
         self.ecm_T_rc=glm.mat4(*self.ecm_T_rc.T.flatten())
+        print("ecm_T_rc: "+str(self.ecm_T_rc))
         
 
         ##Getting current ecm pose
@@ -800,13 +802,13 @@ class Renderer:
             #print("ecm_T_lc: "+str(self.ecm_T_lc))
             #print("ecmini_T_ecm: "+str(self.ecmini_T_ecm))
             self.si_T_ecm=utils.invHomogeneousGLM(self.lci_T_si)*utils.invHomogeneousGLM(self.ecm_T_lc)*self.ecmini_T_ecm
-            #print("si_T_ecm: "+str(self.si_T_ecm))
+
             ################Move Instruments if Playback is Pushed###############
             if self.render_on:
                 self.render_time+=self.delta_time   #Update the time since start of rendering
                 #Get the row of recording with time closest to rendering time
                 index=np.argmin(np.abs(self.render_times_list-self.render_time))    #Gets index of row in recorded time closest to current time
-                print("Index: "+str(index))
+                #print("Index: "+str(index))
                 data_row=pd.read_csv(self.render_filename,skiprows=9+index,nrows=1)
                 data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
                 if index>=(len(self.render_times_list)-1):    #Reset the rendering time, so this inherently does looping for us
@@ -817,16 +819,16 @@ class Renderer:
                 if self.PSM1_on:
                     #PSM1:
                     self.si_T_psm1_recorded=data_list[2:14]
-                    print("si_T_psm1_list: "+str(self.si_T_psm1_recorded))
                     self.si_T_psm1_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm1_recorded)
-                    print("si_T_psm1_recorded: "+str(self.si_T_psm1_recorded))
                     self.joint_vars_psm1_recorded=data_list[44:48]
                     #print("joint vars psm1 recorded: "+str(self.joint_vars_psm1_recorded))
                     self.instrument_kinematics(self.joint_vars_psm1_recorded,self.si_T_psm1_recorded,'PSM1')
                 if self.PSM3_on:
                     #PSM3:
                     self.si_T_psm3_recorded=data_list[15:27]
+                    #print("si_T_psm3_recorded_list: "+str(self.si_T_psm3_recorded))
                     self.si_T_psm3_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm3_recorded)
+                    #print("si_T_psm3_recorded: "+str(self.si_T_psm3_recorded))
                     self.joint_vars_psm3_recorded=data_list[52:58]
 
                     self.instrument_kinematics(self.joint_vars_psm3_recorded,self.si_T_psm3_recorded,'PSM3')
@@ -846,6 +848,7 @@ class Renderer:
                     self.joint_vars_psm1=[joint_vars_psm1[0],joint_vars_psm1[1],joint_vars_psm1[2],joint_vars_psm1[3],joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
                     #print("joint vars psm1: "+str(self.joint_vars_psm1))
                     self.si_T_psm1=self.si_T_ecm*self.ecm_T_psm1
+                    #print("si_T_psm1: "+str(self.si_T_psm1))
                 if self.PSM3_on:
 
                     psm3_pose=self.psm3.measured_cp()
@@ -858,6 +861,7 @@ class Renderer:
                     jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
                     self.joint_vars_psm3=[joint_vars_psm3[0],joint_vars_psm3[1],joint_vars_psm3[2],joint_vars_psm3[3],joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
                     self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3
+                    #print("si_T_psm3: "+str(self.si_T_psm3))
                 
                 self.record_time+=self.delta_time
                 #We update the motions .csv
@@ -870,8 +874,11 @@ class Renderer:
                     if self.PSM1_on and self.PSM3_on:
                         si_T_psm3_numpy=np.array(glm.transpose(self.si_T_psm3).to_list(),dtype='float32')
                         si_T_psm3_list=utils.convertHomogeneousToCSVROW(si_T_psm3_numpy)
+                        #print("si_T_psm3_list: "+str(si_T_psm3_list))
+
                         si_T_psm1_numpy=np.array(glm.transpose(self.si_T_psm1).to_list(),dtype='float32')
                         si_T_psm1_list=utils.convertHomogeneousToCSVROW(si_T_psm1_numpy)
+                        #print("si_T_psm1_list: "+str(si_T_psm3_list))
 
                         joint_list_psm1=[str(num) for num in self.joint_vars_psm1]
                         joint_list_psm3=[str(num) for num in self.joint_vars_psm3]
@@ -950,18 +957,21 @@ class Renderer:
         ######Rendering Left Screen Instruments and Camera
         if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             lc_T_si=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(self.ecmini_T_ecm)*self.ecm_T_lc*self.lci_T_si
-            
+
 
 
             #Convert opencv frame to opengl frame
             lc_T_si=opengl_T_opencv*lc_T_si
+            lc_T_si=glm.translate(lc_T_si,glm.vec3(0.048,0.005,0))
             lc_T_si=utils.scaleGLMTranform(lc_T_si,METERS_TO_RENDER_SCALE)
+            
             #print("Camera Left Pose: "+str(cam_left_pose))
             #self.camera_left.update(None)
             self.camera_left.update(lc_T_si)
             #self.scene.render(self.ctx_left)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_left)
+
             if self.PSM3_on:
                 self.scene_PSM3.render(self.ctx_left)
             #print("Render Update Left")
@@ -1007,12 +1017,12 @@ class Renderer:
         if self.render_on and self.aruco_tracker_left.calibrate_done and self.aruco_tracker_right.calibrate_done:
             
             rc_T_si=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmini_T_ecm)*self.ecm_T_rc*self.rci_T_si
-            
             #Convert cam pose in opencv to opengl pose
             rc_T_si=opengl_T_opencv*rc_T_si
+            rc_T_si=glm.translate(rc_T_si,glm.vec3(0.09,0,0))
             rc_T_si=utils.scaleGLMTranform(rc_T_si,METERS_TO_RENDER_SCALE)
             #self.camera_right.update(None)
-            self.camera_left.update(rc_T_si)
+            self.camera_right.update(rc_T_si)
             #print("Camera Right Pose: "+str(cam_right_pose))
             #self.scene.render(self.ctx_right)
             if self.PSM1_on:
@@ -1115,28 +1125,34 @@ class Renderer:
             joint_angles[3]=0
 
         #Scale the w_T_psm to have translation in glm coords
-        w_T_psm=utils.scaleGLMTranform(w_T_psm,100)
+        #w_T_psm=utils.scaleGLMTranform(w_T_psm,METERS_TO_RENDER_SCALE)
         
         print("w_T_psm: "+str(w_T_psm))
         
         w_T_7=w_T_psm*T_psm_7
 
         w_T_jlocal=w_T_7*self.Rotz(-joint_angles[3]/2)*T_jl_jlocal    #Finds world to jaw left in object coords (local)
-
+        w_T_jlocal=utils.scaleGLMTranform(w_T_jlocal,METERS_TO_RENDER_SCALE)
 
         w_T_jrlocal=w_T_7*self.Rotz(joint_angles[3]/2)*T_jr_jrlocal   #Finds world to right jaw
+        w_T_jrlocal=utils.scaleGLMTranform(w_T_jrlocal,METERS_TO_RENDER_SCALE)
 
         w_T_6=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))
         
 
         w_T_bodylocal=glm.translate(w_T_6,glm.vec3(-T_6_a,0,0))*T_6shift_b
+        w_T_bodylocal=utils.scaleGLMTranform(w_T_bodylocal,METERS_TO_RENDER_SCALE)
+
         #w_T_shaftlocal=w_T_psm*T_psm_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))*T_5_s
         #print("T_psm_7: "+str(T_psm_7))
         #print("7_T_6: "+str(utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))))
         #print("6_T_5: "+str(self.transform_5_T_6(joint_angles[1])))
-        w_T_5=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*utils.invHomogeneousGLM(self.transform_5_T_6(joint_angles[1]))
+        w_T_5=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[2]))*utils.invHomogeneousGLM(self.transform_5_T_6(-joint_angles[1]))
         #print("w_T_5: "+str(w_T_5))
         w_T_shaftlocal=w_T_5*T_5_s
+        w_T_shaftlocal=utils.scaleGLMTranform(w_T_shaftlocal,METERS_TO_RENDER_SCALE)
+
+
         #print("w_T_shaftlocal: "+str(w_T_shaftlocal))
         #First convert reported tool-tip pose (T7_rep) to our tool tip coodinate system (T7) using DH parameters
         #T7=T7_rep*T_7rep_7

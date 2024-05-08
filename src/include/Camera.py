@@ -1,15 +1,18 @@
 import glm
 #from glfw.GLFW import *
 #from glfw import _GLFWwindow as GLFWwindow
-
-FOV=70
+FOV_h=31.93
+FOV_v=23.093
+FOV_v_right=19.39
+FOV=2*FOV_v
+FOV=3*FOV_v
 NEAR=0.1
 FAR=3000
 SPEED=100
 SENSITIVITY=0.05 #Mouse sensitivity for orientation changes
 
 class Camera:
-    def __init__(self,app,position=(0,0,4),yaw=-90,pitch=0):
+    def __init__(self,app,right_left,position=(0,0,4),yaw=-90,pitch=0):
         self.app=app
         self.aspect_ratio=app.WIN_SIZE[0]/app.WIN_SIZE[1]
         #Setting up Camera position
@@ -23,6 +26,10 @@ class Camera:
         self.mouse_y=0
         self.old_mouse_x=0
         self.old_mouse_y=0
+        if right_left=='left':
+            self.fov=3*FOV_v
+        elif right_left=='right':
+            self.fov=2*FOV_v_right
 
         #View Matrixc
         self.m_view=self.get_view_matrix()
@@ -60,7 +67,8 @@ class Camera:
             self.update_camera_vectors()
             self.m_view=self.get_view_matrix()
         elif camera_pos is not None:    #if we want automatic camera control (playback)
-            self.m_view=camera_pos
+            self.m_view=camera_pos  #4x4 view matrix
+            self.position=camera_pos[3].xyz
 
 
 
@@ -125,5 +133,7 @@ class Camera:
         return glm.lookAt(self.position,self.position+self.forward,self.up)
 
     def get_projection_matrix(self):
-        return glm.perspective(glm.radians(FOV),self.aspect_ratio,NEAR,FAR) #Returns the perspective matrix
+        
+        return glm.perspective(glm.radians(self.fov),self.aspect_ratio,NEAR,FAR) #Returns the perspective matrix
+        
         #return glm.mat4()

@@ -11,8 +11,8 @@ DEFAULT_CAMCALIB_DIR='../resources/Calib/Calib_Best/'
 ARUCO_IDs=[4,5,6,7] #List containing the IDs of the aruco markers that we are tracking
 NUM_FRAME_DETECTIONS=8 #How many sets of aruco "frames" need to be detected, ToDo for later
 
-RANSAC_SCENE_REPROJECTION_ERROR=0.005 #Reprojection error for scene localization RANSAC (in meters)
-RANSAC_SCENE_ITERATIONS=40 #Number of iterations for scene localization RANSAC
+RANSAC_SCENE_REPROJECTION_ERROR=0.0005 #Reprojection error for scene localization RANSAC (in meters)
+RANSAC_SCENE_ITERATIONS=100 #Number of iterations for scene localization RANSAC
 
 #Rigid Body Definition of Ring Over Wire Aruco Holder, each four coordinates define an ArUco marker with corresponding ID:
 #Marker corners are defined clockwise from top left

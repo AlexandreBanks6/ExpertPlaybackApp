@@ -33,9 +33,9 @@ RANSAC_SCENE_ITERATIONS=1000000 #Number of iterations for scene localization RAN
 #Rigid Body Definition of Ring Over Wire Aruco Holder, each four coordinates define an ArUco marker with corresponding ID:
 #Marker corners are defined clockwise from top left
 #3D model origin is the top left of AruCO ID 6
-ARUCO_SIDELENGTH=0.0253492 #in meters
-ARUCO_SEPERATION=0.102235 #From closest edges, in meters
-ARUCO_HEIGHT_OFFSET=0 ######!!!!!!!!!!Use Planar ArUco rig!!!!!!!!!!!!!!
+ARUCO_SIDELENGTH=0.0253492 #0.025527 #0.0253492 #in meters
+ARUCO_SEPERATION=0.1022477 #From closest edges, in meters
+ARUCO_HEIGHT_OFFSET=0.005 ######!!!!!!!!!!Use Planar ArUco rig!!!!!!!!!!!!!!
 
 RINGOWIRE_MODELPOINTS={
     "6":np.array([
@@ -64,8 +64,8 @@ RINGOWIRE_MODELPOINTS={
 }
 
 
-FRAMES_TO_REMOVE_RIGHT=[1,8,9,10,14,15,19,20,23,26,27,28,32,33,35]   #These frames were determined to be garbage visually
-FRAMES_TO_REMOVE_LEFT=[4,13,14,15,19,20,23,26,27,28,29,30,31,32,33]
+FRAMES_TO_REMOVE_RIGHT=[2,3,9,15,20,21,24,25,30,35,36]   #These frames were determined to be garbage visually
+FRAMES_TO_REMOVE_LEFT=[2,9,15,16,20,23,25,30,35]
 
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
 ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
@@ -155,7 +155,7 @@ T7[1,3]=planar_translation
 print("T5: "+str(T7))
 MOTIONS=[T1,T2,T3,T4,T5,T6,T7]
 
-NUM_FRAMES_CAPTURED=36 #We capture 21 frames
+NUM_FRAMES_CAPTURED=38 
 
 class CameraCalibGUI:
 
@@ -717,6 +717,7 @@ class CameraCalibGUI:
             if i==0:
                 #print("i="+str(i))
                 mtx=self.mtx_right
+                
                 dist=self.dst_right
                 frame_name='frame_right'
                 #print("frame="+frame_name)
@@ -889,7 +890,7 @@ class CameraCalibGUI:
         ecm_T_rightcam_cv[0:3,0:3]=R_cam2gripper
         ecm_T_rightcam_cv[0:3,3]=t_cam2gripper.flatten()
         ecm_T_rightcam_cv_list=ecm_T_rightcam_cv.tolist()
-        data_right = {'ecm_T_rightcam': ecm_T_rightcam.tolist()}
+        data_right = {'ecm_T_rightcam': ecm_T_rightcam_cv_list}
         #print("ecm_T_rightcam: "+str(ecm_T_rightcam_cv))
 
         #print("Frobenius norm of difference: "+str(np.linalg.norm(ecm_T_rightcam-ecm_T_rightcam_cv,'fro')))
@@ -906,7 +907,7 @@ class CameraCalibGUI:
             A_raw=rightcam_T_scene[i]@utils.invHomogeneousNumpy(rightcam_T_scene[i+1])
             A_raw=utils.EnforceOrthogonalityNumpy_FullTransform(A_raw)
             #A_raw=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i+1]),rightcam_T_scene[i]) 
-            A_calc=utils.invHomogeneousNumpy(ecm_T_rightcam)@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@rb_T_ecm_right[i+1]@ecm_T_rightcam
+            A_calc=utils.invHomogeneousNumpy(ecm_T_rightcam_cv)@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@rb_T_ecm_right[i+1]@ecm_T_rightcam_cv
             A_calc=utils.EnforceOrthogonalityNumpy_FullTransform(A_calc)
             #A_calc=ecm_T_rightcam_cv@rb_T_ecm_right[i+1]@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@utils.invHomogeneousNumpy(ecm_T_rightcam_cv)
             angle_diff,translation_diff=decomposed_difference(A_raw,A_calc)
@@ -965,7 +966,7 @@ class CameraCalibGUI:
         ecm_T_leftcam_cv[0:3,0:3]=R_cam2gripper
         ecm_T_leftcam_cv[0:3,3]=t_cam2gripper.flatten()
         ecm_T_leftcam_cv_list=ecm_T_leftcam_cv.tolist()
-        data_left = {'ecm_T_leftcam': ecm_T_leftcam.tolist()}
+        data_left = {'ecm_T_leftcam': ecm_T_leftcam_cv_list}
         #print("ecm_T_leftcam: "+str(ecm_T_leftcam_cv))
 
         
@@ -976,7 +977,7 @@ class CameraCalibGUI:
             A_raw=leftcam_T_scene[i]@utils.invHomogeneousNumpy(leftcam_T_scene[i+1])
             A_raw=utils.EnforceOrthogonalityNumpy_FullTransform(A_raw)
             #A_raw=np.dot(utils.invHomogeneousNumpy(rightcam_T_scene[i+1]),rightcam_T_scene[i]) 
-            A_calc=utils.invHomogeneousNumpy(ecm_T_leftcam)@utils.invHomogeneousNumpy(rb_T_ecm_left[i])@rb_T_ecm_left[i+1]@ecm_T_leftcam
+            A_calc=utils.invHomogeneousNumpy(ecm_T_leftcam_cv)@utils.invHomogeneousNumpy(rb_T_ecm_left[i])@rb_T_ecm_left[i+1]@ecm_T_leftcam_cv
             A_calc=utils.EnforceOrthogonalityNumpy_FullTransform(A_calc)
             #A_calc=ecm_T_rightcam_cv@rb_T_ecm_right[i+1]@utils.invHomogeneousNumpy(rb_T_ecm_right[i])@utils.invHomogeneousNumpy(ecm_T_rightcam_cv)
             angle_diff,translation_diff=decomposed_difference(A_raw,A_calc)
