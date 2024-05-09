@@ -11,13 +11,13 @@ class BaseModel:
         self.tex_id=tex_id
         #print(app.mesh.vao.vaos)
         app.window_left.switch_to()
-        self.vao_left=app.mesh.vao_left.vaos[vao_name]        
+        self.vao_left=self.app.mesh.vao_left.vaos[vao_name]        
         self.program_left=self.vao_left.program        
-        self.camera_left=app.camera_left
+        self.camera_left=self.app.camera_left
 
         app.window_right.switch_to()
-        self.vao_right=app.mesh.vao_right.vaos[vao_name]
-        self.camera_right=app.camera_right
+        self.vao_right=self.app.mesh.vao_right.vaos[vao_name]
+        self.camera_right=self.app.camera_right
         self.program_right=self.vao_right.program
     def update(self,left_right):...
 

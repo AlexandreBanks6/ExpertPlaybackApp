@@ -804,7 +804,7 @@ class Renderer:
             self.si_T_ecm=utils.invHomogeneousGLM(self.lci_T_si)*utils.invHomogeneousGLM(self.ecm_T_lc)*self.ecmini_T_ecm
 
             ################Move Instruments if Playback is Pushed###############
-            if self.render_on:
+            if self.render_on and not self.record_motions_on:
                 self.render_time+=self.delta_time   #Update the time since start of rendering
                 #Get the row of recording with time closest to rendering time
                 index=np.argmin(np.abs(self.render_times_list-self.render_time))    #Gets index of row in recorded time closest to current time
@@ -826,11 +826,8 @@ class Renderer:
                 if self.PSM3_on:
                     #PSM3:
                     self.si_T_psm3_recorded=data_list[15:27]
-                    #print("si_T_psm3_recorded_list: "+str(self.si_T_psm3_recorded))
                     self.si_T_psm3_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm3_recorded)
-                    #print("si_T_psm3_recorded: "+str(self.si_T_psm3_recorded))
                     self.joint_vars_psm3_recorded=data_list[52:58]
-
                     self.instrument_kinematics(self.joint_vars_psm3_recorded,self.si_T_psm3_recorded,'PSM3')
 
                 self.move_objects() 
@@ -860,6 +857,7 @@ class Renderer:
                     joint_vars_psm3=self.psm3.measured_js()[0]
                     jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
                     self.joint_vars_psm3=[joint_vars_psm3[0],joint_vars_psm3[1],joint_vars_psm3[2],joint_vars_psm3[3],joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
+                    #self.ecm_T_psm3=utils.invHomogeneousGLM(self.ecm_T_psm3)
                     self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3
                     #print("si_T_psm3: "+str(self.si_T_psm3))
                 
@@ -974,7 +972,6 @@ class Renderer:
 
             if self.PSM3_on:
                 self.scene_PSM3.render(self.ctx_left)
-            #print("Render Update Left")
                 
         
         ###########################Render the Right Window##########################
@@ -1127,12 +1124,13 @@ class Renderer:
         #Scale the w_T_psm to have translation in glm coords
         #w_T_psm=utils.scaleGLMTranform(w_T_psm,METERS_TO_RENDER_SCALE)
         
-        print("w_T_psm: "+str(w_T_psm))
+        #print("w_T_psm: "+str(w_T_psm))
         
         w_T_7=w_T_psm*T_psm_7
 
         w_T_jlocal=w_T_7*self.Rotz(-joint_angles[3]/2)*T_jl_jlocal    #Finds world to jaw left in object coords (local)
         w_T_jlocal=utils.scaleGLMTranform(w_T_jlocal,METERS_TO_RENDER_SCALE)
+        print("w_T_jlocal"+str(w_T_jlocal))
 
         w_T_jrlocal=w_T_7*self.Rotz(joint_angles[3]/2)*T_jr_jrlocal   #Finds world to right jaw
         w_T_jrlocal=utils.scaleGLMTranform(w_T_jrlocal,METERS_TO_RENDER_SCALE)
