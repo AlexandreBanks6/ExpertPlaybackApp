@@ -56,6 +56,9 @@ CONSOLE_VIEWPORT_HEIGHT=986
 MOVE_SPEED=0.5
 METERS_TO_RENDER_SCALE=1000 #Maybe add in later (multiply l_pitch2yaw by this)
 METERS_TO_RENDER_VECTOR=glm.vec3(METERS_TO_RENDER_SCALE,METERS_TO_RENDER_SCALE,METERS_TO_RENDER_SCALE)
+
+RANSAC_THRESHOLD=0.05 #Treshold for finding reported error transform
+RANSAC_CONFIDENCE=0.95
 ##########Parameters for NDI Validation##########
 
 
@@ -327,39 +330,55 @@ class Renderer:
         self.welcome_text.grid(row=0,column=1,sticky='n')
         #Show ArUco Button
         self.aruco_button=tk.Button(self.gui_window,text="Show ArUco",command=self.arucoToggleCallback)
-        self.aruco_button.grid(row=1,column=1,sticky="nsew")
+        self.aruco_button.grid(row=1,column=0,sticky="nsew")
+
 
         #Calibrate Scene Button
         self.calibrate_scene_button=tk.Button(self.gui_window,text="Calibrate Scene",command=self.calibrateToggleCallback)
-        self.calibrate_scene_button.grid(row=2,column=0,sticky="nsew")
+        self.calibrate_scene_button.grid(row=1,column=2,sticky="nsew")
+
+        #Calibrate Error Offset Button (finds error for PSM1 and PSM3 such that: ecm_T_psm1,ac=ecm_T_psm1,rep*psm1,rep_T_psm1,ac
+        self.grab_psm1_pointbutton=tk.Button(self.gui_window,text="Grab PSM1 Point",command=self.grabPSM1PointCallback)
+        self.grab_psm1_pointbutton.grid(row=2,column=1,sticky="nsew")
+
+        self.grab_psm3_pointbutton=tk.Button(self.gui_window,text="Grab PSM3 Point",command=self.grabPSM3PointCallback)
+        self.grab_psm3_pointbutton.grid(row=2,column=2,sticky="nsew")
+
+        self.calibrate_psmerror_button=tk.Button(self.gui_window,text="Calibrate PSM Error",command=self.calibratePSMErrorCallback)
+        self.calibrate_psmerror_button.grid(row=2,column=3,sticky="nsew")
+
+
+
+
+
 
         #Select PSM (to record/playback) Checkboxes
         self.checkbox_PSM1=tk.Checkbutton(self.gui_window,text="PSM1",onvalue=1,offvalue=0,command=self.psm1Checkbox)
-        self.checkbox_PSM1.grid(row=2,column=1,sticky='nsew')
+        self.checkbox_PSM1.grid(row=3,column=0,sticky='nsew')
 
         self.checkbox_PSM3=tk.Checkbutton(self.gui_window,text="PSM3",onvalue=1,offvalue=0,command=self.psm3Checkbox)
-        self.checkbox_PSM3.grid(row=2,column=2,sticky='nsew')
+        self.checkbox_PSM3.grid(row=3,column=1,sticky='nsew')
 
         #Calibrate Gaze Button
         self.calibrate_gaze_button=tk.Button(self.gui_window,text="Calibrate Gaze",command=self.calibrateGazeCallback)
-        self.calibrate_gaze_button.grid(row=3,column=0,sticky="nsew")
+        self.calibrate_gaze_button.grid(row=4,column=0,sticky="nsew")
 
         #Playback (render) Tools Button
         self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.renderButtonPressCallback)
-        self.render_button.grid(row=3,column=1,sticky="nsew")
+        self.render_button.grid(row=4,column=1,sticky="nsew")
 
         #Record Expert Motions Button
         self.record_motions_button=tk.Button(self.gui_window,text="Record Motions",command=self.rocordMotionsCallback)
-        self.record_motions_button.grid(row=4,column=0,sticky="nsew")
+        self.record_motions_button.grid(row=5,column=0,sticky="nsew")
 
         #Playback the ECM Motion Button (indicates on the screen arrows showing direction for ECM movement)
         self.playback_ecm_button=tk.Button(self.gui_window,text="Playback ECM Motion",command=self.playbackECMCallback)
-        self.playback_ecm_button.grid(row=4,column=1,sticky="nsew")
+        self.playback_ecm_button.grid(row=5,column=1,sticky="nsew")
 
         #Message box to send text to the user
         self.message_box = tk.Text(self.gui_window, height=10, width=80)
         self.message_box.config(state='disabled')
-        self.message_box.grid(row=5, column=0, columnspan=3, sticky='nsew', padx=10, pady=10)
+        self.message_box.grid(row=6, column=0, columnspan=3, sticky='nsew', padx=10, pady=10)
         self.displayMessage("Ensure calibration parameters are in file: ../resources/Calib_Best/  \
                             Also, motions will be played from the 'Best' folder: \
                              ../resources/Motions/Motion_Best")
@@ -454,6 +473,31 @@ class Renderer:
         self.joint_vars_psm1_recorded=None
         self.joint_vars_psm3_recorded=None
 
+        #####Points and Frames for Correcting API Offset Error
+        self.p_ecm_ac_list_psm1=None   #True points locations in ECM coord 
+        self.p_ecm_rep_list_psm1=None  #Reported point locations in ECM coord
+        self.psm1_points_count=0
+
+        self.p_ecm_ac_list_psm3=None   #True points locations in ECM coord 
+        self.p_ecm_rep_list_psm3=None  #Reported point locations in ECM coord
+        self.psm3_points_count=0
+
+        self.psm1_rep_T_psm1_ac=None #Transform from reported psm pose to actual psm pose (rotation/translation error offset)
+        self.psm3_rep_T_psm3_ac=None
+        #Converts the dictionary of model (scene) points to a list of list of points
+        ARUCO_IDs=[6,4,5,7]
+        self.model_scene_points=None
+        for id in ARUCO_IDs:
+            curr_points=ArucoTracker.RINGOWIRE_MODELPOINTS[str(id)]
+            if self.model_scene_points is None:
+                self.model_scene_points=curr_points
+            else:
+                self.model_scene_points=np.vstack((self.model_scene_points,curr_points))
+
+        
+
+        
+
         
         ###Getting hand-eye calibration matrices
         with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_right/hand_eye_calibration_right.yaml','r') as file:
@@ -494,6 +538,118 @@ class Renderer:
         self.render_filename=None #Filename of the .csv that we are rendering from
         self.render_times_list=None #Variable that holds a list of the recorded times
         rospy.sleep(0.2)
+
+
+    def grabPSM1PointCallback(self):
+
+
+        ######Gets the actual point location
+        point_si=self.model_scene_points[self.psm1_points_count]
+        point_si_list=point_si.tolist()        
+        point_si_list.append(1)
+        point_si=glm.vec4(point_si_list)
+
+        point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+
+
+        point_ecm_ac_list=[point_ecm_ac[0],point_ecm_ac[1],point_ecm_ac[2]]
+
+        point_ecm_ac=np.array(point_ecm_ac_list,dtype=np.float32)
+
+        if self.p_ecm_ac_list_psm1 is None:
+            self.p_ecm_ac_list_psm1=point_ecm_ac
+        else:
+            self.p_ecm_ac_list_psm1=np.vstack((self.p_ecm_ac_list_psm1,point_ecm_ac))
+        
+        ######Gets Reported Point
+        rospy.sleep(1)
+        report_point=self.psm1.measured_cp()
+        report_point=utils.enforceOrthogonalPyKDL(report_point)
+        report_point=pm.toMatrix(report_point) #Numpy array
+        report_point[2,3]=report_point[2,3]+tool_tip_offset
+        report_point=report_point[0:3,3]   #Gets the reported point
+        
+
+        if self.p_ecm_rep_list_psm1 is None:
+            self.p_ecm_rep_list_psm1=report_point
+        else:
+            self.p_ecm_rep_list_psm1=np.vstack((self.p_ecm_rep_list_psm1,report_point))
+        
+        print("Act List: "+str(self.p_ecm_ac_list_psm1))
+        print("Report List: "+str(self.p_ecm_rep_list_psm1))
+
+        print("Grabbed Point")
+
+
+
+        self.psm1_points_count+=1
+
+
+    def grabPSM3PointCallback(self):
+
+        ######Gets the actual point location
+        point_si=self.model_scene_points[self.psm3_points_count]
+        point_si_list=point_si.tolist()        
+        point_si_list.append(1)
+        point_si=glm.vec4(point_si_list)
+
+        point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+
+
+        point_ecm_ac_list=[point_ecm_ac[0],point_ecm_ac[1],point_ecm_ac[2]]
+
+        point_ecm_ac=np.array(point_ecm_ac_list,dtype=np.float32)
+
+        if self.p_ecm_ac_list_psm3 is None:
+            self.p_ecm_ac_list_psm3=point_ecm_ac
+        else:
+            self.p_ecm_ac_list_psm3=np.vstack((self.p_ecm_ac_list_psm3,point_ecm_ac))
+        
+        ######Gets Reported Point
+        rospy.sleep(1)
+        report_point=self.psm3.measured_cp()
+        report_point=utils.enforceOrthogonalPyKDL(report_point)
+        report_point=pm.toMatrix(report_point) #Numpy array
+        report_point[2,3]=report_point[2,3]+tool_tip_offset
+        report_point=report_point[0:3,3]   #Gets the reported point
+        
+
+        if self.p_ecm_rep_list_psm3 is None:
+            self.p_ecm_rep_list_psm3=report_point
+        else:
+            self.p_ecm_rep_list_psm3=np.vstack((self.p_ecm_rep_list_psm3,report_point))
+        
+        print("Act List: "+str(self.p_ecm_ac_list_psm3))
+        print("Report List: "+str(self.p_ecm_rep_list_psm3))
+
+        print("Grabbed Point")
+
+
+
+        self.psm3_points_count+=1
+
+    def calibratePSMErrorCallback(self):
+        retval,psm1_rep_T_psm1_ac,_=cv2.estimateAffine3D(self.p_ecm_rep_list_psm1,self.p_ecm_ac_list_psm1,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
+        if retval:
+            self.psm1_rep_T_psm1_ac=np.vstack([psm1_rep_T_psm1_ac,[0,0,0,1]])
+
+        
+        retval,psm3_rep_T_psm3_ac,_=cv2.estimateAffine3D(self.p_ecm_rep_list_psm3,self.p_ecm_ac_list_psm3,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
+
+        if retval:
+            self.psm3_rep_T_psm3_ac=np.vstack([psm3_rep_T_psm3_ac,[0,0,0,1]])
+        
+        psm1_rep_T_psm1_ac_list=self.psm1_rep_T_psm1_ac.tolist()
+        data_psm1={'psm1_rep_T_psm1_ac':psm1_rep_T_psm1_ac_list}
+
+        psm3_rep_T_psm3_ac_list=self.psm3_rep_T_psm3_ac.tolist()
+        data_psm3={'psm3_rep_T_psm3_ac':psm3_rep_T_psm3_ac_list}
+        #Write the calibration data
+        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml','w') as f:
+            yaml.dump(data_psm1,f)
+        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm3_rep_T_psm3_ac.yaml','w') as f:
+            yaml.dump(data_psm3,f)
+        
 
     def displayMessage(self,message):
         #function to insert messages in the text box
@@ -818,11 +974,13 @@ class Renderer:
 
                 if self.PSM1_on:
                     #PSM1:
+
                     self.si_T_psm1_recorded=data_list[2:14]
                     self.si_T_psm1_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm1_recorded)
                     self.joint_vars_psm1_recorded=data_list[44:48]
                     #print("joint vars psm1 recorded: "+str(self.joint_vars_psm1_recorded))
                     self.instrument_kinematics(self.joint_vars_psm1_recorded,self.si_T_psm1_recorded,'PSM1')
+
                 if self.PSM3_on:
                     #PSM3:
                     self.si_T_psm3_recorded=data_list[15:27]
@@ -1093,7 +1251,7 @@ class Renderer:
                 #   continue
                 #print(obj_name)
                 move_mat=self.instrument_dict_PSM1[obj_name]
-
+                print(f"PSM1 {obj_name}: {move_mat}")
                 self.scene_PSM1.move_obj(obj_name,move_mat)
 
         if self.PSM3_on:
@@ -1102,7 +1260,7 @@ class Renderer:
                 #   continue
                 #print(obj_name)
                 move_mat=self.instrument_dict_PSM3[obj_name]
-
+                print(f"PSM3 {obj_name}: {move_mat}")
                 self.scene_PSM3.move_obj(obj_name,move_mat)
 
     def instrument_kinematics(self,joint_angles,w_T_psm,PSM_Type):
@@ -1120,7 +1278,7 @@ class Renderer:
         #Enforce >=0 jaw angle
         if joint_angles[3]<0:
             joint_angles[3]=0
-
+        
         #Scale the w_T_psm to have translation in glm coords
         #w_T_psm=utils.scaleGLMTranform(w_T_psm,METERS_TO_RENDER_SCALE)
         
@@ -1130,7 +1288,7 @@ class Renderer:
 
         w_T_jlocal=w_T_7*self.Rotz(-joint_angles[3]/2)*T_jl_jlocal    #Finds world to jaw left in object coords (local)
         w_T_jlocal=utils.scaleGLMTranform(w_T_jlocal,METERS_TO_RENDER_SCALE)
-        print("w_T_jlocal"+str(w_T_jlocal))
+        #print("w_T_jlocal"+str(w_T_jlocal))
 
         w_T_jrlocal=w_T_7*self.Rotz(joint_angles[3]/2)*T_jr_jrlocal   #Finds world to right jaw
         w_T_jrlocal=utils.scaleGLMTranform(w_T_jrlocal,METERS_TO_RENDER_SCALE)

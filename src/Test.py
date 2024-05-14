@@ -5,7 +5,7 @@ import dvrk
 import rospy
 from include import utils
 
-psm=dvrk.psm("PSM1")
+psm=dvrk.psm("PSM3")
 
 psm.enable()
 psm.home()
