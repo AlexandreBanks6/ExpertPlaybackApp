@@ -57,8 +57,8 @@ MOVE_SPEED=0.5
 METERS_TO_RENDER_SCALE=1000 #Maybe add in later (multiply l_pitch2yaw by this)
 METERS_TO_RENDER_VECTOR=glm.vec3(METERS_TO_RENDER_SCALE,METERS_TO_RENDER_SCALE,METERS_TO_RENDER_SCALE)
 
-RANSAC_THRESHOLD=0.05 #Treshold for finding reported error transform
-RANSAC_CONFIDENCE=0.95
+RANSAC_THRESHOLD=0.001 #Treshold for finding reported error transform
+RANSAC_CONFIDENCE=0.98
 ##########Parameters for NDI Validation##########
 
 
@@ -483,17 +483,30 @@ class Renderer:
         self.psm3_points_count=0
         if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml'): 
             with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml','r') as file:
-                self.psm1_rep_T_psm1_ac=yaml.load(file)            
+                self.psm1_rep_T_psm1_ac=yaml.load(file) 
+
+                self.psm1_rep_T_psm1_ac=self.psm1_rep_T_psm1_ac['psm1_rep_T_psm1_ac']
+                self.psm1_rep_T_psm1_ac=np.array(self.psm1_rep_T_psm1_ac,dtype=np.float32)
+                self.psm1_rep_T_psm1_ac_glm=self.psm1_rep_T_psm1_ac.T
+                self.psm1_rep_T_psm1_ac_glm=glm.mat4(*self.psm1_rep_T_psm1_ac_glm.flatten())    
+                print('psm1_rep_T_psm1_ac_glm: '+str(self.psm1_rep_T_psm1_ac_glm))      
         else:
 
             self.psm1_rep_T_psm1_ac=None #Transform from reported psm pose to actual psm pose (rotation/translation error offset)
 
-        if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm3_ac.yaml'): 
-            with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm3_ac.yaml','r') as file:
-                self.psm3_rep_T_psm3_ac=yaml.load(file)            
+
+        if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm3_rep_T_psm3_ac.yaml'): 
+            with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm3_rep_T_psm3_ac.yaml','r') as file:
+                self.psm3_rep_T_psm3_ac=yaml.load(file)
+                self.psm3_rep_T_psm3_ac=self.psm3_rep_T_psm3_ac['psm3_rep_T_psm3_ac']
+                self.psm3_rep_T_psm3_ac=np.array(self.psm3_rep_T_psm3_ac,dtype=np.float32)
+                self.psm3_rep_T_psm3_ac_glm=self.psm3_rep_T_psm3_ac.T
+                self.psm3_rep_T_psm3_ac_glm=glm.mat4(*self.psm3_rep_T_psm3_ac_glm.flatten())  
+                print('psm3_rep_T_psm3_ac_glm: '+str(self.psm3_rep_T_psm3_ac_glm))           
         else:
 
             self.psm3_rep_T_psm3_ac=None #Transform from reported psm pose to actual psm pose (rotation/translation error offset)
+
 
 
         self.is_new_psm1_points=False
@@ -577,11 +590,11 @@ class Renderer:
             self.p_ecm_ac_list_psm1=np.vstack((self.p_ecm_ac_list_psm1,point_ecm_ac))
         
         ######Gets Reported Point
-        rospy.sleep(1)
+        rospy.sleep(0.5)
         report_point=self.psm1.measured_cp()
         report_point=utils.enforceOrthogonalPyKDL(report_point)
         report_point=pm.toMatrix(report_point) #Numpy array
-        report_point[2,3]=report_point[2,3]+tool_tip_offset
+        report_point[2,3]=report_point[2,3]+tool_tip_offset+0.002 #0.002 = 2mm for offset of not quite touching top
         report_point=report_point[0:3,3]   #Gets the reported point
         
 
@@ -590,8 +603,6 @@ class Renderer:
         else:
             self.p_ecm_rep_list_psm1=np.vstack((self.p_ecm_rep_list_psm1,report_point))
         
-        print("Act List: "+str(self.p_ecm_ac_list_psm1))
-        print("Report List: "+str(self.p_ecm_rep_list_psm1))
 
         print("Grabbed Point")
 
@@ -623,11 +634,11 @@ class Renderer:
             self.p_ecm_ac_list_psm3=np.vstack((self.p_ecm_ac_list_psm3,point_ecm_ac))
         
         ######Gets Reported Point
-        rospy.sleep(1)
+        rospy.sleep(0.5)
         report_point=self.psm3.measured_cp()
         report_point=utils.enforceOrthogonalPyKDL(report_point)
         report_point=pm.toMatrix(report_point) #Numpy array
-        report_point[2,3]=report_point[2,3]+tool_tip_offset
+        report_point[2,3]=report_point[2,3]+tool_tip_offset+0.002
         report_point=report_point[0:3,3]   #Gets the reported point
         
 
@@ -636,8 +647,6 @@ class Renderer:
         else:
             self.p_ecm_rep_list_psm3=np.vstack((self.p_ecm_rep_list_psm3,report_point))
         
-        print("Act List: "+str(self.p_ecm_ac_list_psm3))
-        print("Report List: "+str(self.p_ecm_rep_list_psm3))
 
         print("Grabbed Point")
 
@@ -659,46 +668,83 @@ class Renderer:
             self.p_ecm_rep_list_psm1=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm1.npy')
             self.p_ecm_ac_list_psm1=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm1.npy')
 
-        psm1_points_shape=self.p_ecm_rep_list_psm1.shape
-        if psm1_points_shape is not None:
-            if psm1_points_shape[0]>3:
-                
-
-
-                retval,psm1_rep_T_psm1_ac,_=cv2.estimateAffine3D(self.p_ecm_rep_list_psm1,self.p_ecm_ac_list_psm1,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
-                if retval:
-                    self.psm1_rep_T_psm1_ac=np.vstack([psm1_rep_T_psm1_ac,[0,0,0,1]])
-                    print("psm1_rep_T_psm1_ac: "+str(self.psm1_rep_T_psm1_ac))
-                    self.psm1_rep_T_psm1_ac=utils.EnforceOrthogonalityNumpy(self.psm1_rep_T_psm1_ac)
-                    print("psm1_rep_T_psm1_ac: "+str(self.psm1_rep_T_psm1_ac))
-                    psm1_rep_T_psm1_ac_list=self.psm1_rep_T_psm1_ac.tolist()
-                    data_psm1={'psm1_rep_T_psm1_ac':psm1_rep_T_psm1_ac_list}
-                    with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml','w') as f:
-                        yaml.dump(data_psm1,f)
-        
         #PSM3: 
+        #store the psm3 points
         if self.is_new_psm3_points:
             np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm3.npy',self.p_ecm_rep_list_psm3)
             np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm3.npy',self.p_ecm_ac_list_psm3)
         else:
             self.p_ecm_rep_list_psm3=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm3.npy')
             self.p_ecm_ac_list_psm3=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm3.npy')
+
+        psm1_points_shape=self.p_ecm_rep_list_psm1.shape
+        if psm1_points_shape is not None:
+            if psm1_points_shape[0]>3:
+                
+
+
+                #retval,psm1_rep_T_psm1_ac,_=cv2.estimateAffine3D(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
+
+                self.psm1_rep_T_psm1_ac,inliers=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1)
+                #self.psm1_rep_T_psm1_ac=utils.convertAffineToHomogeneous(psm1_rep_T_psm1_ac)
+                #self.psm1_rep_T_psm1_ac=np.vstack([psm1_rep_T_psm1_ac,[0,0,0,1]])
+
+                #Saving Results
+                psm1_rep_T_psm1_ac_list=self.psm1_rep_T_psm1_ac.tolist()
+                data_psm1={'psm1_rep_T_psm1_ac':psm1_rep_T_psm1_ac_list}
+                with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml','w') as f:
+                    yaml.dump(data_psm1,f)
+
+                self.psm1_rep_T_psm1_ac_glm=self.psm1_rep_T_psm1_ac.T
+                self.psm1_rep_T_psm1_ac_glm=glm.mat4(*self.psm1_rep_T_psm1_ac_glm.flatten())
+
+                #Finding translation error:
+                translation_diff_list=[]
+                for i in range(psm1_points_shape[0]): #Loops for the number of points captured
+                    p_ecm_ac_point=self.p_ecm_ac_list_psm1[i].tolist()
+                    p_ecm_ac_point.append(1)
+                    p_ecm_ac_point=np.array(p_ecm_ac_point,dtype=np.float32)
+                    est_point=self.psm1_rep_T_psm1_ac@p_ecm_ac_point
+                    est_point=est_point[0:3]
+                    trans_diff=est_point-self.p_ecm_rep_list_psm1[i]
+                    trans_diff=np.linalg.norm(trans_diff)
+                    translation_diff_list.append(trans_diff)
+                translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
+                trans_diff=np.mean(translation_diff_list)
+                print('registration error psm1: '+str(trans_diff))
+        
+
         psm3_points_shape=self.p_ecm_rep_list_psm3.shape
         if psm3_points_shape is not None:
             if psm3_points_shape[0]>3:
-                #Store the psm3 points first
-
             
-                retval,psm3_rep_T_psm3_ac,_=cv2.estimateAffine3D(self.p_ecm_rep_list_psm3,self.p_ecm_ac_list_psm3,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
+                #retval,psm3_rep_T_psm3_ac,_=cv2.estimateAffine3D(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
+                #if retval:
+                #self.psm3_rep_T_psm3_ac=utils.convertAffineToHomogeneous(psm3_rep_T_psm3_ac)
+                self.psm3_rep_T_psm3_ac,inliers=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3)
+                psm3_rep_T_psm3_ac_list=self.psm3_rep_T_psm3_ac.tolist()
+                data_psm3={'psm3_rep_T_psm3_ac':psm3_rep_T_psm3_ac_list}
+                #Write the calibration data
 
-                if retval:
-                    self.psm3_rep_T_psm3_ac=np.vstack([psm3_rep_T_psm3_ac,[0,0,0,1]])
-                    psm3_rep_T_psm3_ac_list=self.psm3_rep_T_psm3_ac.tolist()
-                    data_psm3={'psm3_rep_T_psm3_ac':psm3_rep_T_psm3_ac_list}
-                    #Write the calibration data
+                with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm3_rep_T_psm3_ac.yaml','w') as f:
+                    yaml.dump(data_psm3,f)
 
-                    with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm3_rep_T_psm3_ac.yaml','w') as f:
-                        yaml.dump(data_psm3,f)
+                self.psm3_rep_T_psm3_ac_glm=self.psm3_rep_T_psm3_ac.T
+                self.psm3_rep_T_psm3_ac_glm=glm.mat4(*self.psm3_rep_T_psm3_ac_glm.flatten())
+                #Finding translation error:
+                translation_diff_list=[]
+                for i in range(psm3_points_shape[0]): #Loops for the number of points captured
+                    p_ecm_ac_point=self.p_ecm_ac_list_psm3[i].tolist()
+                    p_ecm_ac_point.append(1)
+                    p_ecm_ac_point=np.array(p_ecm_ac_point,dtype=np.float32)
+                    est_point=self.psm3_rep_T_psm3_ac@p_ecm_ac_point
+                    est_point=est_point[0:3]
+                    trans_diff=est_point-self.p_ecm_rep_list_psm3[i]
+                    trans_diff=np.linalg.norm(trans_diff)
+                    translation_diff_list.append(trans_diff)
+                translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
+                trans_diff=np.mean(translation_diff_list)
+                print('registration error psm3: '+str(trans_diff))
         
 
     def displayMessage(self,message):
@@ -1024,7 +1070,6 @@ class Renderer:
 
                 if self.PSM1_on:
                     #PSM1:
-
                     self.si_T_psm1_recorded=data_list[2:14]
                     self.si_T_psm1_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm1_recorded)
                     self.joint_vars_psm1_recorded=data_list[44:48]
@@ -1052,8 +1097,9 @@ class Renderer:
                     jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
                     self.joint_vars_psm1=[joint_vars_psm1[0],joint_vars_psm1[1],joint_vars_psm1[2],joint_vars_psm1[3],joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
                     #print("joint vars psm1: "+str(self.joint_vars_psm1))
-                    self.si_T_psm1=self.si_T_ecm*self.ecm_T_psm1
-                    #print("si_T_psm1: "+str(self.si_T_psm1))
+
+                    self.si_T_psm1=self.si_T_ecm*self.ecm_T_psm1*utils.invHomogeneousGLM(self.psm1_rep_T_psm1_ac_glm) #Multiply by API correction factor
+
                 if self.PSM3_on:
 
                     psm3_pose=self.psm3.measured_cp()
@@ -1066,7 +1112,9 @@ class Renderer:
                     jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
                     self.joint_vars_psm3=[joint_vars_psm3[0],joint_vars_psm3[1],joint_vars_psm3[2],joint_vars_psm3[3],joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
                     #self.ecm_T_psm3=utils.invHomogeneousGLM(self.ecm_T_psm3)
-                    self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3
+                    print('si_T_psm3 before transform: '+str(self.si_T_ecm*self.ecm_T_psm3))
+                    self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3*utils.invHomogeneousGLM(self.psm3_rep_T_psm3_ac_glm) #Multiply by API correction factor
+                    print('si_T_psm3 after transform: '+str(self.si_T_psm3))
                     #print("si_T_psm3: "+str(self.si_T_psm3))
                 
                 self.record_time+=self.delta_time
@@ -1168,7 +1216,8 @@ class Renderer:
 
             #Convert opencv frame to opengl frame
             lc_T_si=opengl_T_opencv*lc_T_si
-            lc_T_si=glm.translate(lc_T_si,glm.vec3(0.048,0.005,0))
+            #lc_T_si=glm.translate(lc_T_si,glm.vec3(0.048,0.005,0))
+            #lc_T_si=glm.translate(lc_T_si,glm.vec3(0.048,0,0))
             lc_T_si=utils.scaleGLMTranform(lc_T_si,METERS_TO_RENDER_SCALE)
             
             #print("Camera Left Pose: "+str(cam_left_pose))
@@ -1224,7 +1273,7 @@ class Renderer:
             rc_T_si=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmini_T_ecm)*self.ecm_T_rc*self.rci_T_si
             #Convert cam pose in opencv to opengl pose
             rc_T_si=opengl_T_opencv*rc_T_si
-            rc_T_si=glm.translate(rc_T_si,glm.vec3(0.09,0,0))
+            #rc_T_si=glm.translate(rc_T_si,glm.vec3(0.09,0,0))
             rc_T_si=utils.scaleGLMTranform(rc_T_si,METERS_TO_RENDER_SCALE)
             #self.camera_right.update(None)
             self.camera_right.update(rc_T_si)
@@ -1301,7 +1350,6 @@ class Renderer:
                 #   continue
                 #print(obj_name)
                 move_mat=self.instrument_dict_PSM1[obj_name]
-                print(f"PSM1 {obj_name}: {move_mat}")
                 self.scene_PSM1.move_obj(obj_name,move_mat)
 
         if self.PSM3_on:
@@ -1310,7 +1358,6 @@ class Renderer:
                 #   continue
                 #print(obj_name)
                 move_mat=self.instrument_dict_PSM3[obj_name]
-                print(f"PSM3 {obj_name}: {move_mat}")
                 self.scene_PSM3.move_obj(obj_name,move_mat)
 
     def instrument_kinematics(self,joint_angles,w_T_psm,PSM_Type):

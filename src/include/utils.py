@@ -5,6 +5,7 @@ import numpy as np
 import glm
 import tf_conversions.posemath as pm
 import cv2
+from scipy.spatial.transform import Rotation
 
 
 
@@ -139,3 +140,121 @@ def scaleGLMTranform(glm_transform,scale_factor):
     glm_transform[3][2]=glm_transform[3][2]*scale_factor
 
     return glm_transform
+
+def convertAffineToHomogeneous(affine_matrix):
+    R=affine_matrix[:,:3]
+    t=affine_matrix[:,3]
+
+    U,S,Vt=np.linalg.svd(R)
+    R_normalized=np.dot(U,Vt)
+
+    transform=np.eye(4)
+    transform[:3,:3]=R_normalized
+    transform[:3,3]=t
+    transform=EnforceOrthogonalityNumpy_FullTransform(transform)
+
+    return transform
+
+def decomposed_difference(A, B):
+    # Extract rotation matrices and translation vectors
+    RA, RB = A[:3, :3], B[:3, :3]
+    tA, tB = A[:3, 3], B[:3, 3]
+    translation_diff = np.linalg.norm(tA - tB)
+
+    # Convert rotation matrices to quaternions
+    quatA, quatB = Rotation.from_matrix(RA).as_quat(), Rotation.from_matrix(RB).as_quat()
+
+    # Calculate the angular difference between quaternions
+    rotation_diff = Rotation.from_quat(quatA).inv() * Rotation.from_quat(quatB)
+    angle_diff = rotation_diff.magnitude()
+
+    # Calculate the Euclidean distance between translation vectors
+    
+
+    return angle_diff, translation_diff
+
+
+#################Code to Find Rigid Transform Between Two Point Sets
+def estimateRigidTransform(A,B):
+    """
+    Estimate the rigid transformation between two sets of corresponding 3D points using the Kabsch algorithm.
+    :param A: Nx3 array of 3D points in the first coordinate frame.
+    :param B: Nx3 array of 3D points in the second coordinate frame.
+    :return: Rotation matrix (3x3), translation vector (3,)
+    """
+    assert A.shape==B.shape,"Input point sets must have the same shape."
+
+
+    #Compute Centroids
+    centroid_A=np.mean(A,axis=0)
+    centroid_B=np.mean(B,axis=0)
+
+    #Center the points
+    AA=A-centroid_A
+    BB=B-centroid_B
+
+    #Compute the Covariance Matrix
+    H=np.dot(AA.T,BB)
+
+    #SVD Decomposition
+    U,S,Vt=np.linalg.svd(H)
+    R=np.dot(Vt.T,U.T)
+
+    #Correct for Reflection
+    if np.linalg.det(R)<0:
+        Vt[-1,:]*=-1
+        R=np.dot(Vt.T,U.T)
+
+    t=centroid_B-np.dot(R,centroid_A)
+
+    return R,t
+
+def ransacRigidRransformation(A,B,num_iterations=1000,distance_threshold=0.005):
+    """
+    Estimate the rigid transformation using RANSAC.
+    :param A: Nx3 array of 3D points in the first coordinate frame.
+    :param B: Nx3 array of 3D points in the second coordinate frame.
+    :param num_iterations: Number of RANSAC iterations.
+    :param distance_threshold: Distance threshold for inliers.
+    :return: 4x4 homogeneous transformation matrix inliers (boolean mask)
+    """
+
+    best_inliers = None
+    best_R, best_t = None, None
+    num_points = A.shape[0]
+    best_num_inliers = 0
+
+    for _ in range(num_iterations):
+
+        #randomly select subset of 3 points
+        indices=np.random.choice(num_points,3,replace=False)
+        A_subset=A[indices]
+        B_subset=B[indices]
+
+        #Estimate the transform using the subset
+        try:
+            R_candidate,t_candidate=estimateRigidTransform(A_subset,B_subset)
+        except np.linalg.LinAlgError:
+            continue
+
+        #Apply the transformation to all the points in A
+        A_transformed=(R_candidate@A.T).T+t_candidate
+
+        #Compute the distances to the corresponding points in B
+        distances=np.linalg.norm(A_transformed-B,axis=1)
+
+        #Find inliers
+        inliers=distances<distance_threshold
+        num_inliers=np.sum(inliers)
+
+        if num_inliers>best_num_inliers:
+            best_num_inliers=num_inliers
+            best_R,best_t=R_candidate,t_candidate
+            best_inliers=inliers
+    
+    full_transform=np.eye(4)
+    full_transform[:3,:3]=best_R
+    full_transform[:3,3]=best_t
+    full_transform=EnforceOrthogonalityNumpy_FullTransform(full_transform)
+
+    return full_transform,best_inliers
