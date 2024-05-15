@@ -335,17 +335,17 @@ class Renderer:
 
         #Calibrate Scene Button
         self.calibrate_scene_button=tk.Button(self.gui_window,text="Calibrate Scene",command=self.calibrateToggleCallback)
-        self.calibrate_scene_button.grid(row=1,column=2,sticky="nsew")
+        self.calibrate_scene_button.grid(row=1,column=1,sticky="nsew")
 
         #Calibrate Error Offset Button (finds error for PSM1 and PSM3 such that: ecm_T_psm1,ac=ecm_T_psm1,rep*psm1,rep_T_psm1,ac
         self.grab_psm1_pointbutton=tk.Button(self.gui_window,text="Grab PSM1 Point",command=self.grabPSM1PointCallback)
-        self.grab_psm1_pointbutton.grid(row=2,column=1,sticky="nsew")
+        self.grab_psm1_pointbutton.grid(row=2,column=0,sticky="nsew")
 
         self.grab_psm3_pointbutton=tk.Button(self.gui_window,text="Grab PSM3 Point",command=self.grabPSM3PointCallback)
-        self.grab_psm3_pointbutton.grid(row=2,column=2,sticky="nsew")
+        self.grab_psm3_pointbutton.grid(row=2,column=1,sticky="nsew")
 
         self.calibrate_psmerror_button=tk.Button(self.gui_window,text="Calibrate PSM Error",command=self.calibratePSMErrorCallback)
-        self.calibrate_psmerror_button.grid(row=2,column=3,sticky="nsew")
+        self.calibrate_psmerror_button.grid(row=2,column=2,sticky="nsew")
 
 
 
@@ -481,9 +481,24 @@ class Renderer:
         self.p_ecm_ac_list_psm3=None   #True points locations in ECM coord 
         self.p_ecm_rep_list_psm3=None  #Reported point locations in ECM coord
         self.psm3_points_count=0
+        if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml'): 
+            with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml','r') as file:
+                self.psm1_rep_T_psm1_ac=yaml.load(file)            
+        else:
 
-        self.psm1_rep_T_psm1_ac=None #Transform from reported psm pose to actual psm pose (rotation/translation error offset)
-        self.psm3_rep_T_psm3_ac=None
+            self.psm1_rep_T_psm1_ac=None #Transform from reported psm pose to actual psm pose (rotation/translation error offset)
+
+        if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm3_ac.yaml'): 
+            with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm3_ac.yaml','r') as file:
+                self.psm3_rep_T_psm3_ac=yaml.load(file)            
+        else:
+
+            self.psm3_rep_T_psm3_ac=None #Transform from reported psm pose to actual psm pose (rotation/translation error offset)
+
+
+        self.is_new_psm1_points=False
+        self.is_new_psm3_points=False
+
         #Converts the dictionary of model (scene) points to a list of list of points
         ARUCO_IDs=[6,4,5,7]
         self.model_scene_points=None
@@ -541,7 +556,7 @@ class Renderer:
 
 
     def grabPSM1PointCallback(self):
-
+        self.is_new_psm1_points=True
 
         ######Gets the actual point location
         point_si=self.model_scene_points[self.psm1_points_count]
@@ -587,6 +602,8 @@ class Renderer:
 
     def grabPSM3PointCallback(self):
 
+        self.is_new_psm3_points=True
+
         ######Gets the actual point location
         point_si=self.model_scene_points[self.psm3_points_count]
         point_si_list=point_si.tolist()        
@@ -629,26 +646,59 @@ class Renderer:
         self.psm3_points_count+=1
 
     def calibratePSMErrorCallback(self):
-        retval,psm1_rep_T_psm1_ac,_=cv2.estimateAffine3D(self.p_ecm_rep_list_psm1,self.p_ecm_ac_list_psm1,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
-        if retval:
-            self.psm1_rep_T_psm1_ac=np.vstack([psm1_rep_T_psm1_ac,[0,0,0,1]])
 
+        if not os.path.isdir(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/'): #Creates store directory
+            os.mkdir(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/')
         
-        retval,psm3_rep_T_psm3_ac,_=cv2.estimateAffine3D(self.p_ecm_rep_list_psm3,self.p_ecm_ac_list_psm3,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
+        #PSM1:
+        #Store the psm1 points first
+        if self.is_new_psm1_points:
+            np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm1.npy',self.p_ecm_rep_list_psm1)
+            np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm1.npy',self.p_ecm_ac_list_psm1)
+        else:
+            self.p_ecm_rep_list_psm1=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm1.npy')
+            self.p_ecm_ac_list_psm1=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm1.npy')
 
-        if retval:
-            self.psm3_rep_T_psm3_ac=np.vstack([psm3_rep_T_psm3_ac,[0,0,0,1]])
+        psm1_points_shape=self.p_ecm_rep_list_psm1.shape
+        if psm1_points_shape is not None:
+            if psm1_points_shape[0]>3:
+                
+
+
+                retval,psm1_rep_T_psm1_ac,_=cv2.estimateAffine3D(self.p_ecm_rep_list_psm1,self.p_ecm_ac_list_psm1,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
+                if retval:
+                    self.psm1_rep_T_psm1_ac=np.vstack([psm1_rep_T_psm1_ac,[0,0,0,1]])
+                    print("psm1_rep_T_psm1_ac: "+str(self.psm1_rep_T_psm1_ac))
+                    self.psm1_rep_T_psm1_ac=utils.EnforceOrthogonalityNumpy(self.psm1_rep_T_psm1_ac)
+                    print("psm1_rep_T_psm1_ac: "+str(self.psm1_rep_T_psm1_ac))
+                    psm1_rep_T_psm1_ac_list=self.psm1_rep_T_psm1_ac.tolist()
+                    data_psm1={'psm1_rep_T_psm1_ac':psm1_rep_T_psm1_ac_list}
+                    with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml','w') as f:
+                        yaml.dump(data_psm1,f)
         
-        psm1_rep_T_psm1_ac_list=self.psm1_rep_T_psm1_ac.tolist()
-        data_psm1={'psm1_rep_T_psm1_ac':psm1_rep_T_psm1_ac_list}
+        #PSM3: 
+        if self.is_new_psm3_points:
+            np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm3.npy',self.p_ecm_rep_list_psm3)
+            np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm3.npy',self.p_ecm_ac_list_psm3)
+        else:
+            self.p_ecm_rep_list_psm3=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm3.npy')
+            self.p_ecm_ac_list_psm3=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm3.npy')
+        psm3_points_shape=self.p_ecm_rep_list_psm3.shape
+        if psm3_points_shape is not None:
+            if psm3_points_shape[0]>3:
+                #Store the psm3 points first
 
-        psm3_rep_T_psm3_ac_list=self.psm3_rep_T_psm3_ac.tolist()
-        data_psm3={'psm3_rep_T_psm3_ac':psm3_rep_T_psm3_ac_list}
-        #Write the calibration data
-        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm1_rep_T_psm1_ac.yaml','w') as f:
-            yaml.dump(data_psm1,f)
-        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm3_rep_T_psm3_ac.yaml','w') as f:
-            yaml.dump(data_psm3,f)
+            
+                retval,psm3_rep_T_psm3_ac,_=cv2.estimateAffine3D(self.p_ecm_rep_list_psm3,self.p_ecm_ac_list_psm3,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
+
+                if retval:
+                    self.psm3_rep_T_psm3_ac=np.vstack([psm3_rep_T_psm3_ac,[0,0,0,1]])
+                    psm3_rep_T_psm3_ac_list=self.psm3_rep_T_psm3_ac.tolist()
+                    data_psm3={'psm3_rep_T_psm3_ac':psm3_rep_T_psm3_ac_list}
+                    #Write the calibration data
+
+                    with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/psm3_rep_T_psm3_ac.yaml','w') as f:
+                        yaml.dump(data_psm3,f)
         
 
     def displayMessage(self,message):
