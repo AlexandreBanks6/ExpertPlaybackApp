@@ -64,8 +64,8 @@ RINGOWIRE_MODELPOINTS={
 }
 
 
-FRAMES_TO_REMOVE_RIGHT=[2,3,9,15,20,21,24,25,30,35,36]   #These frames were determined to be garbage visually
-FRAMES_TO_REMOVE_LEFT=[2,9,15,16,20,23,25,30,35]
+FRAMES_TO_REMOVE_RIGHT=[4,7,11,12,16,23,25,27,31,33,37]   #These frames were determined to be garbage visually
+FRAMES_TO_REMOVE_LEFT=[1,4,6,11,16,23,24,27,33]
 
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
 ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
@@ -155,7 +155,7 @@ T7[1,3]=planar_translation
 print("T5: "+str(T7))
 MOTIONS=[T1,T2,T3,T4,T5,T6,T7]
 
-NUM_FRAMES_CAPTURED=38 
+NUM_FRAMES_CAPTURED=39 
 
 class CameraCalibGUI:
 
