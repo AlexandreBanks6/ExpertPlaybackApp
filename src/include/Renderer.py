@@ -178,7 +178,7 @@ start_pose2=glm.mat4(glm.vec4(1,0,0,0),
 RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 
-
+INCREMENT_AMOUNT_FINETUNE=0.01 #Amount for fine tuning the tool tip position
 
 #################Header for recording Motions CSV######################
 repeat_string=["Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"] #First number is row of R, second number is column
@@ -321,7 +321,7 @@ class Renderer:
         self.gui_window=tk.Tk()
         self.gui_window.title("dVRK Playback App")
 
-        self.gui_window.rowconfigure([0,1,2,3,4,5,6],weight=1)
+        self.gui_window.rowconfigure([0,1,2,3,4,5,6,7,8,9],weight=1)
         self.gui_window.columnconfigure([0,1,2],weight=1)
         self.gui_window.minsize(300,100)
 
@@ -361,7 +361,7 @@ class Renderer:
 
         #Calibrate Gaze Button
         self.calibrate_gaze_button=tk.Button(self.gui_window,text="Calibrate Gaze",command=self.calibrateGazeCallback)
-        self.calibrate_gaze_button.grid(row=4,column=0,sticky="nsew")
+        self.calibrate_gaze_button.grid(row=5,column=0,sticky="nsew")
 
         #Playback (render) Tools Button
         self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.renderButtonPressCallback)
@@ -369,23 +369,91 @@ class Renderer:
 
         #Record Expert Motions Button
         self.record_motions_button=tk.Button(self.gui_window,text="Record Motions",command=self.rocordMotionsCallback)
-        self.record_motions_button.grid(row=5,column=0,sticky="nsew")
+        self.record_motions_button.grid(row=4,column=0,sticky="nsew")
 
         #Playback the ECM Motion Button (indicates on the screen arrows showing direction for ECM movement)
         self.playback_ecm_button=tk.Button(self.gui_window,text="Playback ECM Motion",command=self.playbackECMCallback)
         self.playback_ecm_button.grid(row=5,column=1,sticky="nsew")
 
         #Message box to send text to the user
-        self.message_box = tk.Text(self.gui_window, height=10, width=80)
-        self.message_box.config(state='disabled')
-        self.message_box.grid(row=6, column=0, columnspan=3, sticky='nsew', padx=10, pady=10)
-        self.displayMessage("Ensure calibration parameters are in file: ../resources/Calib_Best/  \
-                            Also, motions will be played from the 'Best' folder: \
-                             ../resources/Motions/Motion_Best")
+        #self.message_box = tk.Text(self.gui_window, height=10, width=80)
+        #self.message_box.config(state='disabled')
+        #self.message_box.grid(row=7, column=0, columnspan=3, sticky='nsew', padx=10, pady=10)
+        #self.displayMessage("Ensure calibration parameters are in file: ../resources/Calib_Best/  \
+                            #Also, motions will be played from the 'Best' folder: \
+                            # ../resources/Motions/Motion_Best")
 
         #Button for NDI Validation
         self.ndi_toggle_button=tk.Button(self.gui_window,text="Start NDI Tracker and Validate",command=self.ToggleTrackerCallback)
         self.ndi_toggle_button.grid(row=6,column=0,sticky="nsew")
+
+
+
+        #####################Button and Values for Offset Alignment
+        #PSM1
+        self.PSM1_OffsetLabel=tk.Label(self.gui_window,text="PSM1 Fine Tune")
+        self.welcome_text.grid(row=7,column=1,sticky='n')
+
+        self.psm1_finetune_posx_button=tk.Button(self.gui_window,text="+x",command=self.fineTunePSM1_posX)
+        self.psm1_finetune_posx_button.grid(row=8,column=0,sticky="nsew")
+
+        self.psm1_finetune_negx_button=tk.Button(self.gui_window,text="-x",command=self.fineTunePSM1_negX)
+        self.psm1_finetune_negx_button.grid(row=9,column=0,sticky="nsew")
+
+        self.psm1_finetune_posx_button=tk.Button(self.gui_window,text="+y",command=self.fineTunePSM1_posY)
+        self.psm1_finetune_posx_button.grid(row=8,column=1,sticky="nsew")
+
+        self.psm1_finetune_negx_button=tk.Button(self.gui_window,text="-y",command=self.fineTunePSM1_negY)
+        self.psm1_finetune_negx_button.grid(row=9,column=1,sticky="nsew")
+
+        self.psm1_finetune_posx_button=tk.Button(self.gui_window,text="+z",command=self.fineTunePSM1_posZ)
+        self.psm1_finetune_posx_button.grid(row=8,column=2,sticky="nsew")
+
+        self.psm1_finetune_negx_button=tk.Button(self.gui_window,text="-z",command=self.fineTunePSM1_negZ)
+        self.psm1_finetune_negx_button.grid(row=9,column=2,sticky="nsew")
+
+
+        #PSM3
+        self.PSM1_OffsetLabel=tk.Label(self.gui_window,text="PSM3 Fine Tune")
+        self.welcome_text.grid(row=10,column=1,sticky='n')
+
+        self.psm3_finetune_posx_button=tk.Button(self.gui_window,text="+x",command=self.fineTunePSM3_posX)
+        self.psm3_finetune_posx_button.grid(row=11,column=0,sticky="nsew")
+
+        self.psm3_finetune_negx_button=tk.Button(self.gui_window,text="-x",command=self.fineTunePSM3_negX)
+        self.psm3_finetune_negx_button.grid(row=12,column=0,sticky="nsew")
+
+        self.psm3_finetune_posx_button=tk.Button(self.gui_window,text="+y",command=self.fineTunePSM3_posY)
+        self.psm3_finetune_posx_button.grid(row=11,column=1,sticky="nsew")
+
+        self.psm3_finetune_negx_button=tk.Button(self.gui_window,text="-y",command=self.fineTunePSM3_negY)
+        self.psm3_finetune_negx_button.grid(row=12,column=1,sticky="nsew")
+
+        self.psm3_finetune_posx_button=tk.Button(self.gui_window,text="+z",command=self.fineTunePSM3_posZ)
+        self.psm3_finetune_posx_button.grid(row=11,column=2,sticky="nsew")
+
+        self.psm3_finetune_negx_button=tk.Button(self.gui_window,text="-z",command=self.fineTunePSM3_negZ)
+        self.psm3_finetune_negx_button.grid(row=12,column=2,sticky="nsew")
+        
+
+
+
+
+
+
+
+
+        self.PSM1_finetune_offset=glm.vec3(0.022,-0.136,-0.043)
+        self.PSM1_finetune_offset=glm.vec3(0.0,0.0,0.0)
+
+        self.PSM3_finetune_offset=glm.vec3(0.117,-0.067,-0.334)
+
+        self.RIGHT_Cam_finetune_offset=glm.vec3(0.011,0.045,-0.172)
+        self.LEFT_Cam_finetune_offset=glm.vec3(-0.016,0.014,-0.04)
+
+        #self.PSM1_finetune_offset=glm.vec3(0,0,0)
+
+        #self.PSM3_finetune_offset=glm.vec3(0,0,0)
 
 
 
@@ -502,7 +570,12 @@ class Renderer:
                 self.psm3_rep_T_psm3_ac=np.array(self.psm3_rep_T_psm3_ac,dtype=np.float32)
                 self.psm3_rep_T_psm3_ac_glm=self.psm3_rep_T_psm3_ac.T
                 self.psm3_rep_T_psm3_ac_glm=glm.mat4(*self.psm3_rep_T_psm3_ac_glm.flatten())  
-                print('psm3_rep_T_psm3_ac_glm: '+str(self.psm3_rep_T_psm3_ac_glm))           
+                print('psm3_rep_T_psm3_ac_glm: '+str(self.psm3_rep_T_psm3_ac_glm))
+                #print("Curr: "+str(self.psm3_rep_T_psm3_ac_glm))
+                # self.psm3_rep_T_psm3_ac_glm[3,0]=-self.psm3_rep_T_psm3_ac_glm[3,0]
+                # self.psm3_rep_T_psm3_ac_glm[3,1]=-self.psm3_rep_T_psm3_ac_glm[3,1]
+                # self.psm3_rep_T_psm3_ac_glm[3,2]=-self.psm3_rep_T_psm3_ac_glm[3,2]
+                #print("New: "+str(self.psm3_rep_T_psm3_ac_glm))           
         else:
 
             self.psm3_rep_T_psm3_ac=None #Transform from reported psm pose to actual psm pose (rotation/translation error offset)
@@ -567,7 +640,60 @@ class Renderer:
         self.render_times_list=None #Variable that holds a list of the recorded times
         rospy.sleep(0.2)
 
+    #Callbacks for Fine Tuning
 
+    def fineTunePSM1_posX(self):
+        #self.PSM1_finetune_offset+=glm.vec3(INCREMENT_AMOUNT_FINETUNE,0,0)
+        self.RIGHT_Cam_finetune_offset+=glm.vec3(INCREMENT_AMOUNT_FINETUNE,0,0)
+    def fineTunePSM1_negX(self):
+        #self.PSM1_finetune_offset-=glm.vec3(INCREMENT_AMOUNT_FINETUNE,0,0)
+        self.RIGHT_Cam_finetune_offset-=glm.vec3(INCREMENT_AMOUNT_FINETUNE,0,0)
+
+    def fineTunePSM1_posY(self):
+        #self.PSM1_finetune_offset+=glm.vec3(0,INCREMENT_AMOUNT_FINETUNE,0)
+        self.RIGHT_Cam_finetune_offset+=glm.vec3(0,INCREMENT_AMOUNT_FINETUNE,0)
+    def fineTunePSM1_negY(self):
+        #self.PSM1_finetune_offset-=glm.vec3(0,INCREMENT_AMOUNT_FINETUNE,0)
+        self.RIGHT_Cam_finetune_offset-=glm.vec3(0,INCREMENT_AMOUNT_FINETUNE,0)
+
+    def fineTunePSM1_posZ(self):
+        #self.PSM1_finetune_offset+=glm.vec3(0,0,INCREMENT_AMOUNT_FINETUNE)
+        self.RIGHT_Cam_finetune_offset+=glm.vec3(0,0,INCREMENT_AMOUNT_FINETUNE)
+    def fineTunePSM1_negZ(self):
+        #self.PSM1_finetune_offset-=glm.vec3(0,0,INCREMENT_AMOUNT_FINETUNE)
+        self.RIGHT_Cam_finetune_offset-=glm.vec3(0,0,INCREMENT_AMOUNT_FINETUNE)
+
+
+
+    def fineTunePSM3_posX(self):
+        self.PSM3_finetune_offset+=glm.vec3(INCREMENT_AMOUNT_FINETUNE,0,0)
+        #self.LEFT_Cam_finetune_offset+=glm.vec3(INCREMENT_AMOUNT_FINETUNE,0,0)
+    def fineTunePSM3_negX(self):
+        self.PSM3_finetune_offset-=glm.vec3(INCREMENT_AMOUNT_FINETUNE,0,0)
+        #self.LEFT_Cam_finetune_offset-=glm.vec3(INCREMENT_AMOUNT_FINETUNE,0,0)
+
+    def fineTunePSM3_posY(self):
+        self.PSM3_finetune_offset+=glm.vec3(0,INCREMENT_AMOUNT_FINETUNE,0)
+        #self.LEFT_Cam_finetune_offset+=glm.vec3(0,INCREMENT_AMOUNT_FINETUNE,0)
+        
+    def fineTunePSM3_negY(self):
+        self.PSM3_finetune_offset-=glm.vec3(0,INCREMENT_AMOUNT_FINETUNE,0)
+        #self.LEFT_Cam_finetune_offset-=glm.vec3(0,INCREMENT_AMOUNT_FINETUNE,0)
+
+    def fineTunePSM3_posZ(self):
+        self.PSM3_finetune_offset+=glm.vec3(0,0,INCREMENT_AMOUNT_FINETUNE)
+        #self.LEFT_Cam_finetune_offset+=glm.vec3(0,0,INCREMENT_AMOUNT_FINETUNE)
+    def fineTunePSM3_negZ(self):
+        self.PSM3_finetune_offset-=glm.vec3(0,0,INCREMENT_AMOUNT_FINETUNE)
+        #self.LEFT_Cam_finetune_offset-=glm.vec3(0,0,INCREMENT_AMOUNT_FINETUNE)
+
+
+
+
+
+
+
+    ##################Callbacks For API Error Offset Calculation####################
     def grabPSM1PointCallback(self):
         self.is_new_psm1_points=True
 
@@ -1084,17 +1210,21 @@ class Renderer:
                     #PSM1:
                     self.si_T_psm1_recorded=data_list[2:14]
                     self.si_T_psm1_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm1_recorded)
+                    #print("psm1 offset: "+str(self.PSM1_finetune_offset))
+                    self.si_T_psm1_recorded=glm.translate(self.si_T_psm1_recorded,self.PSM1_finetune_offset)
 
                     self.joint_vars_psm1_recorded=data_list[44:48]
-                    #print("joint vars psm1 recorded: "+str(self.joint_vars_psm1_recorded))
                     self.instrument_kinematics(self.joint_vars_psm1_recorded,self.si_T_psm1_recorded,'PSM1')
 
                 if self.PSM3_on:
                     #PSM3:
                     self.si_T_psm3_recorded=data_list[15:27]
                     self.si_T_psm3_recorded=self.ConvertDataRow_ToGLMPose(self.si_T_psm3_recorded)
-                    self.si_T_psm3_recorded=glm.translate(self.si_T_psm3_recorded,glm.vec3(-0.5,0,0))
-                    self.joint_vars_psm3_recorded=data_list[52:58]
+                    print("psm3 offset: "+str(self.PSM3_finetune_offset))
+                    self.si_T_psm3_recorded=glm.translate(self.si_T_psm3_recorded,self.PSM3_finetune_offset)
+
+
+                    self.joint_vars_psm3_recorded=data_list[52:56]
                     self.instrument_kinematics(self.joint_vars_psm3_recorded,self.si_T_psm3_recorded,'PSM3')
 
                 self.move_objects() 
@@ -1105,6 +1235,7 @@ class Renderer:
                     psm1_pose=self.psm1.measured_cp()
                     psm1_pose=utils.enforceOrthogonalPyKDL(psm1_pose)
                     self.ecm_T_psm1=utils.convertPyDK_To_GLM(psm1_pose)
+                    self.ecm_T_psm1=self.ecm_T_psm1#*utils.invHomogeneousGLM(self.psm1_rep_T_psm1_ac_glm)
 
 
                     joint_vars_psm1=self.psm1.measured_js()[0]
@@ -1112,13 +1243,14 @@ class Renderer:
                     self.joint_vars_psm1=[joint_vars_psm1[0],joint_vars_psm1[1],joint_vars_psm1[2],joint_vars_psm1[3],joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
                     #print("joint vars psm1: "+str(self.joint_vars_psm1))
 
-                    self.si_T_psm1=self.si_T_ecm*self.ecm_T_psm1*utils.invHomogeneousGLM(self.psm1_rep_T_psm1_ac_glm) #Multiply by API correction factor
+                    self.si_T_psm1=self.si_T_ecm*self.ecm_T_psm1#Multiply by API correction factor
 
                 if self.PSM3_on:
 
                     psm3_pose=self.psm3.measured_cp()
                     psm3_pose=utils.enforceOrthogonalPyKDL(psm3_pose)
                     self.ecm_T_psm3=utils.convertPyDK_To_GLM(psm3_pose)
+                    self.ecm_T_psm3=self.ecm_T_psm3*utils.invHomogeneousGLM(self.psm3_rep_T_psm3_ac_glm)
                     #print("ecm_T_psm3: "+str(self.ecm_T_psm3))
 
                     #Get joint positions
@@ -1126,7 +1258,7 @@ class Renderer:
                     jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
                     self.joint_vars_psm3=[joint_vars_psm3[0],joint_vars_psm3[1],joint_vars_psm3[2],joint_vars_psm3[3],joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
                     #self.ecm_T_psm3=utils.invHomogeneousGLM(self.ecm_T_psm3)
-                    self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3*utils.invHomogeneousGLM(self.psm3_rep_T_psm3_ac_glm) #Multiply by API correction factor
+                    self.si_T_psm3=self.si_T_ecm*self.ecm_T_psm3
                     #print("si_T_psm3: "+str(self.si_T_psm3))
                 
                 self.record_time+=self.delta_time
@@ -1228,7 +1360,8 @@ class Renderer:
 
             #Convert opencv frame to opengl frame
             lc_T_si=opengl_T_opencv*lc_T_si
-            lc_T_si=glm.translate(lc_T_si,glm.vec3(0.048,0,0))
+            lc_T_si=glm.translate(lc_T_si,self.LEFT_Cam_finetune_offset)
+            #print("Left Cam Offset: "+str(self.LEFT_Cam_finetune_offset))
             #lc_T_si=glm.translate(lc_T_si,glm.vec3(0.048,0,0))
             lc_T_si=utils.scaleGLMTranform(lc_T_si,METERS_TO_RENDER_SCALE)
             
@@ -1236,11 +1369,12 @@ class Renderer:
             #self.camera_left.update(None)
             self.camera_left.update(lc_T_si)
             #self.scene.render(self.ctx_left)
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_left)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_left)
 
-            if self.PSM3_on:
-                self.scene_PSM3.render(self.ctx_left)
+
                 
         
         ###########################Render the Right Window##########################
@@ -1285,16 +1419,18 @@ class Renderer:
             rc_T_si=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmini_T_ecm)*self.ecm_T_rc*self.rci_T_si
             #Convert cam pose in opencv to opengl pose
             rc_T_si=opengl_T_opencv*rc_T_si
-            #rc_T_si=glm.translate(rc_T_si,glm.vec3(0.09,0,0))
+            rc_T_si=glm.translate(rc_T_si,self.RIGHT_Cam_finetune_offset)
+            #print("Right Cam Offset: "+str(self.RIGHT_Cam_finetune_offset))
             rc_T_si=utils.scaleGLMTranform(rc_T_si,METERS_TO_RENDER_SCALE)
             #self.camera_right.update(None)
             self.camera_right.update(rc_T_si)
             #print("Camera Right Pose: "+str(cam_right_pose))
             #self.scene.render(self.ctx_right)
-            if self.PSM1_on:
-                self.scene_PSM1.render(self.ctx_right)
             if self.PSM3_on:
                 self.scene_PSM3.render(self.ctx_right)
+            if self.PSM1_on:
+                self.scene_PSM1.render(self.ctx_right)
+
             #print("Render Update Right")
                    
         ####Updates Gui

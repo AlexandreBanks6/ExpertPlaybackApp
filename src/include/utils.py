@@ -198,15 +198,22 @@ def estimateRigidTransform(A,B):
 
     #SVD Decomposition
     U,S,Vt=np.linalg.svd(H)
+    # d = np.linalg.det(Vt.T @ U.T)
+    # e = np.array([[1, 0, 0], [0, 1, 0], [0, 0, d]])
+
+    # R = Vt.T @ e @ U.T
+    # t=centroid_B-np.matmul(R,centroid_A)
+
     R=np.dot(Vt.T,U.T)
 
+    
     #Correct for Reflection
     if np.linalg.det(R)<0:
         Vt[-1,:]*=-1
         R=np.dot(Vt.T,U.T)
 
     t=centroid_B-np.dot(R,centroid_A)
-
+    
     return R,t
 
 def ransacRigidRransformation(A,B,num_iterations=1000,distance_threshold=0.005):

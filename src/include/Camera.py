@@ -27,11 +27,11 @@ class Camera:
         self.old_mouse_x=0
         self.old_mouse_y=0
         if right_left=='left':
-            self.fov=2*FOV_v
-            self.fov=89
+            self.fov=1.5*FOV_v
+            #self.fov=89/2
         elif right_left=='right':
-            self.fov=3*FOV_v_right
-            self.fov=89
+            self.fov=1.5*FOV_v_right
+            #self.fov=89/2
 
         #View Matrixc
         self.m_view=self.get_view_matrix()
