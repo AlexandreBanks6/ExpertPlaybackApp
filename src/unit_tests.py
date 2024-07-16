@@ -51,6 +51,12 @@ import yaml
 import pandas as pd
 
 
+ARUCO_SIDELENGTH=0.025527
+ARUCO_SEPERATION=0.1022477 
+ARUCO_HEIGHT_OFFSET=0.005
+
+test_point_scene=glm.vec4(ARUCO_SIDELENGTH+ARUCO_SEPERATION,ARUCO_SEPERATION+ARUCO_SIDELENGTH,2*ARUCO_HEIGHT_OFFSET,1)
+
 
 RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
@@ -150,7 +156,7 @@ class Renderer:
         self.gui_window.title("dVRK Playback App")
 
         self.gui_window.rowconfigure([0],weight=1)
-        self.gui_window.columnconfigure([0,1],weight=1)
+        self.gui_window.columnconfigure([0,1,2],weight=1)
         self.gui_window.minsize(300,100)
 
         
@@ -161,19 +167,38 @@ class Renderer:
         self.validate_calibration_button=tk.Button(self.gui_window,text="Validate Calibration",command=self.validateCalibrationCallback)
         self.validate_calibration_button.grid(row=0,column=1,sticky="nsew")
 
+        self.validate_handeye_button=tk.Button(self.gui_window,text="Validate Hand-Eye",command=self.validateHandEyeCallback)
+        self.validate_calibration_button.grid(row=0,column=2,sticky="nsew")
+
+
 
         self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
         self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
 
         self.calibrate_on=False
+        self.validate_HandEye_on=False
+
         self.validate_calibration_on=False
         self.validate_calibration_on=False
 
         self.lci_T_si=None
         self.rci_T_si=None
 
+        self.psm1=dvrk.psm("PSM1") #Mapped to left hand
+        self.psm3=dvrk.psm("PSM3") #Mapped to right hand
+
+        #Enabling and Homing
+        self.psm1.enable()
+        self.psm1.home()
+
+        self.psm3.enable()
+        self.psm3.home()
+
 
         rospy.sleep(1)
+
+    def validateHandEyeCallback(self):
+        self.validate_HandEye_on=True
 
     def calibrateToggleCallback(self):
         self.calibrate_on=not self.calibrate_on
@@ -332,10 +357,47 @@ class Renderer:
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
                                       self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
                     
+                    if self.validate_calibration_on: #We project a test point to validate the transform
+                        
+                        mul_mat=glm.mat4x3()        #Selection matrix to take [Xc,Yc,Zc]
+                        cam_mat=self.aruco_tracker_left.mtx 
+                        cam_mat=glm.mat3(*cam_mat.T.flatten()) #3x3 camera intrinsics, numpy=>glm transpose the matrix
+
+                        test_point_camera=self.lci_T_si*test_point_scene #Gets point in camera coordinate system
+
+                        test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
+                        proj_point=cam_mat*test_point_camera #Projects to image plane
+
+                        proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
+                        proj_point[1]=proj_point[1]/proj_point[2]
+
+                        point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
+                        self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
+                        print("test point: "+str(test_point_scene))
+                        # print("test_point_scene: "+str(test_point_scene))
+                        print("mul_mat: "+str(mul_mat))
+                        print("cam_mat: "+str(cam_mat))
+                        print("proj_point"+str(proj_point))
+
+
+                        #Project with the project points function
+                        # test_point_scene_np=np.array([[0.025537,0.0,0.0]],dtype=np.float32)
+                        # image_points,_=cv2.projectPoints(test_point_scene_np,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,self.aruco_tracker_left.mtx,self.aruco_tracker_left.dist)
+                        
+                        # proj_point_np=tuple((int(image_points[0][0][0]),int(image_points[0][0][1])))
+                        #self.frame_left_converted=cv2.circle(self.frame_left_converted,proj_point_np,radius=10,color=(0,0,255),thickness=3)
+
+
+
+
+
+                    
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+                
 
             else:
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
+                
 
             self.texture_left.write(self.frame_left_converted)
             self.texture_left.use()
@@ -364,7 +426,24 @@ class Renderer:
                 if self.rci_T_si is not None:
                     cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                       self.aruco_tracker_right.dist,self.aruco_tracker_right.rvec_scene,self.aruco_tracker_right.tvec_scene,0.05)
-                    
+                    if self.validate_calibration_on: #We project a test point to validate the transform
+                        
+                        mul_mat=glm.mat4x3()        #Selection matrix to take [Xc,Yc,Zc]
+                        cam_mat=self.aruco_tracker_right.mtx 
+                        cam_mat=glm.mat3(*cam_mat.T.flatten()) #3x3 camera intrinsics, numpy=>glm transpose the matrix
+
+                        test_point_camera=self.rci_T_si*test_point_scene #Gets point in camera coordinate system
+
+                        test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
+                        proj_point=cam_mat*test_point_camera #Projects to image plane
+                        
+                        proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
+                        proj_point[1]=proj_point[1]/proj_point[2]
+
+                        point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
+                        self.frame_right_converted=cv2.circle(self.frame_right_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
+                
+                
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
 
             else:
