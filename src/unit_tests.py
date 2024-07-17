@@ -168,7 +168,7 @@ class Renderer:
         self.validate_calibration_button.grid(row=0,column=1,sticky="nsew")
 
         self.validate_handeye_button=tk.Button(self.gui_window,text="Validate Hand-Eye",command=self.validateHandEyeCallback)
-        self.validate_calibration_button.grid(row=0,column=2,sticky="nsew")
+        self.validate_handeye_button.grid(row=0,column=2,sticky="nsew")
 
 
 
@@ -184,15 +184,41 @@ class Renderer:
         self.lci_T_si=None
         self.rci_T_si=None
 
+
+        ###Getting hand-eye calibration matrices
+        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_right/hand_eye_calibration_right.yaml','r') as file:
+            right_handeye=yaml.load(file)
+
+        with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_left/hand_eye_calibration_left.yaml','r') as file:
+            left_handeye=yaml.load(file)
+
+        self.ecm_T_lc=left_handeye['ecm_T_leftcam']
+        self.ecm_T_lc=np.array(self.ecm_T_lc,dtype='float32')
+        
+        self.ecm_T_lc=utils.EnforceOrthogonalityNumpy_FullTransform(self.ecm_T_lc)
+        self.ecm_T_lc=glm.mat4(*self.ecm_T_lc.T.flatten())
+        print("ecm_T_lc: "+str(self.ecm_T_lc))
+        
+        self.ecm_T_rc=right_handeye['ecm_T_rightcam']
+        self.ecm_T_rc=np.array(self.ecm_T_rc,dtype='float32')
+        
+        self.ecm_T_rc=utils.EnforceOrthogonalityNumpy_FullTransform(self.ecm_T_rc)
+        self.ecm_T_rc=glm.mat4(*self.ecm_T_rc.T.flatten())
+        print("ecm_T_rc: "+str(self.ecm_T_rc))
+
+
+
+
+
         self.psm1=dvrk.psm("PSM1") #Mapped to left hand
-        self.psm3=dvrk.psm("PSM3") #Mapped to right hand
+        #self.psm3=dvrk.psm("PSM3") #Mapped to right hand
 
         #Enabling and Homing
         self.psm1.enable()
         self.psm1.home()
 
-        self.psm3.enable()
-        self.psm3.home()
+        #self.psm3.enable()
+        #self.psm3.home()
 
 
         rospy.sleep(1)
@@ -357,6 +383,8 @@ class Renderer:
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
                                       self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
                     
+
+
                     if self.validate_calibration_on: #We project a test point to validate the transform
                         
                         mul_mat=glm.mat4x3()        #Selection matrix to take [Xc,Yc,Zc]
@@ -373,11 +401,11 @@ class Renderer:
 
                         point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
                         self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
-                        print("test point: "+str(test_point_scene))
+                        #print("test point: "+str(test_point_scene))
                         # print("test_point_scene: "+str(test_point_scene))
-                        print("mul_mat: "+str(mul_mat))
-                        print("cam_mat: "+str(cam_mat))
-                        print("proj_point"+str(proj_point))
+                        #print("mul_mat: "+str(mul_mat))
+                        #print("cam_mat: "+str(cam_mat))
+                        #print("proj_point"+str(proj_point))
 
 
                         #Project with the project points function
@@ -387,12 +415,50 @@ class Renderer:
                         # proj_point_np=tuple((int(image_points[0][0][0]),int(image_points[0][0][1])))
                         #self.frame_left_converted=cv2.circle(self.frame_left_converted,proj_point_np,radius=10,color=(0,0,255),thickness=3)
 
-
-
-
-
+                
                     
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+
+            elif self.validate_HandEye_on: 
+                    #Hand-Eye Validation On
+
+                    #######Get point in Camera Coordinates from PSM
+                    ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                    ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
+                    ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
+                    test_point_psm1=glm.vec4(0.0,0.0,0.0,1.0) #Just the reported tool tip
+
+                    test_point_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*ecm_T_psm1*test_point_psm1 #Point in camera coordinate frame
+
+                    print("ecm_T_psm1: "+str(ecm_T_psm1))
+                    print("test_point_camera: "+str(test_point_camera))
+
+
+
+                    ######Project point to image frame
+                    mul_mat=glm.mat4x3()        #Selection matrix to take [Xc,Yc,Zc]
+                    cam_mat=self.aruco_tracker_left.mtx 
+                    cam_mat=glm.mat3(*cam_mat.T.flatten()) #3x3 camera intrinsics, numpy=>glm transpose the matrix
+                    
+
+                    test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
+                    proj_point=cam_mat*test_point_camera #Projects to image plane
+
+                    proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
+                    proj_point[1]=proj_point[1]/proj_point[2]
+
+                    print("proj_point: "+str(proj_point))
+
+
+                    point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
+
+                    #Showing point
+                    if self.calibrate_on:
+                        self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(255,0,0),thickness=3)
+                    elif not self.calibrate_on:
+                        self.frame_left_converted=cv2.circle(self.frame_left,point_2d,radius=10,color=(255,0,0),thickness=3)
+
+                    self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
                 
 
             else:

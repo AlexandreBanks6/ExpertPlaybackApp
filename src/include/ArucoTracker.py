@@ -194,8 +194,8 @@ class ArucoTracker:
 
                     
 
-            print("image points:"+str(image_points))
-            print("model points"+str(model_points))
+            #print("image points:"+str(image_points))
+            #print("model points"+str(model_points))
             success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,self.mtx,self.dist,\
                                                                           iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
             #success,rotation_vector,translation_vector=cv2.solvePnP(model_points,image_points,self.mtx_left,self.dist_left,False,cv2.SOLVEPNP_IPPE_SQUARE)

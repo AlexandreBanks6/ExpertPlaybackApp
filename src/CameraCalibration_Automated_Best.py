@@ -64,8 +64,8 @@ RINGOWIRE_MODELPOINTS={
 }
 
 
-FRAMES_TO_REMOVE_RIGHT=[4,7,11,12,16,23,25,27,31,33,37]   #These frames were determined to be garbage visually
-FRAMES_TO_REMOVE_LEFT=[1,4,6,11,16,23,24,27,33]
+FRAMES_TO_REMOVE_RIGHT=[5,13,19,21]   #These frames were determined to be garbage visually
+FRAMES_TO_REMOVE_LEFT=[]
 
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
 ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
@@ -155,7 +155,7 @@ T7[1,3]=planar_translation
 print("T5: "+str(T7))
 MOTIONS=[T1,T2,T3,T4,T5,T6,T7]
 
-NUM_FRAMES_CAPTURED=39 
+NUM_FRAMES_CAPTURED=25
 
 class CameraCalibGUI:
 
@@ -704,6 +704,12 @@ class CameraCalibGUI:
         rightcam_T_scene=[]
         leftcam_T_scene=[]
 
+        right_cam_T_scene_rvec=[]
+        right_cam_T_scene_tvec=[]
+
+        left_cam_T_scene_rvec=[]
+        left_cam_T_scene_tvec=[]
+
         #Open Up the rb_T_ecm list
         rb_T_ecm_path=self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm.npy'
         print("rb_T_ecm_path: "+str(rb_T_ecm_path))
@@ -792,7 +798,7 @@ class CameraCalibGUI:
                             frame_converted=cv2.drawFrameAxes(frame_converted,mtx,\
                                       dist,rotation_vector,translation_vector,0.05)
                             cv2.imshow('Pose',frame_converted)
-                            cv2.waitKey(50)
+                            cv2.waitKey(1)
                             #print("rotation_vector: "+str(rotation_vector))
                             #print("translation_vector: "+str(translation_vector))
                             cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
@@ -811,28 +817,41 @@ class CameraCalibGUI:
                             if i==0: #right
                                 rb_T_ecm_right.append(rb_T_ecm)
                                 rightcam_T_scene.append(cam_T_scene)
+                                right_cam_T_scene_rvec.append(rotation_vector)
+                                right_cam_T_scene_tvec.append(translation_vector)
                             elif i==1:
                                 rb_T_ecm_left.append(rb_T_ecm)
                                 leftcam_T_scene.append(cam_T_scene)
+                                left_cam_T_scene_rvec.append(rotation_vector)
+                                left_cam_T_scene_tvec.append(translation_vector)
 
 
         #Filter out bad frames in left and right
         rb_T_ecm_right_new=[]
         rightcam_T_scene_new=[]
+        right_cam_T_scene_rvec_new=[]
+        right_cam_T_scene_tvec_new=[]
+
         for i in range(len(rb_T_ecm_right)-1):
             if i not in FRAMES_TO_REMOVE_RIGHT:
-                 rb_T_ecm_right_new.append(rb_T_ecm_right[i])
-                 rightcam_T_scene_new.append(rightcam_T_scene[i])
+                rb_T_ecm_right_new.append(rb_T_ecm_right[i])
+                rightcam_T_scene_new.append(rightcam_T_scene[i])
+                right_cam_T_scene_rvec_new.append(right_cam_T_scene_rvec[i])
+                right_cam_T_scene_tvec_new.append(right_cam_T_scene_tvec[i])
+
         rb_T_ecm_right=rb_T_ecm_right_new
         rightcam_T_scene=rightcam_T_scene_new
 
-
+        left_cam_T_scene_rvec_new=[]
+        left_cam_T_scene_tvec_new=[]
         rb_T_ecm_left_new=[]
         leftcam_T_scene_new=[]
         for i in range(len(rb_T_ecm_left)-1):
             if i not in FRAMES_TO_REMOVE_RIGHT:
-                 rb_T_ecm_left_new.append(rb_T_ecm_left[i])
-                 leftcam_T_scene_new.append(leftcam_T_scene[i])
+                rb_T_ecm_left_new.append(rb_T_ecm_left[i])
+                leftcam_T_scene_new.append(leftcam_T_scene[i])
+                left_cam_T_scene_rvec_new.append(left_cam_T_scene_rvec[i])
+                left_cam_T_scene_tvec_new.append(left_cam_T_scene_tvec[i])
         rb_T_ecm_left=rb_T_ecm_left_new
         leftcam_T_scene=leftcam_T_scene_new
 
@@ -858,9 +877,16 @@ class CameraCalibGUI:
             A_i=utils.EnforceOrthogonalityNumpy_FullTransform(A_i)
             #print("A_i: "+str(A_i))
             #B_i=np.dot(rb_T_ecm_right[i+1],utils.invHomogeneousNumpy(rb_T_ecm_right[i])) #Initial
+
             B_i=utils.invHomogeneousNumpy(rb_T_ecm_right[i])@rb_T_ecm_right[i+1] #Best
             B_i=utils.EnforceOrthogonalityNumpy_FullTransform(B_i)
             #print("B_i: "+str(B_i))
+
+            # R_gripper2base.append(rb_T_ecm_right[i][0:3,0:3])
+            # t_gripper2base.append(rb_T_ecm_right[i][0:3,3])
+            
+            # R_target2cam.append(right_cam_T_scene_rvec_new[i])
+            # t_target2cam.append(right_cam_T_scene_tvec_new[i])
 
             R_gripper2base.append(rb_T_ecm_right[i][0:3,0:3])
             t_gripper2base.append(rb_T_ecm_right[i][0:3,3])
@@ -886,9 +912,13 @@ class CameraCalibGUI:
         #print("R_gripper2base: "+str(R_gripper2base))
         #print("t_gripper2base: "+str(t_gripper2base))
         R_cam2gripper,t_cam2gripper=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam,method=cv2.CALIB_HAND_EYE_DANIILIDIS)
+        
+        print("R_cam2gripper: "+str(R_cam2gripper))
+        print("t_cam2gripper: "+str(t_cam2gripper))
         ecm_T_rightcam_cv=np.identity(4)
         ecm_T_rightcam_cv[0:3,0:3]=R_cam2gripper
         ecm_T_rightcam_cv[0:3,3]=t_cam2gripper.flatten()
+        print("ecm_T_rightcam_cv: "+str(ecm_T_rightcam_cv))
         ecm_T_rightcam_cv_list=ecm_T_rightcam_cv.tolist()
         data_right = {'ecm_T_rightcam': ecm_T_rightcam_cv_list}
         #print("ecm_T_rightcam: "+str(ecm_T_rightcam_cv))
@@ -943,6 +973,14 @@ class CameraCalibGUI:
             B_i=utils.EnforceOrthogonalityNumpy_FullTransform(B_i)
             A.append(A_i)
             B.append(B_i)
+
+            # R_gripper2base.append(rb_T_ecm_left[i][0:3,0:3])
+            # t_gripper2base.append(rb_T_ecm_left[i][0:3,3])
+
+            # R_target2cam.append(left_cam_T_scene_rvec_new[i])
+            # t_target2cam.append(left_cam_T_scene_tvec_new[i])
+            
+
             R_gripper2base.append(rb_T_ecm_left[i][0:3,0:3])
             t_gripper2base.append(rb_T_ecm_left[i][0:3,3])
 
@@ -962,9 +1000,13 @@ class CameraCalibGUI:
         #data_left = {'ecm_T_leftcam': ecm_T_leftcam.tolist()}
 
         R_cam2gripper,t_cam2gripper=cv2.calibrateHandEye(R_gripper2base,t_gripper2base,R_target2cam,t_target2cam,method=cv2.CALIB_HAND_EYE_DANIILIDIS)
+        print("R_cam2gripper: "+str(R_cam2gripper))
+        print("t_cam2gripper: "+str(t_cam2gripper))
         ecm_T_leftcam_cv=np.identity(4)
         ecm_T_leftcam_cv[0:3,0:3]=R_cam2gripper
         ecm_T_leftcam_cv[0:3,3]=t_cam2gripper.flatten()
+        print("ecm_T_leftcam_cv: "+str(ecm_T_leftcam_cv))
+        
         ecm_T_leftcam_cv_list=ecm_T_leftcam_cv.tolist()
         data_left = {'ecm_T_leftcam': ecm_T_leftcam_cv_list}
         #print("ecm_T_leftcam: "+str(ecm_T_leftcam_cv))
