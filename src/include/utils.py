@@ -265,3 +265,15 @@ def ransacRigidRransformation(A,B,num_iterations=1000,distance_threshold=0.005):
     full_transform=EnforceOrthogonalityNumpy_FullTransform(full_transform)
 
     return full_transform,best_inliers
+
+def convertHomoToRvecTvec_GLM(transform_glm):
+    transform_np=np.array(glm.transpose(transform_glm).to_list(),dtype='float32')
+    R=transform_np[:3,:3]
+    t=transform_np[:3,3]
+
+    rvec,_=cv2.Rodrigues(R)
+    tvec=t.reshape((3,1))
+    
+
+
+    return rvec,tvec
