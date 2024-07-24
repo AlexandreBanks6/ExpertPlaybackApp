@@ -209,8 +209,13 @@ class ArucoTracker:
                 #ci_T_si=utils.invHomogeneousNumpy(ci_T_si)
                 self.ci_T_si=glm.mat4(*ci_T_si.T.flatten()) #Converts to a glm mat
                 
+                self.rvec_scene=rotation_vector
+                self.tvec_scene=translation_vector
                 
-
+                #Gets the initial ECM pose
+                cart_T_ecmi=self.app.ecm.measured_cp()
+                cart_T_ecmi=utils.enforceOrthogonalPyKDL(cart_T_ecmi)
+                self.app.cart_T_ecmi=utils.convertPyDK_To_GLM(cart_T_ecmi)
                 ######What we get above is rotation from object to camera (camera w.r.t. scene), if we need opposite the rotation
                 ######from camera to object (scene w.r.t. camera) we invert, uncomment this section
 
@@ -222,13 +227,50 @@ class ArucoTracker:
                 #self.app.rvec_scene=rvec_new
                 #self.app.tvec_scene=trans_new
 
-                self.rvec_scene=rotation_vector
-                self.tvec_scene=translation_vector
+
                 #print("tvec: "+str(self.app.tvec_scene))    
             #Clearing the buffer
             self.corner_scene_list=[]
             self.ids_scene_list=[]
-    
+
+    def calibrateSceneDirect(self,frame):
+        #Takes in a frame, and finds cam_T_scene (c_T_s) based on one frame
+        frame_gray=cv2.cvtColor(frame.copy(),cv2.COLOR_BGR2GRAY)
+        corners,ids,_=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
+        cam_T_scene=None
+        
+        if ids is not None:
+            corners_filtered=[]
+            ids_filtered=[]
+            for id,corner in zip(ids,corners):
+                if id[0] in ARUCO_IDs:
+                    corners_filtered.append(corner)
+                    ids_filtered.append([id[0]])
+            
+            image_points=None
+            model_points=None
+            if len(ids_filtered)>0: #We found IDs after filtering            
+                for id,corner in zip(ids_filtered,corners_filtered):
+                    if image_points is None:
+                        image_points=corner[0]
+                        model_points=RINGOWIRE_MODELPOINTS[str(id[0])]
+                    else:
+                        image_points=np.vstack((image_points,corner[0]))
+                        model_points=np.vstack((model_points,RINGOWIRE_MODELPOINTS[str(id[0])]))
+                
+                success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,self.mtx,self.dist,\
+                                                                                        iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
+                
+                if success:
+                    cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                    cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
+                    cam_T_scene=glm.mat4(*cam_T_scene.T.flatten())
+
+        return cam_T_scene
+
+
+
+
     def flattenList(self,xss):
         return [x for xs in xss for x in xs]
 

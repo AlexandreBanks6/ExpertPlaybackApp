@@ -809,9 +809,9 @@ class CameraCalibGUI:
                             #cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
 
                             rb_T_ecm=rb_T_ecm_list[frame_num]
-                            #print('rb_T_ecm: '+str(rb_T_ecm))
+                            
                             rb_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(rb_T_ecm)
-                            #rb_T_ecm=utils.invHomogeneousNumpy(rb_T_ecm)
+                            print('rb_T_ecm: '+str(rb_T_ecm))
                             #rb_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(rb_T_ecm)
 
                             #Updating the lists

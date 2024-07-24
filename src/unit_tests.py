@@ -55,17 +55,19 @@ ARUCO_SIDELENGTH=0.025527
 ARUCO_SEPERATION=0.1022477 
 ARUCO_HEIGHT_OFFSET=0.005
 
-test_point_scene=glm.vec4(ARUCO_SIDELENGTH+ARUCO_SEPERATION,ARUCO_SEPERATION+ARUCO_SIDELENGTH,2*ARUCO_HEIGHT_OFFSET,1)
+test_point_scene=glm.vec4(ARUCO_SIDELENGTH,0.0,0.0,1)
 
 test_point_psm=glm.vec4(0.0,0.0,0.0,1.0) #Just the reported tool tip 
 
 RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
+ECM_Topic='ECM/measured_cp'
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
 
 tool_tip_offset=0.0102
+tool_tip_offset_psm3=0.0102  #0.0268
 
 class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
@@ -159,7 +161,7 @@ class Renderer:
         self.gui_window.title("dVRK Playback App")
 
         self.gui_window.rowconfigure([0,1,2],weight=1)
-        self.gui_window.columnconfigure([0,1,2,3,4],weight=1)
+        self.gui_window.columnconfigure([0,1,2,3,4,5],weight=1)
         self.gui_window.minsize(300,100)
 
         
@@ -178,6 +180,9 @@ class Renderer:
 
         self.validate_handeyeerror_correction_button=tk.Button(self.gui_window,text="Validate HandEye Error Correction",command=self.validate_handeye_error_correction_callback)
         self.validate_handeyeerror_correction_button.grid(row=0,column=4,sticky="nsew")
+
+        self.validate_ecmmotion_button=tk.Button(self.gui_window,text="Validate ECM Motion",command=self.validateECMMotionCallback)
+        self.validate_ecmmotion_button.grid(row=0,column=5,sticky="nsew")
 
 
 
@@ -242,6 +247,8 @@ class Renderer:
         self.validate_error_correction_on=False
         self.validate_handeye_error_correction_on=False
 
+        self.validate_ecmmotion_on=False
+
 
         #Hand-eye error correction
         self.handeye_points_count=0
@@ -254,12 +261,14 @@ class Renderer:
 
 
         ###############Transforms
+
+        #Camera to scene registration
         self.lci_T_si=None
         self.rci_T_si=None
 
         #API Error Correction:
 
-        #PSM1
+        #PSM1 Error Correction
         self.ecmac_T_ecmrep_psm1=None #The API error correction factor for psm1
         self.ecmac_T_ecmrep_psm1_np=None
 
@@ -274,7 +283,7 @@ class Renderer:
                 print('ecmac_T_ecmrep_psm1: '+str(self.ecmac_T_ecmrep_psm1))     
                 self.is_psmerror_calib=True 
 
-        #PSM3
+        #PSM3 Error Correction
         self.ecmac_T_ecmrep_psm3=None #The API error correction factor for psm1
         self.ecmac_T_ecmrep_psm3_np=None
 
@@ -290,7 +299,7 @@ class Renderer:
                 self.is_psmerror_calib=True 
 
         #Hand-Eye Error Correction:
-        self.lcac_T_lcrep=None #The API error correction factor for psm1
+        self.lcac_T_lcrep=None #The Hand-eye correction factor for lc_T_s
         self.lcac_T_lcrep_np=None
 
         if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/lcac_T_lcrep.yaml'): 
@@ -301,6 +310,20 @@ class Renderer:
                 self.lcac_T_lcrep_np=np.array(self.lcac_T_lcrep_np,dtype=np.float32)
 
                 self.lcac_T_lcrep=glm.mat4(*self.lcac_T_lcrep_np.T.flatten())    
+                print('lcac_T_lcrep: '+str(self.lcac_T_lcrep))
+
+        #s_T_psm errror correction
+        self.T_psmcorr=None #The error correction for hand-eye for s_T_psm
+        self.T_psmcorr_np=None
+
+        if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/T_psmcorr.yaml'): 
+            with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/T_psmcorr.yaml','r') as file:
+                self.T_psmcorr_np=yaml.load(file) 
+
+                self.T_psmcorr_np=self.T_psmcorr_np['T_psmcorr']
+                self.T_psmcorr_np=np.array(self.T_psmcorr_np,dtype=np.float32)
+
+                self.T_psmcorr=glm.mat4(*self.T_psmcorr_np.T.flatten())    
                 print('lcac_T_lcrep: '+str(self.lcac_T_lcrep))   
 
 
@@ -326,6 +349,10 @@ class Renderer:
         self.ecm_T_rc=glm.mat4(*self.ecm_T_rc_np.T.flatten())
         print("ecm_T_rc: "+str(self.ecm_T_rc))
 
+        #Initial ECM Pose
+        self.cart_T_ecmi=None
+
+
 
         ###########Converts the dictionary of model (scene) points to a list of list of points
         ARUCO_IDs=[6,4,5,7]
@@ -341,6 +368,7 @@ class Renderer:
 
         self.psm1=dvrk.psm("PSM1") #Mapped to left hand
         self.psm3=dvrk.psm("PSM3") #Mapped to right hand
+        self.ecm=dvrk.ecm("ECM")
 
         #Enabling and Homing
         self.psm1.enable()
@@ -348,6 +376,9 @@ class Renderer:
 
         self.psm3.enable()
         self.psm3.home()
+
+        self.ecm.enable()
+        self.ecm.home()
 
 
         rospy.sleep(1)
@@ -372,7 +403,10 @@ class Renderer:
         self.aruco_tracker_right.ids_scene_list=[]
 
     def validateCalibrationCallback(self):
-        self.validate_calibration_on=True
+        self.validate_calibration_on=not self.validate_calibration_on
+
+    def validateECMMotionCallback(self):
+        self.validate_ecmmotion_on=not self.validate_ecmmotion_on
 
     #Method to project points on camera frame:
     def projectPointOnImagePlane(self,ci_T_si,point_si,mtx):
@@ -420,7 +454,7 @@ class Renderer:
 
         self.psm3_points_count=0
         
-        point_si=self.model_scene_points[self.psm3points_count]
+        point_si=self.model_scene_points[self.psm3_points_count]
         point_si_list=point_si.tolist()        
         point_si_list.append(1)
         point_si=glm.vec4(point_si_list)
@@ -458,7 +492,7 @@ class Renderer:
             
 
             #############Gets Reported Point for left camera
-            rospy.sleep(0.5)
+            #rospy.sleep(0.5)
             ecm_T_psm_rep=self.psm1.measured_cp()
             ecm_T_psm_rep=utils.enforceOrthogonalPyKDL(ecm_T_psm_rep)
             ecm_T_psm_rep=pm.toMatrix(ecm_T_psm_rep) #Numpy array
@@ -516,12 +550,12 @@ class Renderer:
             
 
             #############Gets Reported Point for left camera
-            rospy.sleep(0.5)
+            #rospy.sleep(0.5)
             ecm_T_psm_rep=self.psm3.measured_cp()
             ecm_T_psm_rep=utils.enforceOrthogonalPyKDL(ecm_T_psm_rep)
             ecm_T_psm_rep=pm.toMatrix(ecm_T_psm_rep) #Numpy array
 
-            tool_tip_point=np.array([0,0,tool_tip_offset+0.001,1],dtype=np.float32)
+            tool_tip_point=np.array([0,0,tool_tip_offset_psm3+0.001,1],dtype=np.float32)
 
             # point_lc_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
             point_ecm_rep=ecm_T_psm_rep@tool_tip_point
@@ -631,8 +665,8 @@ class Renderer:
 
 
                 #retval,psm1_rep_T_psm1_ac,_=cv2.estimateAffine3D(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1,ransacThreshold=RANSAC_THRESHOLD,confidence=RANSAC_CONFIDENCE)
-                print("p_ecm_ac_list_psm1: "+str(self.p_ecm_ac_list_psm3))
-                print("p_ecm_rep_list_psm1: "+str(self.p_ecm_rep_list_psm3))
+                print("p_ecm_ac_list_psm3: "+str(self.p_ecm_ac_list_psm3))
+                print("p_ecm_rep_list_psm3: "+str(self.p_ecm_rep_list_psm3))
                 self.ecmac_T_ecmrep_psm3_np,inliers=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3)
                 print("T_correct_lc_psm3_np: "+str(self.ecmac_T_ecmrep_psm3_np))
                 #self.psm1_rep_T_psm1_ac=utils.convertAffineToHomogeneous(psm1_rep_T_psm1_ac)
@@ -668,6 +702,11 @@ class Renderer:
 
 
     ##########Hand-Eye Error Correction Methods
+    #Gets lcac_T_lcrep, rcac_T_rcrep & simultaneously solves T_psmcorr
+    # These are used in the following transforms:
+    #s_T_psm=T_psmcorr*inv(lci_T_si)*inv(ecm_T_lc)*ecmi_T_ecm*ecmac_T_ecmrep*ecm_T_psm
+    #lc_T_s=lcac_T_lcrep*inv(ecm_T_lc)*inv(ecmi_T_ecm)*ecm_T_lc*lci_T_si
+    #rc_T_s=rcac_T_lrrep*inv(ecm_T_lr)*inv(ecmi_T_ecm)*ecm_T_lr*rci_T_si
 
 
     def startHandEyeErrorCalib(self):
@@ -680,7 +719,7 @@ class Renderer:
 
             #Projecting point on left ecm frame to show 
             proj_point=self.projectPointOnImagePlane(self.lci_T_si,point_si,self.aruco_tracker_left.mtx)
-            self.project_point_psm_left=proj_point
+            self.project_point_psm1_left=proj_point
             #Projecting point on right ecm frame to show
             proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
             self.project_point_psm1_right=proj_point
@@ -693,14 +732,18 @@ class Renderer:
         if self.is_handeyeerror_started:
             self.is_new_handeye_points=True
 
-            #############Gets actual point location
+            #############Gets actual point location in left cam frame
             point_si=self.model_scene_points[self.handeye_points_count]
             point_si_list=point_si.tolist()        
             point_si_list.append(1)
             point_si=glm.vec4(point_si_list)
 
+            #Find current cam-to-scene transform
+            lc_T_s=self.aruco_tracker_left.calibrateSceneDirect(self.frame_left)
+            print("lc_T_s: "+str(lc_T_s))
+
             #Left Camera
-            point_lc_ac=self.lci_T_si*point_si
+            point_lc_ac=lc_T_s*point_si
 
             point_lc_ac_list=[point_lc_ac[0],point_lc_ac[1],point_lc_ac[2]]
 
@@ -713,8 +756,28 @@ class Renderer:
 
             
 
-            #############Gets Reported Point for left camera
-            rospy.sleep(0.5)
+            #############Gets Reported Point for left camera based on ecm motion, also gets reported point of psm tip for s_T_psm transform
+            
+            #Get ecmi_T_ecm transform
+            cart_T_ecm=self.ecm.measured_cp()
+            cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+            cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+            ecmi_T_ecm=utils.invHomogeneousGLM(self.cart_T_ecmi)*cart_T_ecm
+
+            point_lc_rep=utils.invHomogeneousGLM(self.ecm_T_lc)*ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si*point_si
+
+            point_lc_rep_list=[point_lc_rep[0],point_lc_rep[1],point_lc_rep[2]]
+
+            point_lc_rep=np.array(point_lc_rep_list,dtype=np.float32)
+
+            if self.p_lc_rep_list is None:
+                self.p_lc_rep_list=point_lc_rep
+            else:
+                self.p_lc_rep_list=np.vstack((self.p_lc_rep_list,point_lc_rep))
+
+
+            #Gets same point that PSM is touching:
+            '''
             ecm_T_psm_rep=self.psm1.measured_cp()
             ecm_T_psm_rep=utils.enforceOrthogonalPyKDL(ecm_T_psm_rep)
             ecm_T_psm_rep=pm.toMatrix(ecm_T_psm_rep) #Numpy array
@@ -731,17 +794,21 @@ class Renderer:
 
             print("point_lc_ac: "+str(point_lc_rep))
             print("point_lc_rep: "+str(point_lc_rep))
+            '''
 
 
             ###########Updates Visual Point for next iteration 
             self.handeye_points_count+=1
-            point_si=self.model_scene_points[self.handeye_points_count]
+            count=0
+            if self.handeye_points_count>4:
+                count=8
+            point_si=self.model_scene_points[count]
             point_si_list=point_si.tolist()        
             point_si_list.append(1)
             point_si=glm.vec4(point_si_list)
             #Projecting point on left ecm frame to show 
             proj_point=self.projectPointOnImagePlane(self.lci_T_si,point_si,self.aruco_tracker_left.mtx)
-            self.project_point_psm_left=proj_point
+            self.project_point_psm1_left=proj_point
             #Projecting point on right ecm frame to show
             proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
             self.project_point_psm1_right=proj_point
@@ -759,7 +826,7 @@ class Renderer:
             self.p_lc_rep_list=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_lc_rep_list.npy')
 
 
-        #Finding the error compensation transform, psm1 lc (psm1 left camera)
+        #Finding the error compensation transform, lcac_T_lcrep (for left camera error correction)
 
         p_lc_points_shape=self.p_lc_rep_list.shape
 
@@ -984,6 +1051,36 @@ class Renderer:
                         # proj_point_np=tuple((int(image_points[0][0][0]),int(image_points[0][0][1])))
                         #self.frame_left_converted=cv2.circle(self.frame_left_converted,proj_point_np,radius=10,color=(0,0,255),thickness=3)
 
+                    if self.validate_ecmmotion_on: #Validate that when moving the ECM we are still able to track point
+                        mul_mat=glm.mat4x3()        #Selection matrix to take [Xc,Yc,Zc]
+                        cam_mat=self.aruco_tracker_left.mtx 
+                        cam_mat=glm.mat3(*cam_mat.T.flatten()) #3x3 camera intrinsics, numpy=>glm transpose the matrix
+
+                        #Gets ECM motion:
+                        cart_T_ecm=self.ecm.measured_cp()
+                        cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+                        cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+
+
+                        ecmi_T_ecm=utils.invHomogeneousGLM(self.cart_T_ecmi)*cart_T_ecm
+                        #ecmi_T_ecm=utils.scaleGLMTranform(ecmi_T_ecm,5)
+                        print("ecmi_T_ecm: "+str(ecmi_T_ecm))
+
+                        #test_point_camera=utils.invHomogeneousGLM(self.lcac_T_lcrep)*utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*test_point_scene
+                        test_point_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*test_point_scene
+
+
+
+                        test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
+                        proj_point=cam_mat*test_point_camera #Projects to image plane
+
+                        proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
+                        proj_point[1]=proj_point[1]/proj_point[2]
+
+                        point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
+                        self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
+
+
                 
                     
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
@@ -996,10 +1093,11 @@ class Renderer:
                 ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
                 ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
 
-                test_point_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*ecm_T_psm1*test_point_psm #Point in camera coordinate frame
+                #test_point_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*ecm_T_psm1*test_point_psm #Point in camera coordinate frame
 
                 #print("ecm_T_psm1: "+str(ecm_T_psm1))
-                print("test_point_camera: "+str(test_point_camera))
+                #print("test_point_camera: "+str(test_point_camera))
+                #print("hand-eye left")
 
 
 
@@ -1010,31 +1108,33 @@ class Renderer:
                 cam_mat=glm.mat3(*cam_mat.T.flatten()) #3x3 camera intrinsics, numpy=>glm transpose the matrix
                 
 
-                test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
-                proj_point=cam_mat*test_point_camera #Projects to image plane
+                #test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
+                #proj_point=cam_mat*test_point_camera #Projects to image plane
 
-                proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
-                proj_point[1]=proj_point[1]/proj_point[2]
+                #proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
+                #proj_point[1]=proj_point[1]/proj_point[2]
 
                 #print("proj_point: "+str(proj_point))
 
 
-                point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
-                print("point_2d: "+str(point_2d))
+                #point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
+                #print("point_2d: "+str(point_2d))
                 #Showing point
 
-                self.frame_left_converted=cv2.circle(self.frame_left,point_2d,radius=10,color=(255,0,0),thickness=3)
+                #self.frame_left_converted=cv2.circle(self.frame_left,point_2d,radius=10,color=(255,0,0),thickness=3)
+                self.frame_left_converted=self.frame_left
 
+                
 
                 #######Get point in Camera Coordinates from PSM3 !!!############
                 ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
                 ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
                 ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
 
-                test_point_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*ecm_T_psm3*test_point_psm #Point in camera coordinate frame
+                #test_point_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*ecm_T_psm3*test_point_psm #Point in camera coordinate frame
 
                 #print("ecm_T_psm1: "+str(ecm_T_psm1))
-                print("test_point_camera: "+str(test_point_camera))
+                #print("test_point_camera: "+str(test_point_camera))
 
 
 
@@ -1042,21 +1142,21 @@ class Renderer:
 
                
 
-                test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
-                proj_point=cam_mat*test_point_camera #Projects to image plane
+                #test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
+                #proj_point=cam_mat*test_point_camera #Projects to image plane
 
-                proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
-                proj_point[1]=proj_point[1]/proj_point[2]
+                #proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
+                #proj_point[1]=proj_point[1]/proj_point[2]
 
                 #print("proj_point: "+str(proj_point))
 
 
-                point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
-                print("point_2d: "+str(point_2d))
+                #point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
+                #print("point_2d: "+str(point_2d))
                 #Showing point
 
-                self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(255,0,0),thickness=3)
-
+                #self.frame_left_converted=cv2.circle(self.frame_left,point_2d,radius=10,color=(255,0,0),thickness=3)
+                
                 if self.validate_error_correction_on:
 
                     #Error Correction Validation On
@@ -1105,7 +1205,6 @@ class Renderer:
                     
 
                     #PSM3
-                    input_pose=glm.mat4()
 
                     test_pose_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)*ecm_T_psm3*input_pose
                     
@@ -1174,6 +1273,7 @@ class Renderer:
 
 
 
+        '''
 
 
         self.window_right.switch_to()       #Switch to right window
@@ -1272,6 +1372,7 @@ class Renderer:
             self.texture_right.use()
             self.vertex_array_right.render()
             self.ctx_right.enable(mgl.DEPTH_TEST)
+        '''
 
         self.gui_window.update()
 
@@ -1288,7 +1389,6 @@ if __name__ == '__main__':
 
     rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackRight,queue_size=1,buff_size=2**18)
     rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackLeft,queue_size=1,buff_size=2**18)
-
     #rospy.Subscriber(Clutch_Topic,Joy,tool_renderer.clutchPedalCallback,queue_size=1,buff_size=1000000)
     #rospy.Subscriber(Camera_Topic,Joy,tool_renderer.cameraPedalCallback,queue_size=1,buff_size=1000000)
     #Running Application
