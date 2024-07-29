@@ -1,18 +1,19 @@
 import glm
+import numpy as np
+from include import Renderer
 #from glfw.GLFW import *
 #from glfw import _GLFWwindow as GLFWwindow
-FOV_h=31.93
-FOV_v=23.093
-FOV_v_right=19.39
-FOV=2*FOV_v
-FOV=3*FOV_v
+
 NEAR=0.1
 FAR=3000
 SPEED=100
 SENSITIVITY=0.05 #Mouse sensitivity for orientation changes
 
+VIEWPORT_WIDTH=Renderer.CONSOLE_VIEWPORT_WIDTH
+VIEWPORT_HEIGHT=Renderer.CONSOLE_VIEWPORT_HEIGHT
+
 class Camera:
-    def __init__(self,app,right_left,position=(0,0,4),yaw=-90,pitch=0):
+    def __init__(self,app,camera_intrinsics,position=(0,0,4),yaw=-90,pitch=0):
         self.app=app
         self.aspect_ratio=app.WIN_SIZE[0]/app.WIN_SIZE[1]
         #Setting up Camera position
@@ -26,18 +27,16 @@ class Camera:
         self.mouse_y=0
         self.old_mouse_x=0
         self.old_mouse_y=0
-        if right_left=='left':
-            self.fov=1.5*FOV_v
-            #self.fov=89/2
-        elif right_left=='right':
-            self.fov=1.5*FOV_v_right
-            #self.fov=89/2
 
-        #View Matrixc
+        #View Matrix (set this later for playback)
         self.m_view=self.get_view_matrix()
 
         #Projection matrix
-        self.m_proj=self.get_projection_matrix()
+        self.m_proj=self.get_projection_matrix(camera_intrinsics[0,0],camera_intrinsics[1,1],camera_intrinsics[0,2],camera_intrinsics[1,2],\
+                                               VIEWPORT_WIDTH,VIEWPORT_HEIGHT,NEAR,FAR)
+        
+
+
     def rotate(self):
         new_mouse_x=self.mouse_x-self.app.WIN_SIZE[0]/2
         new_mouse_y=self.mouse_y-self.app.WIN_SIZE[1]/2
@@ -133,9 +132,22 @@ class Camera:
 
     def get_view_matrix(self):
         return glm.lookAt(self.position,self.position+self.forward,self.up)
+    def get_projection_matrix(self,fx,fy,cx,cy,width,height,near,far):
 
-    def get_projection_matrix(self):
+        projection_matrix=np.array([
+            [2*fx/width,0,(width-2*cx)/width,0]
+            [0,-2*fy/height,(height-2*cy)/height,0]
+            [0,0,(-far-near)/(far-near),-2*far*near/(far-near)]
+            [0,0,-1,0]
+
+        ],dtype='float32')
+
+        projection_matrix=glm.mat4(*projection_matrix.T.flatten())
+
+        return projection_matrix
+
+    #def get_projection_matrix(self):
         
-        return glm.perspective(glm.radians(self.fov),self.aspect_ratio,NEAR,FAR) #Returns the perspective matrix
+     #   return glm.perspective(glm.radians(self.fov),self.aspect_ratio,NEAR,FAR) #Returns the perspective matrix
         
         #return glm.mat4()
