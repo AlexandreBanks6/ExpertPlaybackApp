@@ -61,7 +61,71 @@ tool_tip_offset_psm3=0.0102 #PSM3 tooltip offset
 
 tool_tip_point=np.array([0,0,tool_tip_offset+0.001,1],dtype=np.float32) #Point of tooltip for API correction
 
+
+METERS_TO_RENDER_SCALE=1000 #OpenGL in mm, real word in m
+
+obj_names=['shaft','body','jaw_right','jaw_left']
+
+#########Constant Transforms
 mul_mat=glm.mat4x3()  #Selection matrix to take [Xc,Yc,Zc]
+input_pose=glm.mat4()
+
+#Converts opencv camera to opengl
+opengl_T_opencv=glm.mat4(glm.vec4(1,0,0,0),
+                     glm.vec4(0,-1,0,0),
+                     glm.vec4(0,0,-1,0),
+                     glm.vec4(0,0,0,1))
+
+
+#DH parameters for 4_C_5 (placing shaft)
+T_5_alpha=glm.pi()/2
+T_5_cos_alpha=glm.cos(T_5_alpha)
+T_5_sin_alpha=glm.sin(T_5_alpha)
+
+#DH parameters for 5_C_6 (placing body)
+T_6_alpha=glm.pi()/2
+T_6_cos_alpha=glm.cos(T_6_alpha)
+T_6_sin_alpha=glm.sin(T_6_alpha)
+
+T_6_a=0.0091 #Body length
+
+#Goes from API reported last joint coord, to our kinematics coord system
+T_7_psm=glm.mat4(glm.vec4(0,0,-1,0),
+                     glm.vec4(0,1,0,0),
+                     glm.vec4(1,0,0,0),
+                     glm.vec4(0,0,0,1))
+psm_T_7=utils.invHomogeneousGLM(T_7_psm)
+
+
+#Transforms to convert between the standard DH frames and the frame system of the 3D models
+jl_T_jl_local=glm.mat4(glm.vec4(1,0,0,0),
+               glm.vec4(0,0,1,0),
+               glm.vec4(0,-1,0,0),
+               glm.vec4(0,0,0,1))  #Transform between Cjl and Cl (left jaw frame)
+
+jr_T_jr_local=glm.mat4(glm.vec4(1,0,0,0),
+               glm.vec4(0,0,1,0),
+               glm.vec4(0,-1,0,0),
+               glm.vec4(0,0,0,1))  #Transform between Cjr and Cr (right jaw frame)
+
+
+
+T_6shift_b=glm.mat4(glm.vec4(1,0,0,0),
+               glm.vec4(0,0,-1,0),
+               glm.vec4(0,1,0,0),
+               glm.vec4(0,0,0,1))  #Transform between C6 and Cb (body frame)
+
+T_5_s=glm.mat4(glm.vec4(1,0,0,0),
+               glm.vec4(0,0,1,0),
+               glm.vec4(0,-1,0,0),
+               glm.vec4(0,0,0,1))  #Transform between C5 and Cs (shaft frame)
+
+
+#Just to start the instrument pose
+start_pose=glm.mat4(glm.vec4(1,0,0,0),
+                glm.vec4(0,1,0,0),
+                glm.vec4(0,0,1,0),
+                glm.vec4(0,0,-30,1))
 
 
 class Renderer:
@@ -151,6 +215,13 @@ class Renderer:
         self.frame_right_converted=None
 
         self.bridge=CvBridge()
+
+
+        #Initialize the instrument frames
+        self.instrument_dict_PSM1=None
+        self.instrument_dict_PSM3=None
+        self.instrument_kinematics([0,0,0,0],start_pose,'PSM1')
+        self.instrument_kinematics([0,0,0,0],start_pose,'PSM3')
 
 
         ##############GUI SETUP################
@@ -284,6 +355,9 @@ class Renderer:
         self.lci_T_si=None
         self.rci_T_si=None
 
+        self.inv_lci_T_si=None
+        self.inv_rci_T_si=None
+
         #Initial ECM Pose
         self.cart_T_ecmi=None
 
@@ -309,6 +383,9 @@ class Renderer:
         self.ecm_T_rc=glm.mat4(*self.ecm_T_rc_np.T.flatten())
         print("ecm_T_rc: "+str(self.ecm_T_rc))
 
+        self.inv_ecm_T_lc=utils.invHomogeneousGLM(self.ecm_T_lc)
+        self.inv_ecm_T_rc=utils.invHomogeneousGLM(self.ecm_T_rc)
+
 
 
         ###API Error Correction:
@@ -325,7 +402,9 @@ class Renderer:
                 self.ecmac_T_ecmrep_psm1_np=np.array(self.ecmac_T_ecmrep_psm1_np,dtype=np.float32)
 
                 self.ecmac_T_ecmrep_psm1=glm.mat4(*self.ecmac_T_ecmrep_psm1_np.T.flatten())    
-                print('ecmac_T_ecmrep_psm1: '+str(self.ecmac_T_ecmrep_psm1))     
+                print('ecmac_T_ecmrep_psm1: '+str(self.ecmac_T_ecmrep_psm1)) 
+
+                self.inv_ecmac_T_ecmrep_psm1=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)    
                 self.is_psmerror_calib=True 
 
         #PSM3 Error Correction
@@ -341,6 +420,7 @@ class Renderer:
 
                 self.ecmac_T_ecmrep_psm3=glm.mat4(*self.ecmac_T_ecmrep_psm3_np.T.flatten())    
                 print('ecmac_T_ecmrep_psm3: '+str(self.ecmac_T_ecmrep_psm3))     
+                self.inv_ecmac_T_ecmrep_psm3=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)
                 self.is_psmerror_calib=True 
 
 
@@ -426,7 +506,6 @@ class Renderer:
         #Projecting point on right ecm frame to show
         proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
         self.project_point_psm1_right=proj_point
-        self.is_psmerror_started=True
 
 
         #PSM3
@@ -597,6 +676,7 @@ class Renderer:
                     yaml.dump(data_psm1,f)
 
                 self.ecmac_T_ecmrep_psm1=glm.mat4(*self.ecmac_T_ecmrep_psm1_np.T.flatten())
+                self.inv_ecmac_T_ecmrep_psm1=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)
 
                 #Finding translation error:
                 translation_diff_list=[]
@@ -650,6 +730,7 @@ class Renderer:
                     yaml.dump(data_psm3,f)
 
                 self.ecmac_T_ecmrep_psm3=glm.mat4(*self.ecmac_T_ecmrep_psm3_np.T.flatten())
+                self.inv_ecmac_T_ecmrep_psm3=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)
 
                 #Finding translation error:
                 translation_diff_list=[]
@@ -668,6 +749,7 @@ class Renderer:
                 translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
                 trans_diff=np.mean(translation_diff_list)
                 print('registration error psm3 lc: '+str(trans_diff))
+                self.is_psmerror_calib=True
 
     
     
@@ -803,6 +885,121 @@ class Renderer:
         return frame_new
     
 
+    #############Instrument Kinematics Methods############
+    def instrument_kinematics(self,joint_angles,w_T_psm,PSM_Type):
+        '''
+        Input: 
+        - list of angles of the intrument joints: body rotation (q6), jaw rotation (q7), jaw seperation (theta_j)
+        - Tool first joint with respect to world (w_T_psm)
+        Output: 
+        - Frames for each instrument segment: shaft frame (Ts), body frame (Tb), left jaw (Tl), right jaw (Tr)  
+
+        Also note, T4 is the base of the instrument, and T5 is the shaft rotated frame, T6 is the body rotated frame, T7 is the jaw base (no seperation)
+        '''
+        #Enforce >=0 jaw angle
+        if joint_angles[2]<0:
+            joint_angles[2]=0
+        
+        
+        #Last joint (in our cood system)
+        w_T_7=w_T_psm*psm_T_7
+
+        #Left jaw
+        w_T_jl_local=w_T_7*self.Rotz(-joint_angles[2]/2)*jl_T_jl_local    #Finds world to jaw left in object coords (local)
+        w_T_jl_local=utils.scaleGLMTranform(w_T_jl_local,METERS_TO_RENDER_SCALE)
+
+        #Right jaw
+        w_T_jr_local=w_T_7*self.Rotz(joint_angles[2]/2)*jr_T_jr_local   #Finds world to right jaw in object coords
+        w_T_jr_local=utils.scaleGLMTranform(w_T_jr_local,METERS_TO_RENDER_SCALE)
+
+
+        #Body
+        w_T_6=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[1]))       
+        w_T_bodylocal=glm.translate(w_T_6,glm.vec3(-T_6_a,0,0))*T_6shift_b
+        w_T_bodylocal=utils.scaleGLMTranform(w_T_bodylocal,METERS_TO_RENDER_SCALE)
+
+        #Shaft
+        w_T_shaftlocal=w_T_7*utils.invHomogeneousGLM(self.transform_6_T_7(joint_angles[1]))*utils.invHomogeneousGLM(self.transform_5_T_6(-joint_angles[0]))*T_5_s
+        w_T_shaftlocal=utils.scaleGLMTranform(w_T_shaftlocal,METERS_TO_RENDER_SCALE)
+
+        
+
+
+        if PSM_Type=='PSM1':
+            self.instrument_dict_PSM1={
+                'shaft': w_T_shaftlocal,
+                'body': w_T_bodylocal,
+                'jaw_right': w_T_jr_local,
+                'jaw_left': w_T_jl_local
+            }
+
+        elif PSM_Type=='PSM3':
+            self.instrument_dict_PSM3={
+                'shaft': w_T_shaftlocal,
+                'body': w_T_bodylocal,
+                'jaw_right': w_T_jr_local,
+                'jaw_left': w_T_jl_local
+            }
+    
+    def transform_4_T_5(self,q5):
+        #Homogeneous transform between the instrument base (C4) and shaft frame (C5) to place the shaft
+        theta_5=q5
+
+        trans_4_C_5=glm.mat4(glm.vec4(glm.cos(theta_5),glm.sin(theta_5),0,0),
+                             glm.vec4(-glm.sin(theta_5)*T_5_cos_alpha,glm.cos(theta_5)*T_5_cos_alpha,T_5_sin_alpha,0),
+                             glm.vec4(glm.sin(theta_5)*T_5_sin_alpha,-glm.cos(theta_5)*T_5_sin_alpha,T_5_cos_alpha,0),
+                             glm.vec4(0,0,0,1))
+        return trans_4_C_5
+    
+
+    def transform_5_T_6(self,q6):
+        #Gets the homogenous transform between shaft frame (C5) and body frame (C6)
+        theta_6=q6+(glm.pi()/2)
+        trans_5_C_6=glm.mat4(glm.vec4(glm.cos(theta_6),glm.sin(theta_6),0,0),
+                             glm.vec4(-glm.sin(theta_6)*T_6_cos_alpha,glm.cos(theta_6)*T_6_cos_alpha,T_6_sin_alpha,0),
+                             glm.vec4(glm.sin(theta_6)*T_6_sin_alpha,-glm.cos(theta_6)*T_6_sin_alpha,T_6_cos_alpha,0),
+                             glm.vec4(T_6_a*glm.cos(theta_6),T_6_a*glm.sin(theta_6),0,1))
+        return trans_5_C_6
+    
+    def transform_6_T_7(self,q7):
+        #Gets the homogenous transform between body frame (C6) and the jaw base (C7) => Jaw base has no rotation
+        theta_7=q7
+        trans_6_C_7=glm.mat4(glm.vec4(glm.cos(theta_7),glm.sin(theta_7),0,0),
+                             glm.vec4(-glm.sin(theta_7),glm.cos(theta_7),0,0),
+                             glm.vec4(0,0,1,0),
+                             glm.vec4(0,0,0,1))
+        return trans_6_C_7
+
+    
+    
+    def Rotz(self,theta):
+        #Rotation about z-axis of the base jaw frame to give the jaw seperation
+        rot_mat=glm.mat4(glm.vec4(glm.cos(theta),glm.sin(theta),0,0),
+                         glm.vec4(-glm.sin(theta),glm.cos(theta),0,0),
+                         glm.vec4(0,0,1,0),
+                         glm.vec4(0,0,0,1))
+        return rot_mat    
+    
+    def move_objects(self):
+        #This is the method where we pass the matrix to move_obj to move the object and also 
+        #select which object to move: "shaft", "body","jaw_right","jaw_left"
+        if self.PSM1_on:
+            for obj_name in obj_names:
+                #if obj_name=='jaw_right' or obj_name=='jaw_left':
+                #   continue
+                #print(obj_name)
+                move_mat=self.instrument_dict_PSM1[obj_name]
+                self.scene_PSM1.move_obj(obj_name,move_mat)
+
+        if self.PSM3_on:
+            for obj_name in obj_names:
+                #if obj_name=='jaw_right' or obj_name=='jaw_left':
+                #   continue
+                #print(obj_name)
+                move_mat=self.instrument_dict_PSM3[obj_name]
+                self.scene_PSM3.move_obj(obj_name,move_mat)
+    
+
 
 
     #######################Run Methods#####################
@@ -813,8 +1010,205 @@ class Renderer:
 
     
     def render(self,dt):
+        self.delta_time=dt
 
-    
+        #Get PSM Poses for virtual overlay and run instrument kinematics
+        if self.virtual_overlay_on and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+            if self.PSM1_on:
+                ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
+                ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
+
+                joint_vars_psm1=self.psm1.measured_js()[0]
+                jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                joint_vars_psm1=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
+                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1
+
+                self.instrument_kinematics(joint_vars_psm1,s_T_psm1,'PSM1')
+            
+            if self.PSM3_on:
+                ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
+                ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
+                ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
+
+                joint_vars_psm3=self.psm3.measured_js()[0]
+                jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                joint_vars_psm3=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
+                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3
+
+                self.instrument_kinematics(joint_vars_psm3,s_T_psm3,'PSM3')
+            
+            self.move_objects()
+
+
+        ################Render to left window###################
+        self.window_left.switch_to()       #Switch to left window
+        self.ctx_left.clear()              #Switch to left context
+
+        if self.frame_left is not None:     #We have a left frame from the ECM
+            self.ctx_left.disable(mgl.DEPTH_TEST)
+
+            if self.aruco_on:   #User button press, we show aruco and maybe calibrate the scene
+                self.frame_left_converted=self.aruco_tracker_left.arucoTrackingScene(self.frame_left) #Show ArUco
+
+                if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame 
+                    self.lci_T_si=None
+                    self.aruco_tracker_left.calibrateScene()
+                    self.lci_T_si=self.aruco_tracker_left.ci_T_si
+
+                if self.lci_T_si is not None:   #Calibration worked
+                    self.inv_lci_T_si=utils.invHomogeneousGLM(self.lci_T_si)
+                    cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
+                                      self.aruco_tracker_left.dist,self.aruco_tracker_left.rvec_scene,self.aruco_tracker_left.tvec_scene,0.05)
+                
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+
+            elif self.is_psmerror_started: #We are calibrating the PSM error
+                self.frame_left_converted=self.frame_left
+
+                if self.project_point_psm1_left is not None: 
+                        #We are doing error correction and need to project the point to guide person
+                    point_2d=tuple((int(self.project_point_psm1_left[0]),int(self.project_point_psm1_left[1])))
+                    self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=6,color=(255,0,0),thickness=2)
+                if self.project_point_psm3_left is not None: 
+                    #We are doing error correction and need to project the point to guide person
+                    point_2d=tuple((int(self.project_point_psm3_left[0]),int(self.project_point_psm3_left[1])))
+                    self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=6,color=(0,255,0),thickness=2)
+                
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+
+            elif self.validate_error_correction_on: #We want to validate API error corr.
+                self.frame_left_converted=self.frame_left
+                ####PSM1
+                ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
+                ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
+
+                test_pose_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)*ecm_T_psm1*input_pose
+
+                rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
+                cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
+                                    self.aruco_tracker_left.dist,rvec,tvec,0.008,thickness=2)
+
+                #####PSM 3
+                ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
+                ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
+                ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
+
+                test_pose_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)*ecm_T_psm3*input_pose
+                    
+                rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
+                cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
+                                    self.aruco_tracker_left.dist,rvec,tvec,0.008,thickness=2)
+            
+            else:
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
+
+
+
+            self.texture_left.write(self.frame_left_converted)
+            self.texture_left.use()
+            self.vertex_array_left.render()
+            self.ctx_left.enable(mgl.DEPTH_TEST)
+
+        ######Render Left Screen Instruments and Camera#######
+        if (self.virtual_overlay_on or self.playback_on) and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+            lc_T_s=opengl_T_opencv*self.lci_T_si #For now don't include ECM motion
+
+            #Update the camera
+            lc_T_s=utils.scaleGLMTranform(lc_T_s,METERS_TO_RENDER_SCALE)
+            self.camera_left.update(lc_T_s)
+
+            #Render the instruments:
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_left)
+            if self.PSM1_on:
+                self.scene_PSM1.render(self.ctx_left)
+
+
+
+
+        
+        ################Render to right window###################
+        self.window_right.switch_to()       #Switch to right window
+        self.ctx_right.clear()              #Switch to right context
+
+        if self.frame_right is not None:     #We have a right frame from the ECM
+            self.ctx_right.disable(mgl.DEPTH_TEST)
+
+            if self.aruco_on:   #User button press, we show aruco and maybe calibrate the scene
+                self.frame_right_converted=self.aruco_tracker_right.arucoTrackingScene(self.frame_right) #Show ArUco
+
+                if self.calibrate_on and (not self.aruco_tracker_right.calibrate_done): #Sets Scene Base Frame 
+                    self.rci_T_si=None
+                    self.aruco_tracker_right.calibrateScene()
+                    self.rci_T_si=self.aruco_tracker_right.ci_T_si
+
+                if self.rci_T_si is not None:   #Calibration worked
+                    self.inv_rci_T_si=utils.invHomogeneousGLM(self.rci_T_si)
+                    cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
+                                      self.aruco_tracker_right.dist,self.aruco_tracker_right.rvec_scene,self.aruco_tracker_right.tvec_scene,0.05)
+                
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
+
+            elif self.is_psmerror_started: #We are calibrating the PSM error
+                self.frame_right_converted=self.frame_right
+
+                if self.project_point_psm1_right is not None: 
+                        #We are doing error correction and need to project the point to guide person
+                    point_2d=tuple((int(self.project_point_psm1_right[0]),int(self.project_point_psm1_right[1])))
+                    self.frame_right_converted=cv2.circle(self.frame_right_converted,point_2d,radius=6,color=(255,0,0),thickness=2)
+                if self.project_point_psm3_right is not None: 
+                    #We are doing error correction and need to project the point to guide person
+                    point_2d=tuple((int(self.project_point_psm3_right[0]),int(self.project_point_psm3_right[1])))
+                    self.frame_right_converted=cv2.circle(self.frame_right_converted,point_2d,radius=6,color=(0,255,0),thickness=2)
+                
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
+
+            elif self.validate_error_correction_on: #We want to validate API error corr.
+                self.frame_right_converted=self.frame_right
+                
+                test_pose_camera=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)*ecm_T_psm1*input_pose
+
+                rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
+                cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
+                                    self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
+
+
+                test_pose_camera=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)*ecm_T_psm3*input_pose
+                    
+                rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
+                cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
+                                    self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
+            
+            else:
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right)
+
+
+
+            self.texture_right.write(self.frame_right_converted)
+            self.texture_right.use()
+            self.vertex_array_right.render()
+            self.ctx_right.enable(mgl.DEPTH_TEST)
+        
+
+        ######Render Right Screen Instruments and Camera#######
+        if (self.virtual_overlay_on or self.playback_on) and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
+            rc_T_s=opengl_T_opencv*self.rci_T_si #For now don't include ECM motion
+            rc_T_s=utils.scaleGLMTranform(rc_T_s,METERS_TO_RENDER_SCALE)
+            #Update the camera
+            self.camera_right.update(rc_T_s)
+
+            #Render the instruments:
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_right)
+            if self.PSM1_on:
+                self.scene_PSM1.render(self.ctx_right)
+
+
+        ########Update GUI
+        self.gui_window.update()
+        
 
 
 
