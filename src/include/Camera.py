@@ -9,11 +9,10 @@ FAR=3000
 SPEED=100
 SENSITIVITY=0.05 #Mouse sensitivity for orientation changes
 
-VIEWPORT_WIDTH=Renderer.CONSOLE_VIEWPORT_WIDTH
-VIEWPORT_HEIGHT=Renderer.CONSOLE_VIEWPORT_HEIGHT
+
 
 class Camera:
-    def __init__(self,app,camera_intrinsics,position=(0,0,4),yaw=-90,pitch=0):
+    def __init__(self,app,camera_intrinsics,view_width=1400,view_height=986,position=(0,0,4),yaw=-90,pitch=0):
         self.app=app
         self.aspect_ratio=app.WIN_SIZE[0]/app.WIN_SIZE[1]
         #Setting up Camera position
@@ -33,7 +32,7 @@ class Camera:
 
         #Projection matrix
         self.m_proj=self.get_projection_matrix(camera_intrinsics[0,0],camera_intrinsics[1,1],camera_intrinsics[0,2],camera_intrinsics[1,2],\
-                                               VIEWPORT_WIDTH,VIEWPORT_HEIGHT,NEAR,FAR)
+                                               view_width,view_height,NEAR,FAR)
         
 
 
@@ -135,14 +134,15 @@ class Camera:
     def get_projection_matrix(self,fx,fy,cx,cy,width,height,near,far):
 
         projection_matrix=np.array([
-            [2*fx/width,0,(width-2*cx)/width,0]
-            [0,-2*fy/height,(height-2*cy)/height,0]
-            [0,0,(-far-near)/(far-near),-2*far*near/(far-near)]
+            [2*fx/width,0,(width-2*cx)/width,0],
+            [0,2*fy/height,(-height+2*cy)/height,0],
+            [0,0,(-far-near)/(far-near),-2*far*near/(far-near)],
             [0,0,-1,0]
 
         ],dtype='float32')
 
         projection_matrix=glm.mat4(*projection_matrix.T.flatten())
+        print("Projection Matrix: "+str(projection_matrix))
 
         return projection_matrix
 

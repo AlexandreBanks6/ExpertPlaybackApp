@@ -94,18 +94,20 @@ T_7_psm=glm.mat4(glm.vec4(0,0,-1,0),
                      glm.vec4(0,1,0,0),
                      glm.vec4(1,0,0,0),
                      glm.vec4(0,0,0,1))
+
+
 psm_T_7=utils.invHomogeneousGLM(T_7_psm)
 
 
 #Transforms to convert between the standard DH frames and the frame system of the 3D models
 jl_T_jl_local=glm.mat4(glm.vec4(1,0,0,0),
-               glm.vec4(0,0,1,0),
-               glm.vec4(0,-1,0,0),
+               glm.vec4(0,0,-1,0),
+               glm.vec4(0,1,0,0),
                glm.vec4(0,0,0,1))  #Transform between Cjl and Cl (left jaw frame)
 
 jr_T_jr_local=glm.mat4(glm.vec4(1,0,0,0),
-               glm.vec4(0,0,1,0),
-               glm.vec4(0,-1,0,0),
+               glm.vec4(0,0,-1,0),
+               glm.vec4(0,1,0,0),
                glm.vec4(0,0,0,1))  #Transform between Cjr and Cr (right jaw frame)
 
 
@@ -140,7 +142,9 @@ class Renderer:
 
         vertex_source,fragment_source=self.get_program_background('background')
 
-
+        #ArUco tracking objects
+        self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
+        self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
 
         ############Left Window Initialization
         self.window_left.switch_to()
@@ -150,7 +154,7 @@ class Renderer:
         self.ctx_left=mgl.create_context(require=330,standalone=False)
         self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
         self.ctx_left.enable(mgl.BLEND)
-        self.camera_left=Camera.Camera(self,'left')
+        self.camera_left=Camera.Camera(self,self.aruco_tracker_left.mtx,CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)
 
         #Background Image
         self.background_program_left=self.ctx_left.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
@@ -170,7 +174,7 @@ class Renderer:
         self.ctx_right=mgl.create_context(require=330,standalone=False)
         self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
         self.ctx_right.enable(mgl.BLEND)
-        self.camera_right=Camera.Camera(self,'right')
+        self.camera_right=Camera.Camera(self,self.aruco_tracker_right.mtx,CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)
 
         #Initializing right background
         self.window_right.switch_to()
@@ -286,9 +290,7 @@ class Renderer:
 
         ####################Initializing Variables##################
 
-        #ArUco tracking objects
-        self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
-        self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
+        
 
 
         ##########Booleans and Counters
@@ -360,6 +362,7 @@ class Renderer:
 
         #Initial ECM Pose
         self.cart_T_ecmi=None
+        self.inv_cart_T_ecmi=None
 
 
         ###Getting hand-eye calibration matrices
@@ -454,13 +457,14 @@ class Renderer:
 
     def calibrateToggleCallback(self):
         self.calibrate_on=not self.calibrate_on
-        self.aruco_tracker_left.calibrate_done=False
-        self.aruco_tracker_left.corner_scene_list=[]
-        self.aruco_tracker_left.ids_scene_list=[]
+        if self.calibrate_on:
+            self.aruco_tracker_left.calibrate_done=False
+            self.aruco_tracker_left.corner_scene_list=[]
+            self.aruco_tracker_left.ids_scene_list=[]
 
-        self.aruco_tracker_right.calibrate_done=False
-        self.aruco_tracker_right.corner_scene_list=[]
-        self.aruco_tracker_right.ids_scene_list=[]
+            self.aruco_tracker_right.calibrate_done=False
+            self.aruco_tracker_right.corner_scene_list=[]
+            self.aruco_tracker_right.ids_scene_list=[]
 
     def validateErrorCorrectionCallback(self):
         self.validate_error_correction_on=not self.validate_error_correction_on
@@ -472,7 +476,7 @@ class Renderer:
         self.PSM3_on=not self.PSM3_on 
 
     def virtualOverlayCallback(self):
-        self.virtual_overlay_on=not self.virtual_overlay_on
+        self.virtual_overlay_on= not self.virtual_overlay_on
 
     def rocordMotionsCallback(self):
         self.record_motions_on=not self.record_motions_on
@@ -1014,6 +1018,13 @@ class Renderer:
 
         #Get PSM Poses for virtual overlay and run instrument kinematics
         if self.virtual_overlay_on and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+            cart_T_ecm=self.ecm.measured_cp()
+            cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+            cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+            ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
+            #print("ecmi_T_ecm: "+str(ecmi_T_ecm))
+
+
             if self.PSM1_on:
                 ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
                 ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
@@ -1100,6 +1111,8 @@ class Renderer:
                 rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
                 cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
                                     self.aruco_tracker_left.dist,rvec,tvec,0.008,thickness=2)
+                
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
             
             else:
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
@@ -1113,8 +1126,11 @@ class Renderer:
 
         ######Render Left Screen Instruments and Camera#######
         if (self.virtual_overlay_on or self.playback_on) and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
-            lc_T_s=opengl_T_opencv*self.lci_T_si #For now don't include ECM motion
-
+            
+            #inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
+            #inv_ecmi_T_ecm=utils.scaleGLMTranform(inv_ecmi_T_ecm,3)
+            #lc_T_s=opengl_T_opencv*self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si #For now don't include ECM motion
+            lc_T_s=opengl_T_opencv*self.lci_T_si
             #Update the camera
             lc_T_s=utils.scaleGLMTranform(lc_T_s,METERS_TO_RENDER_SCALE)
             self.camera_left.update(lc_T_s)
@@ -1168,18 +1184,20 @@ class Renderer:
             elif self.validate_error_correction_on: #We want to validate API error corr.
                 self.frame_right_converted=self.frame_right
                 
-                test_pose_camera=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)*ecm_T_psm1*input_pose
+                test_pose_camera=self.inv_ecm_T_rc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1*input_pose
 
                 rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
                 cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                     self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
 
 
-                test_pose_camera=utils.invHomogeneousGLM(self.ecm_T_rc)*utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)*ecm_T_psm3*input_pose
+                test_pose_camera=self.inv_ecm_T_rc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3*input_pose
                     
                 rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
                 cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                     self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
+                
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
             
             else:
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right)
@@ -1194,7 +1212,9 @@ class Renderer:
 
         ######Render Right Screen Instruments and Camera#######
         if (self.virtual_overlay_on or self.playback_on) and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
-            rc_T_s=opengl_T_opencv*self.rci_T_si #For now don't include ECM motion
+            #rc_T_s=opengl_T_opencv*self.inv_ecm_T_rc*inv_ecmi_T_ecm*self.ecm_T_rc*self.rci_T_si #For now don't include ECM motion
+            rc_T_s=opengl_T_opencv*self.rci_T_si
+
             rc_T_s=utils.scaleGLMTranform(rc_T_s,METERS_TO_RENDER_SCALE)
             #Update the camera
             self.camera_right.update(rc_T_s)

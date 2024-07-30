@@ -216,6 +216,7 @@ class ArucoTracker:
                 cart_T_ecmi=self.app.ecm.measured_cp()
                 cart_T_ecmi=utils.enforceOrthogonalPyKDL(cart_T_ecmi)
                 self.app.cart_T_ecmi=utils.convertPyDK_To_GLM(cart_T_ecmi)
+                self.app.inv_cart_T_ecmi=utils.invHomogeneousGLM(self.app.cart_T_ecmi)
                 ######What we get above is rotation from object to camera (camera w.r.t. scene), if we need opposite the rotation
                 ######from camera to object (scene w.r.t. camera) we invert, uncomment this section
 

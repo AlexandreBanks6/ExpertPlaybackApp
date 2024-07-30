@@ -154,7 +154,7 @@ class Cube(BaseModel):
 
         
         self.app.window_right.switch_to()
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.texture_right=self.app.mesh.texture_right.textures[self.tex_id]        
         self.program_right['u_texture_0']=0        
         self.texture_right.use(location=0)
 
@@ -212,7 +212,7 @@ class Shaft(BaseModel):
 
         
         self.app.window_right.switch_to()
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.texture_right=self.app.mesh.texture_right.textures[self.tex_id]        
         self.program_right['u_texture_0']=0        
         self.texture_right.use(location=0)
 
@@ -270,7 +270,7 @@ class Body(BaseModel):
 
         
         self.app.window_right.switch_to()
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.texture_right=self.app.mesh.texture_right.textures[self.tex_id]        
         self.program_right['u_texture_0']=0        
         self.texture_right.use(location=0)
 
@@ -328,7 +328,7 @@ class LeftJaw(BaseModel):
 
         
         self.app.window_right.switch_to()
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.texture_right=self.app.mesh.texture_right.textures[self.tex_id]        
         self.program_right['u_texture_0']=0        
         self.texture_right.use(location=0)
 
@@ -385,7 +385,7 @@ class RightJaw(BaseModel):
 
         
         self.app.window_right.switch_to()
-        self.texture_right=self.app.mesh.texture_left.textures[self.tex_id]        
+        self.texture_right=self.app.mesh.texture_right.textures[self.tex_id]        
         self.program_right['u_texture_0']=0        
         self.texture_right.use(location=0)
 
