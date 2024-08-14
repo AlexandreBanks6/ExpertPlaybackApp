@@ -277,3 +277,38 @@ def convertHomoToRvecTvec_GLM(transform_glm):
 
 
     return rvec,tvec
+
+def projectPointsWithDistortion(X,Y,Z,dist_coeffs,intrinsics):
+    #print("dist coeffs: "+str(dist_coeffs))
+    k1, k2, p1, p2, k3 = dist_coeffs[0]
+    fx=intrinsics[0,0]
+    fy=intrinsics[1,1]
+    cx=intrinsics[0,2]
+    cy=intrinsics[1,2]
+
+    #True points
+    X=X/Z
+    Y=Y/Z
+
+    x_prime=(X-cx)/fx
+    y_prime=(Y-cy)/fy
+    X=x_prime
+    Y=y_prime
+
+    r2=x_prime**2+y_prime**2
+
+    r4=r2**2
+    r6=r2**3
+
+    radial_distortion=1+k1*r2+k2*r4+k3*r6
+
+    disp_u=X*radial_distortion+2*p1*X*Y+p2*(r2+2*(X**2))
+    disp_v=Y*radial_distortion+p1*(r2+2*(Y**2))+2*p2*X*Y
+    
+    
+    u_dis=disp_u*fx+cx
+    v_dis=disp_v*fy+cy
+
+
+
+    return u_dis,v_dis

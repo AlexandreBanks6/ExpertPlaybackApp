@@ -33,9 +33,9 @@ RANSAC_SCENE_ITERATIONS=1000000 #Number of iterations for scene localization RAN
 #Rigid Body Definition of Ring Over Wire Aruco Holder, each four coordinates define an ArUco marker with corresponding ID:
 #Marker corners are defined clockwise from top left
 #3D model origin is the top left of AruCO ID 6
-ARUCO_SIDELENGTH=0.0253492 #0.025527 #0.0253492 #in meters
-ARUCO_SEPERATION=0.1022477 #From closest edges, in meters
-ARUCO_HEIGHT_OFFSET=0.005 ######!!!!!!!!!!Use Planar ArUco rig!!!!!!!!!!!!!!
+ARUCO_SIDELENGTH=0.0254508#0.0253492 #0.025527 #0.0253492 #in meters
+ARUCO_SEPERATION=0.10226 #From closest edges, in meters
+ARUCO_HEIGHT_OFFSET=0######!!!!!!!!!!Use Planar ArUco rig!!!!!!!!!!!!!!
 
 RINGOWIRE_MODELPOINTS={
     "6":np.array([
@@ -64,9 +64,9 @@ RINGOWIRE_MODELPOINTS={
 }
 
 
-FRAMES_TO_REMOVE_RIGHT=[2,9,16,21,22,32]   #These frames were determined to be garbage visually
-FRAMES_TO_REMOVE_LEFT=[16]
-NUM_FRAMES_CAPTURED=37
+FRAMES_TO_REMOVE_RIGHT=[1,11,18,22,24,27,29,31,34]   #These frames were determined to be garbage visually
+FRAMES_TO_REMOVE_LEFT=[1,2,11,15,22,24,27,28,31]
+NUM_FRAMES_CAPTURED=35
 
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
 ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
@@ -253,6 +253,7 @@ class CameraCalibGUI:
         self.dst_right=None
         self.dist_left=None
         self.rb_T_ecm_list=[]
+        self.rb_T_ecm_setpoint_list=[]
 
         rospy.sleep(1)
 
@@ -331,9 +332,13 @@ class CameraCalibGUI:
         print("rb_T_ecm_store: "+str(rb_T_ecm_store))
         np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm',rb_T_ecm_store)
 
+        rb_T_ecm_setpoint_store=np.array(self.rb_T_ecm_setpoint_list,dtype='float32')
+        np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm_setpoint',rb_T_ecm_setpoint_store)
+
         self.calbration_message_label.config(text="Frame Grabbing Done")
 
         self.rb_T_ecm_list=[]
+        self.rb_T_ecm_setpoint_list=[]
         self.frame_number=0
 
 
@@ -355,6 +360,11 @@ class CameraCalibGUI:
             ecm_pose=self.ecm.measured_cp()
             rb_T_ecm=pm.toMatrix(ecm_pose)
             self.rb_T_ecm_list.append(rb_T_ecm)
+
+            ecm_pose=self.ecm.setpoint_cp()
+            rb_T_ecm=pm.toMatrix(ecm_pose)
+            self.rb_T_ecm_setpoint_list.append(rb_T_ecm)
+
 
             cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
             cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
@@ -441,6 +451,9 @@ class CameraCalibGUI:
             rb_T_ecm_store=np.array(self.rb_T_ecm_list,dtype='float32')
             print("rb_T_ecm_store: "+str(rb_T_ecm_store))
             np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm',rb_T_ecm_store)
+
+            rb_T_ecm_setpoint_store=np.array(self.rb_T_ecm_setpoint_list,dtype='float32')
+            np.save(self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm_setpoint',rb_T_ecm_setpoint_store)
 
             self.calbration_message_label.config(text="Frame Grabbing Done")
 
@@ -712,7 +725,7 @@ class CameraCalibGUI:
         left_cam_T_scene_tvec=[]
 
         #Open Up the rb_T_ecm list
-        rb_T_ecm_path=self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm.npy'
+        rb_T_ecm_path=self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm_setpoint.npy'
         print("rb_T_ecm_path: "+str(rb_T_ecm_path))
         rb_T_ecm_list=np.load(rb_T_ecm_path)
 

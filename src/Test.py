@@ -9,20 +9,39 @@ psm=dvrk.psm("PSM1")
 psm.enable()
 psm.home()
 
-rospy.sleep(3)
+ecm=dvrk.ecm("ECM")
+ecm.enable()
+ecm.home()
+
+
+
+
+rospy.sleep(1)
 
 
 
 while(1):
-    #joint_vars_psm1=psm1.measured_js()[0]
-    #jaw_angle_psm1=psm1.jaw.measured_js()[0]
-    rb_T_psm=psm.measured_cp()
-    #print("Joint Vars: "+str(joint_vars_psm1*(180/np.pi)))
-    #print("Original Pose: "+str(ecm_T_psm))
-    rb_T_psm=utils.enforceOrthogonalPyKDL(rb_T_psm)
-    rb_T_psm=utils.convertPyDK_To_GLM(rb_T_psm)
-    print("Pose: "+str(rb_T_psm))
-    rospy.sleep(3)
+    ecm_T_psm=psm.measured_cp()
+    ecm_T_psm=utils.enforceOrthogonalPyKDL(ecm_T_psm)
+    ecm_T_psm_rotation=ecm_T_psm.M.GetQuaternion()
+    #ecm_T_psm=utils.convertPyDK_To_GLM(ecm_T_psm)
+    
+
+    cart_T_ecm=ecm.measured_cp()
+    cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+    cart_T_ecm_rotation=cart_T_ecm.M.GetQuaternion()
+    #cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+
+    print("ecm_T_psm rotation: "+str(ecm_T_psm_rotation))
+    print("ecm_T_psm translation: "+str(ecm_T_psm.p))
+
+    print("cart_T_ecm rotation: "+str(cart_T_ecm_rotation))
+    print("cart_T_ecm translation: "+str(cart_T_ecm.p))
+    print("")
+
+    #print("ecm_T_psm: "+str(ecm_T_psm))
+    #print("cart_T_ecm: "+str(cart_T_ecm))
+    rospy.sleep(4)
 
 
 

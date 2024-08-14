@@ -213,7 +213,7 @@ class ArucoTracker:
                 self.tvec_scene=translation_vector
                 
                 #Gets the initial ECM pose
-                cart_T_ecmi=self.app.ecm.measured_cp()
+                cart_T_ecmi=self.app.ecm.setpoint_cp()
                 cart_T_ecmi=utils.enforceOrthogonalPyKDL(cart_T_ecmi)
                 self.app.cart_T_ecmi=utils.convertPyDK_To_GLM(cart_T_ecmi)
                 self.app.inv_cart_T_ecmi=utils.invHomogeneousGLM(self.app.cart_T_ecmi)

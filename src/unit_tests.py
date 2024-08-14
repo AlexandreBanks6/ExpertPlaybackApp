@@ -69,6 +69,12 @@ CONSOLE_VIEWPORT_HEIGHT=986
 tool_tip_offset=0.0102
 tool_tip_offset_psm3=0.0102  #0.0268
 
+
+opengl_T_opencv=glm.mat4(glm.vec4(1,0,0,0),
+                     glm.vec4(0,1,0,0),
+                     glm.vec4(0,0,1,0),
+                     glm.vec4(0,0,0,1))
+
 class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
 
@@ -82,6 +88,9 @@ class Renderer:
 
         vertex_source,fragment_source=self.get_program_background('background')
 
+        self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
+        self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
+
         ############Left Window Initialization
         self.window_left.switch_to()
         self.window_left.on_mouse_motion=self.on_mouse_motion_left
@@ -90,7 +99,7 @@ class Renderer:
         self.ctx_left=mgl.create_context(require=330,standalone=False)
         self.ctx_left.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE) #CULL_FACE does not render invisible faces
         self.ctx_left.enable(mgl.BLEND)
-        self.camera_left=Camera.Camera(self,'left')
+        self.camera_left=Camera.Camera(self,self.aruco_tracker_left.mtx,CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)
 
         #Background Image
         self.background_program_left=self.ctx_left.program(vertex_shader=vertex_source,fragment_shader=fragment_source)
@@ -110,7 +119,7 @@ class Renderer:
         self.ctx_right=mgl.create_context(require=330,standalone=False)
         self.ctx_right.enable(flags=mgl.DEPTH_TEST|mgl.CULL_FACE)
         self.ctx_right.enable(mgl.BLEND)
-        self.camera_right=Camera.Camera(self,'right')
+        self.camera_right=Camera.Camera(self,self.aruco_tracker_right.mtx,CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)
 
         #Initializing right background
         self.window_right.switch_to()
@@ -212,8 +221,7 @@ class Renderer:
         self.calibrate_handeye_error_button.grid(row=2,column=2,sticky="nsew")
 
 
-        self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
-        self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
+        
 
 
         ##############Booleans and Counters
@@ -522,8 +530,8 @@ class Renderer:
             proj_point=self.projectPointOnImagePlane(self.lci_T_si,point_si,self.aruco_tracker_left.mtx)
             self.project_point_psm1_left=proj_point
             #Projecting point on right ecm frame to show
-            proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
-            self.project_point_psm1_right=proj_point
+            #proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
+            #self.project_point_psm1_right=proj_point
     
     def grabPSM3PointCallback(self):
         if self.is_psmerror_started:
@@ -710,23 +718,21 @@ class Renderer:
 
 
     def startHandEyeErrorCalib(self):
-        if self.is_psmerror_calib:
-            self.handeye_points_count=0
-            point_si=self.model_scene_points[self.handeye_points_count]
-            point_si_list=point_si.tolist()        
-            point_si_list.append(1)
-            point_si=glm.vec4(point_si_list)
+        self.handeye_points_count=0
+        point_si=self.model_scene_points[self.handeye_points_count]
+        point_si_list=point_si.tolist()        
+        point_si_list.append(1)
+        point_si=glm.vec4(point_si_list)
+        print("point_si: "+str(point_si))
 
-            #Projecting point on left ecm frame to show 
-            proj_point=self.projectPointOnImagePlane(self.lci_T_si,point_si,self.aruco_tracker_left.mtx)
-            self.project_point_psm1_left=proj_point
-            #Projecting point on right ecm frame to show
-            proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
-            self.project_point_psm1_right=proj_point
-            self.is_handeyeerror_started=True
+        #Projecting point on left ecm frame to show 
+        proj_point=self.projectPointOnImagePlane(self.lci_T_si,point_si,self.aruco_tracker_left.mtx)
+        self.project_point_psm1_left=proj_point
+        #Projecting point on right ecm frame to show
+        proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
+        self.project_point_psm1_right=proj_point
+        self.is_handeyeerror_started=True
             
-        else:
-            print("Please Run API Correction First")
 
     def grabHandEyePointCallback(self):
         if self.is_handeyeerror_started:
@@ -759,7 +765,7 @@ class Renderer:
             #############Gets Reported Point for left camera based on ecm motion, also gets reported point of psm tip for s_T_psm transform
             
             #Get ecmi_T_ecm transform
-            cart_T_ecm=self.ecm.measured_cp()
+            cart_T_ecm=self.ecm.setpoint_cp()
             cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
             cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
             ecmi_T_ecm=utils.invHomogeneousGLM(self.cart_T_ecmi)*cart_T_ecm
@@ -1057,27 +1063,33 @@ class Renderer:
                         cam_mat=glm.mat3(*cam_mat.T.flatten()) #3x3 camera intrinsics, numpy=>glm transpose the matrix
 
                         #Gets ECM motion:
-                        cart_T_ecm=self.ecm.measured_cp()
+                        cart_T_ecm=self.ecm.setpoint_cp()
                         cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                         cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
 
 
                         ecmi_T_ecm=utils.invHomogeneousGLM(self.cart_T_ecmi)*cart_T_ecm
                         #ecmi_T_ecm=utils.scaleGLMTranform(ecmi_T_ecm,5)
-                        print("ecmi_T_ecm: "+str(ecmi_T_ecm))
+                        #print("ecmi_T_ecm: "+str(ecmi_T_ecm))
 
                         #test_point_camera=utils.invHomogeneousGLM(self.lcac_T_lcrep)*utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*test_point_scene
-                        test_point_camera=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*test_point_scene
+                        test_point_camera=opengl_T_opencv*utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*test_point_scene
 
 
 
                         test_point_camera=mul_mat*test_point_camera #Extracts top three entries [Xc,Yc,Zc]
                         proj_point=cam_mat*test_point_camera #Projects to image plane
+                        
+                        #print("X: "+str(proj_point[0]/proj_point[2]))
+                        #print("Y: "+str(proj_point[1]/proj_point[2]))
+                        u,v=utils.projectPointsWithDistortion(proj_point[0],proj_point[1],proj_point[2],self.aruco_tracker_left.dist,self.aruco_tracker_left.mtx)
+                        point_2d=tuple((int(u),int(v)))
 
-                        proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
-                        proj_point[1]=proj_point[1]/proj_point[2]
-
-                        point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
+                        #proj_point[0]=proj_point[0]/proj_point[2] #Normalize by Zc
+                        #proj_point[1]=proj_point[1]/proj_point[2]
+                        #point_2d=tuple((int(proj_point[0]),int(proj_point[1])))
+                        
+                        #print("point_2d: "+str(point_2d))
                         self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
 
 
