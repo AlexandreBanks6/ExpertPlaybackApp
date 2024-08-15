@@ -51,8 +51,8 @@ import yaml
 import pandas as pd
 
 
-ARUCO_SIDELENGTH=0.025527
-ARUCO_SEPERATION=0.1022477 
+ARUCO_SIDELENGTH=0.0254508 #0.025527
+ARUCO_SEPERATION=0.10226 #0.1022477 
 ARUCO_HEIGHT_OFFSET=0.005
 
 test_point_scene=glm.vec4(ARUCO_SIDELENGTH,0.0,0.0,1)
@@ -72,7 +72,7 @@ tool_tip_offset_psm3=0.0102  #0.0268
 
 opengl_T_opencv=glm.mat4(glm.vec4(1,0,0,0),
                      glm.vec4(0,1,0,0),
-                     glm.vec4(0,0,1,0),
+                     glm.vec4(0,0,-1,0),
                      glm.vec4(0,0,0,1))
 
 class Renderer:
@@ -320,19 +320,6 @@ class Renderer:
                 self.lcac_T_lcrep=glm.mat4(*self.lcac_T_lcrep_np.T.flatten())    
                 print('lcac_T_lcrep: '+str(self.lcac_T_lcrep))
 
-        #s_T_psm errror correction
-        self.T_psmcorr=None #The error correction for hand-eye for s_T_psm
-        self.T_psmcorr_np=None
-
-        if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/T_psmcorr.yaml'): 
-            with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/T_psmcorr.yaml','r') as file:
-                self.T_psmcorr_np=yaml.load(file) 
-
-                self.T_psmcorr_np=self.T_psmcorr_np['T_psmcorr']
-                self.T_psmcorr_np=np.array(self.T_psmcorr_np,dtype=np.float32)
-
-                self.T_psmcorr=glm.mat4(*self.T_psmcorr_np.T.flatten())    
-                print('lcac_T_lcrep: '+str(self.lcac_T_lcrep))   
 
 
 
@@ -710,9 +697,8 @@ class Renderer:
 
 
     ##########Hand-Eye Error Correction Methods
-    #Gets lcac_T_lcrep, rcac_T_rcrep & simultaneously solves T_psmcorr
+    #Gets lcac_T_lcrep, rcac_T_rcrep
     # These are used in the following transforms:
-    #s_T_psm=T_psmcorr*inv(lci_T_si)*inv(ecm_T_lc)*ecmi_T_ecm*ecmac_T_ecmrep*ecm_T_psm
     #lc_T_s=lcac_T_lcrep*inv(ecm_T_lc)*inv(ecmi_T_ecm)*ecm_T_lc*lci_T_si
     #rc_T_s=rcac_T_lrrep*inv(ecm_T_lr)*inv(ecmi_T_ecm)*ecm_T_lr*rci_T_si
 
@@ -729,8 +715,8 @@ class Renderer:
         proj_point=self.projectPointOnImagePlane(self.lci_T_si,point_si,self.aruco_tracker_left.mtx)
         self.project_point_psm1_left=proj_point
         #Projecting point on right ecm frame to show
-        proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
-        self.project_point_psm1_right=proj_point
+        #proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
+        #self.project_point_psm1_right=proj_point
         self.is_handeyeerror_started=True
             
 
@@ -743,12 +729,13 @@ class Renderer:
             point_si_list=point_si.tolist()        
             point_si_list.append(1)
             point_si=glm.vec4(point_si_list)
+            print("point_si: "+str(point_si))
 
             #Find current cam-to-scene transform
             lc_T_s=self.aruco_tracker_left.calibrateSceneDirect(self.frame_left)
             print("lc_T_s: "+str(lc_T_s))
 
-            #Left Camera
+            #Left Camera Actual Point
             point_lc_ac=lc_T_s*point_si
 
             point_lc_ac_list=[point_lc_ac[0],point_lc_ac[1],point_lc_ac[2]]
@@ -762,15 +749,16 @@ class Renderer:
 
             
 
-            #############Gets Reported Point for left camera based on ecm motion, also gets reported point of psm tip for s_T_psm transform
+            #############Gets Reported Point for left camera based on ecm motion
             
             #Get ecmi_T_ecm transform
             cart_T_ecm=self.ecm.setpoint_cp()
             cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
             cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+
             ecmi_T_ecm=utils.invHomogeneousGLM(self.cart_T_ecmi)*cart_T_ecm
 
-            point_lc_rep=utils.invHomogeneousGLM(self.ecm_T_lc)*ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si*point_si
+            point_lc_rep=utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*point_si
 
             point_lc_rep_list=[point_lc_rep[0],point_lc_rep[1],point_lc_rep[2]]
 
@@ -782,42 +770,25 @@ class Renderer:
                 self.p_lc_rep_list=np.vstack((self.p_lc_rep_list,point_lc_rep))
 
 
-            #Gets same point that PSM is touching:
-            '''
-            ecm_T_psm_rep=self.psm1.measured_cp()
-            ecm_T_psm_rep=utils.enforceOrthogonalPyKDL(ecm_T_psm_rep)
-            ecm_T_psm_rep=pm.toMatrix(ecm_T_psm_rep) #Numpy array
-
-            tool_tip_point=np.array([0,0,tool_tip_offset+0.001,1],dtype=np.float32)
-
-            point_lc_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@utils.invHomogeneousNumpy(self.ecmac_T_ecmrep_psm1_np)@ecm_T_psm_rep@tool_tip_point
-            point_lc_rep=point_lc_rep[0:3]
-
-            if self.p_lc_rep_list is None:
-                self.p_lc_rep_list=point_lc_rep
-            else:
-                self.p_lc_rep_list=np.vstack((self.p_lc_rep_list,point_lc_rep))
-
-            print("point_lc_ac: "+str(point_lc_rep))
-            print("point_lc_rep: "+str(point_lc_rep))
-            '''
 
 
             ###########Updates Visual Point for next iteration 
-            self.handeye_points_count+=1
-            count=0
-            if self.handeye_points_count>4:
-                count=8
-            point_si=self.model_scene_points[count]
+            self.handeye_points_count=0 #Single point calibration, while moving camera
+            #self.handeye_points_count+=1
+            #count=0
+            #if self.handeye_points_count>4:
+            #    count=8
+            #point_si=self.model_scene_points[count]
+            point_si=self.model_scene_points[self.handeye_points_count]
             point_si_list=point_si.tolist()        
             point_si_list.append(1)
             point_si=glm.vec4(point_si_list)
             #Projecting point on left ecm frame to show 
-            proj_point=self.projectPointOnImagePlane(self.lci_T_si,point_si,self.aruco_tracker_left.mtx)
+            proj_point=self.projectPointOnImagePlane(lc_T_s,point_si,self.aruco_tracker_left.mtx)
             self.project_point_psm1_left=proj_point
             #Projecting point on right ecm frame to show
-            proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
-            self.project_point_psm1_right=proj_point
+            #proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
+            #self.project_point_psm1_right=proj_point
 
 
     def calibrateHandEyeErrorCallback(self):
@@ -841,9 +812,12 @@ class Renderer:
             if p_lc_points_shape[0]>3:
                 
 
+                print("p_lc_ac_list: "+str(self.p_lc_ac_list))
+                print("p_lc_rep_list: "+str(self.p_lc_rep_list))
 
                 self.lcac_T_lcrep_np,inliers=utils.ransacRigidRransformation(self.p_lc_ac_list,self.p_lc_rep_list)
-
+                self.lcac_T_lcrep_np=utils.EnforceOrthogonalityNumpy_FullTransform(self.lcac_T_lcrep_np)
+                print("lcac_T_lcrep_np: "+str(self.lcac_T_lcrep_np))
 
                 #Saving Results
                 lcac_T_lcrep_list=self.lcac_T_lcrep_np.tolist()
@@ -1073,6 +1047,7 @@ class Renderer:
                         #print("ecmi_T_ecm: "+str(ecmi_T_ecm))
 
                         #test_point_camera=utils.invHomogeneousGLM(self.lcac_T_lcrep)*utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*test_point_scene
+                        #test_point_camera=self.lcac_T_lcrep*utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*test_point_scene
                         test_point_camera=opengl_T_opencv*utils.invHomogeneousGLM(self.ecm_T_lc)*utils.invHomogeneousGLM(ecmi_T_ecm)*self.ecm_T_lc*self.lci_T_si*test_point_scene
 
 

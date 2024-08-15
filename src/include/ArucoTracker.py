@@ -17,8 +17,8 @@ RANSAC_SCENE_ITERATIONS=1000 #Number of iterations for scene localization RANSAC
 #Rigid Body Definition of Ring Over Wire Aruco Holder, each four coordinates define an ArUco marker with corresponding ID:
 #Marker corners are defined clockwise from top left
 #3D model origin is the top left of AruCO ID 6
-ARUCO_SIDELENGTH=0.025527 #in meters
-ARUCO_SEPERATION=0.1022477 #From closest edges, in meters
+ARUCO_SIDELENGTH=0.0254508 #0.025527
+ARUCO_SEPERATION=0.10226 #0.1022477 
 ARUCO_HEIGHT_OFFSET=0.005
 
 RINGOWIRE_MODELPOINTS={
