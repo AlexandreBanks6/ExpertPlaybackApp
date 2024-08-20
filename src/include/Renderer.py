@@ -1,5 +1,7 @@
 import rospy
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import String 
+from std_msgs.msg import Int32
 import cv2
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Joy
@@ -18,6 +20,7 @@ from include import scene
 from include import ArucoTracker
 from include import HandEye
 from include import utils
+from include import DataLogger
 import glm
 import pyglet
 
@@ -47,9 +50,18 @@ import yaml
 import pandas as pd
 
 
+#################File Names#####################
+MOTIONS_ROOT='../resources/Motions/'
+
+
+##################ROS Topics####################
 #Image Topic Subscriptions
 RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
+
+#PC 2 Time Subscription
+PC2_Time_Topic='PlaybackSynch/pc2Time'
+filecount_Topic='PlaybackSynch/fileCount'
 
 ##################Constants#####################
 #Tool and Console Constants
@@ -145,6 +157,14 @@ class Renderer:
         #ArUco tracking objects
         self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
         self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
+
+        #Data logger object
+        self.dataLogger_pc1=DataLogger.DataLogger(self)
+
+        #Object to publish the file count to syncrhonize the file numbers between PC1 and PC2
+        rospy.Subscriber(name = PC2_Time_Topic,data_class=String,callback=tool_renderer.pc2TimeCallback,queue_size=1,buff_size=2**7)
+        self.filecount_pub=rospy.Publisher(name = filecount_Topic,data_class=Int32,queue_size=10)
+        self.filecount_pub.publish(self.dataLogger_pc1.file_count)
 
         ############Left Window Initialization
         self.window_left.switch_to()
@@ -278,12 +298,16 @@ class Renderer:
         self.virtual_overlay_button.grid(row=4,column=0,sticky="nsew")
         
         #Record Expert Motions Button
-        self.record_motions_button=tk.Button(self.gui_window,text="Record Motions",command=self.rocordMotionsCallback)
+        self.record_motions_button=tk.Button(self.gui_window,text="Record Motions (Start on PC1 before PC2)",command=self.rocordMotionsCallback)
         self.record_motions_button.grid(row=4,column=1,sticky="nsew")
 
         #Playback Tools Button
+        self.calibrate_gaze_button=tk.Button(self.gui_window,text="Calibrate Gaze (Record Motions is Pressed First)",command=self.calibrateGazeCallback)
+        self.calibrate_gaze_button.grid(row=4,column=2,sticky="nsew")
+
+        #Playback Tools Button
         self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.playbackMotionsCallback)
-        self.render_button.grid(row=4,column=2,sticky="nsew")
+        self.render_button.grid(row=4,column=3,sticky="nsew")
 
 
 
@@ -332,13 +356,17 @@ class Renderer:
         #Record motions
         self.record_motions_on=False
 
+        #Calibrate Gaze Boolean
+        self.is_gaze_calib=False
+
         #Playback motions
         self.playback_on=False
 
         ##Time Variables
         self.delta_time=None
-        self.record_time=0
-        self.render_time=0
+        self.record_time=0 #For recording
+        self.render_time=0 #For playback (playback is a continuous loop)
+        self.pc2_time=None
 
         ###########Converts the dictionary of model (scene) points to a list of list of points
         ARUCO_IDs=[6,4,5,7]
@@ -368,9 +396,11 @@ class Renderer:
         ###Getting hand-eye calibration matrices
         with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_right/hand_eye_calibration_right.yaml','r') as file:
             right_handeye=yaml.load(file)
+            file.close()
 
         with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'calibration_params_left/hand_eye_calibration_left.yaml','r') as file:
             left_handeye=yaml.load(file)
+            file.close()
 
         self.ecm_T_lc_np=left_handeye['ecm_T_leftcam']
         self.ecm_T_lc_np=np.array(self.ecm_T_lc_np,dtype='float32')
@@ -409,6 +439,7 @@ class Renderer:
 
                 self.inv_ecmac_T_ecmrep_psm1=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)    
                 self.is_psmerror_calib=True 
+                file.close()
 
         #PSM3 Error Correction
         self.ecmac_T_ecmrep_psm3=None #The API error correction factor for psm1
@@ -425,6 +456,7 @@ class Renderer:
                 print('ecmac_T_ecmrep_psm3: '+str(self.ecmac_T_ecmrep_psm3))     
                 self.inv_ecmac_T_ecmrep_psm3=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)
                 self.is_psmerror_calib=True 
+                file.close()
 
 
 
@@ -480,6 +512,17 @@ class Renderer:
 
     def rocordMotionsCallback(self):
         self.record_motions_on=not self.record_motions_on
+        #sets record time to zero:
+        self.record_time=0
+        self.pc2_time=None
+        #Initializes the csv file
+        self.dataLogger_pc1.initRecording_PC1(MOTIONS_ROOT)
+        self.filecount_pub.publish(self.dataLogger_pc1.file_count)
+
+    
+    def calibrateGazeCallback(self):
+        self.is_gaze_calib=not self.is_gaze_calib
+
 
     def playbackMotionsCallback(self):
         self.playback_on=not self.playback_on
@@ -489,6 +532,9 @@ class Renderer:
 
     def frameCallbackLeft(self,data):        
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+
+    def pc2TimeCallback(self,data):
+        self.pc2_time=data.data
     
 
      #########API Error Correction Methods
@@ -678,6 +724,7 @@ class Renderer:
                 data_psm1={'ecmac_T_ecmrep_psm1':ecmac_T_ecmrep_psm1_list}
                 with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm1.yaml','w') as f:
                     yaml.dump(data_psm1,f)
+                    f.close()
 
                 self.ecmac_T_ecmrep_psm1=glm.mat4(*self.ecmac_T_ecmrep_psm1_np.T.flatten())
                 self.inv_ecmac_T_ecmrep_psm1=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)
@@ -732,6 +779,7 @@ class Renderer:
                 data_psm3={'ecmac_T_ecmrep_psm3':ecmac_T_ecmrep_psm3_list}
                 with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm3.yaml','w') as f:
                     yaml.dump(data_psm3,f)
+                    f.close()
 
                 self.ecmac_T_ecmrep_psm3=glm.mat4(*self.ecmac_T_ecmrep_psm3_np.T.flatten())
                 self.inv_ecmac_T_ecmrep_psm3=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)
@@ -843,9 +891,11 @@ class Renderer:
             print("Shader Entered")
             with open(f'shaders/{shader_program_name}.vert') as file:
                 vertex_shader_source = file.read()
+                file.close()
 
             with open(f'shaders/{shader_program_name}.frag') as file:
                 fragment_shader_source = file.read()
+                file.close()
 
             return vertex_shader_source,fragment_shader_source
 
@@ -1015,7 +1065,9 @@ class Renderer:
     
     def render(self,dt):
         self.delta_time=dt
+        print("delta_time"+str(dt))
 
+        ############Real-Time Virtual Overlay##############
         #Get PSM Poses for virtual overlay and run instrument kinematics
         if self.virtual_overlay_on and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             cart_T_ecm=self.ecm.measured_cp()
@@ -1032,10 +1084,10 @@ class Renderer:
 
                 joint_vars_psm1=self.psm1.measured_js()[0]
                 jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
-                joint_vars_psm1=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
+                joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
                 s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1
 
-                self.instrument_kinematics(joint_vars_psm1,s_T_psm1,'PSM1')
+                self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
             
             if self.PSM3_on:
                 ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
@@ -1044,12 +1096,78 @@ class Renderer:
 
                 joint_vars_psm3=self.psm3.measured_js()[0]
                 jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
-                joint_vars_psm3=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
+                joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
                 s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3
 
-                self.instrument_kinematics(joint_vars_psm3,s_T_psm3,'PSM3')
+                self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
             
             self.move_objects()
+
+        ################Record Motions & Data###################
+        if self.record_motions_on and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+            ####Time and Indexes to record
+            #Task Time
+            self.record_time+=self.delta_time
+
+            #PC1 Time
+            pc1_time=datetime.now().time()
+
+            ####Transforms to Record
+            if self.virtual_overlay_on: #Already computed some transforms transforms
+                ecm_joints=self.ecm.measured_js()[0]
+
+                if self.PSM1_on:
+                    psm1_joints=joint_vars_psm1+jaw_angle_psm1
+                else:
+                    ecm_T_psm1=None
+                    psm1_joints=None
+                    s_T_psm1=None
+
+                if self.PSM3_on:
+                    psm3_joints=joint_vars_psm3+jaw_angle_psm3
+                else:
+                    ecm_T_psm3=None
+                    psm3_joints=None
+                    s_T_psm3=None
+                
+            else: #Did not computed needed transforms above in virtual overlay
+                cart_T_ecm=self.ecm.measured_cp()
+                cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+                cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+
+                ecm_joints=self.ecm.measured_js()[0]
+
+                if self.PSM1_on:
+                    ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                    ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
+                    ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
+                    joint_vars_psm1=self.psm1.measured_js()[0]
+                    jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                    psm1_joints=joint_vars_psm1+jaw_angle_psm1
+                    s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1
+                else:
+                    ecm_T_psm1=None
+                    psm1_joints=None
+                    s_T_psm1=None
+
+
+                if self.PSM3_on:
+                    ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm1 from API
+                    ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
+                    ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
+                    joint_vars_psm3=self.psm3.measured_js()[0]
+                    jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                    psm3_joints=joint_vars_psm3+jaw_angle_psm3
+                    s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3
+                else:
+                    ecm_T_psm3=None
+                    psm3_joints=None
+                    s_T_psm3=None
+            
+            #Writing the row to the csv file
+            self.dataLogger_pc1.writeRow_PC1(self.record_time,pc1_time,self.pc2_time,int(self.is_gaze_calib==True),s_T_psm1,s_T_psm3,\
+                                             cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints)
+                
 
 
         ################Render to left window###################
@@ -1246,5 +1364,6 @@ if __name__ == '__main__':
 
     rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackRight,queue_size=1,buff_size=2**18)
     rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackLeft,queue_size=1,buff_size=2**18)
+    rospy.Subscriber(name = PC2_Time_Topic,data_class=String,callback=tool_renderer.pc2TimeCallback,queue_size=1,buff_size=2**7)
 
     tool_renderer.run(frame_rate=1000)
