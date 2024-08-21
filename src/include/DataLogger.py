@@ -11,6 +11,7 @@ import csv
 import yaml
 import os
 from include import utils
+import Renderer
 
 
 #File Column Titles:
@@ -20,14 +21,19 @@ MOTION_HEADER_PC1=["Task Time","PC1 Time","PC2 Time","Gaze Calib","s_T_psm1"]+re
             ["psm1_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+["psm3_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+\
             ["ecm_joints"]+["q1","q2","q3","q4"]
 
-MOTION_HEADER_PC2=["PC2 Time","ECM Frame #","Gaze Frame #","lc_T_s"]+repeat_string+["rc_T_s"]+repeat_string
+MOTION_HEADER_PC2=["PC2 Time","Left ECM Frame #","Right ECM Frame #","Left Gaze Frame #","Right Gaze Frame #","lc_T_s"]+repeat_string+["rc_T_s"]+repeat_string
 
+FRAME_FPS=100
 
 class DataLogger:
     def __init__(self,app):
         print('Init Datalogger')
         self.record_filename_pc1=None
         self.record_filename_pc2=None
+        self.left_ecm_filename_pc2=None
+        self.right_ecm_filename_pc2=None
+        self.left_video_writer=None
+        self.right_video_writer=None
         self.file_count=1
         self.app=app
 
@@ -107,11 +113,21 @@ class DataLogger:
         #Initialize a new CSV file to save PC2 data to
         file_name=root_path+'PC2/Data_PC2_'+str(file_count)+'.csv'
         self.record_filename_pc2=file_name  #Creates a new data csv
-
         with open(self.record_filename_pc2,'w',newline='') as file_object:
             writer_object=csv.writer(file_object)
             writer_object.writerow(MOTION_HEADER_PC2)
             file_object.close()
+
+        #Sets the filename (and path) for the left/right ECM video
+        self.left_ecm_filename_pc2=root_path+'PC2/LeftECM_PC2_'+str(file_count)+'.mp4'
+        self.right_ecm_filename_pc2=root_path+'PC2/RightECM_PC2_'+str(file_count)+'.mp4'
+
+        #initializes the video writer objects
+        fourcc=cv2.VideoWriter_fourcc(*'mp4v')
+        self.left_video_writer=cv2.VideoWriter(self.left_ecm_filename_pc2,fourcc,FRAME_FPS,(Renderer.CONSOLE_VIEWPORT_WIDTH,Renderer.CONSOLE_VIEWPORT_HEIGHT))
+        self.right_video_writer=cv2.VideoWriter(self.right_ecm_filename_pc2,fourcc,FRAME_FPS,(Renderer.CONSOLE_VIEWPORT_WIDTH,Renderer.CONSOLE_VIEWPORT_HEIGHT))
+
+
 
     def convertHomogeneousToCSVROW(self,transform):
         #Input: 4x4 numpy array for homogeneous transform
@@ -197,7 +213,7 @@ class DataLogger:
             writer_object.writerow(row_to_write)
             file_object.close()
 
-    def writeRow_PC2(self,pc2_time,ecm_frame_number,gaze_frame_number,lc_T_s_numpy,rc_T_s_numpy):
+    def writeRow_PC2(self,pc2_time,left_ecm_frame_number,right_ecm_frame_number,left_gaze_frame_number,right_gaze_frame_number,lc_T_s_numpy,rc_T_s_numpy):
 
         #lc_T_s & rc_T_s
         if lc_T_s_numpy is not None:
@@ -210,7 +226,7 @@ class DataLogger:
         else:
             rc_T_s_list=["NaN"]*12
 
-        row_to_write=[str(pc2_time),str(ecm_frame_number),str(gaze_frame_number),""]+lc_T_s_list+[""]+rc_T_s_list
+        row_to_write=[str(pc2_time),str(left_ecm_frame_number),str(right_ecm_frame_number),str(left_gaze_frame_number),str(right_gaze_frame_number),""]+lc_T_s_list+[""]+rc_T_s_list
 
         with open(self.record_filename_pc2,'a',newline='') as file_object:
             writer_object=csv.writer(file_object)
