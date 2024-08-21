@@ -46,6 +46,9 @@ class PC2RecordAndPublish:
         #Array Message
         self.array_msg=Float32MultiArray()
 
+        #PC2 Time Message
+        self.PC2_time_message=String()
+
 
         #########Set Up TKinter Window#########
         self.gui_window=tk.Tk()
@@ -105,6 +108,9 @@ class PC2RecordAndPublish:
         #Cam-to-Scene Transform Publisher
         self.lc_T_s_publisher=rospy.Publisher(name = Renderer.lc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
         self.rc_T_s_publisher=rospy.Publisher(name = Renderer.rc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
+
+        #PC2 Time Publisher
+        self.PC2_time_publiser=rospy.Publisher(name = Renderer.PC2_Time_Topic,data_class=String,queue_size=10)
 
         #file count (for saving data and syncing files) subscriber
         rospy.Subscriber(name = Renderer.filecount_Topic, data_class=Int32, callback=self.filecountCallback,queue_size=1,buff_size=2**6)
@@ -170,6 +176,10 @@ class PC2RecordAndPublish:
                 
                 #Gets the pc2 time
                 pc2_time=datetime.now().time()
+
+                #Publishes the pc2 time
+                self.PC2_time_message.data=str(pc2_time)
+                self.PC2_time_publiser.publish(self.PC2_time_message)
                 
                 #Increments the ecm frame number:                
                 self.pc2_datalogger.writeRow_PC2(pc2_time,self.left_ecm_frame_number,self.right_ecm_frame_number,self.left_gaze_frame_number,self.right_gaze_frame_number,self.lc_T_s,self.rc_T_s)
