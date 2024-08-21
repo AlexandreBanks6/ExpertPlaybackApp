@@ -60,8 +60,11 @@ RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
 LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 
 #PC 2 Time Subscription
-PC2_Time_Topic='PlaybackSynch/pc2Time'
-filecount_Topic='PlaybackSynch/fileCount'
+PC2_Time_Topic='ExpertPlayback/pc2Time' #Published from PC2 (subscribed to by PC1)
+filecount_Topic='ExpertPlayback/fileCount' #Published from PC1 (subscribed to by PC2)
+lc_T_s_Topic='ExpertPlayback/lc_T_s' #Published from PC2 (subscribed to by PC1)
+rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
+
 
 ##################Constants#####################
 #Tool and Console Constants
@@ -162,7 +165,6 @@ class Renderer:
         self.dataLogger_pc1=DataLogger.DataLogger(self)
 
         #Object to publish the file count to syncrhonize the file numbers between PC1 and PC2
-        rospy.Subscriber(name = PC2_Time_Topic,data_class=String,callback=tool_renderer.pc2TimeCallback,queue_size=1,buff_size=2**7)
         self.filecount_pub=rospy.Publisher(name = filecount_Topic,data_class=Int32,queue_size=10)
         self.filecount_pub.publish(self.dataLogger_pc1.file_count)
 
@@ -250,14 +252,14 @@ class Renderer:
 
         ##############GUI SETUP################
         self.gui_window=tk.Tk()
-        self.gui_window.title("dVRK Playback App")
+        self.gui_window.title("dVRK Playback App PC1")
 
         self.gui_window.rowconfigure([0,1,2,3,4],weight=1)
         self.gui_window.columnconfigure([0,1,2,3],weight=1)
         self.gui_window.minsize(300,100)
 
         #Title at top
-        self.welcome_text=tk.Label(self.gui_window,text="Welcome to the dVRK Playback App")
+        self.welcome_text=tk.Label(self.gui_window,text="Welcome to the dVRK Playback App PC1")
         self.welcome_text.grid(row=0,column=1,sticky='n')
 
         #Show ArUco Button

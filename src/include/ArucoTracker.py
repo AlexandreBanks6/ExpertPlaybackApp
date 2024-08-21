@@ -268,6 +268,40 @@ class ArucoTracker:
                     cam_T_scene=glm.mat4(*cam_T_scene.T.flatten())
 
         return cam_T_scene
+    
+    def calibrateSceneDirectNumpy(self,frame):
+        #Takes in a frame, and finds cam_T_scene (c_T_s) based on one frame
+        frame_gray=cv2.cvtColor(frame.copy(),cv2.COLOR_BGR2GRAY)
+        corners,ids,_=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
+        cam_T_scene=None
+        
+        if ids is not None:
+            corners_filtered=[]
+            ids_filtered=[]
+            for id,corner in zip(ids,corners):
+                if id[0] in ARUCO_IDs:
+                    corners_filtered.append(corner)
+                    ids_filtered.append([id[0]])
+            
+            image_points=None
+            model_points=None
+            if len(ids_filtered)>0: #We found IDs after filtering            
+                for id,corner in zip(ids_filtered,corners_filtered):
+                    if image_points is None:
+                        image_points=corner[0]
+                        model_points=RINGOWIRE_MODELPOINTS[str(id[0])]
+                    else:
+                        image_points=np.vstack((image_points,corner[0]))
+                        model_points=np.vstack((model_points,RINGOWIRE_MODELPOINTS[str(id[0])]))
+                
+                success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,self.mtx,self.dist,\
+                                                                                        iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
+                
+                if success:
+                    cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                    cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
+
+        return cam_T_scene
 
 
 

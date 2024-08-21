@@ -32,14 +32,17 @@ class DataLogger:
         self.app=app
 
     def initRecording_PC1(self,root_path):
+        #Check if path exists
+        if not os.path.exists(root_path+'PC1'):
+            os.makedirs(root_path+'PC1')
 
         #Initialize a new CSV file to save PC1 data to
-        file_name=root_path+'Data_PC1_'+str(self.file_count)+'.csv'
+        file_name=root_path+'PC1/Data_PC1_'+str(self.file_count)+'.csv'
         #Gets a new filename
         while True:
             if os.path.isfile(file_name):
                 self.file_count+=1
-                file_name=root_path+'Data_PC1_'+str(self.file_count)+'.csv'                
+                file_name=root_path+'PC1/Data_PC1_'+str(self.file_count)+'.csv'                
             else:
                 break
         
@@ -97,8 +100,12 @@ class DataLogger:
 
         #file_count comes from ROS topic published by PC1
 
+        #Check if directory exists, if it doesn't create it
+        if not os.path.exists(root_path+'PC2'):
+            os.makedirs(root_path+'PC2')
+
         #Initialize a new CSV file to save PC2 data to
-        file_name=root_path+'Data_PC2_'+str(file_count)+'.csv'
+        file_name=root_path+'PC2/Data_PC2_'+str(file_count)+'.csv'
         self.record_filename_pc2=file_name  #Creates a new data csv
 
         with open(self.record_filename_pc2,'w',newline='') as file_object:
@@ -190,17 +197,15 @@ class DataLogger:
             writer_object.writerow(row_to_write)
             file_object.close()
 
-    def writeRow_PC2(self,pc2_time,ecm_frame_number,gaze_frame_number,lc_T_s,rc_T_s):
+    def writeRow_PC2(self,pc2_time,ecm_frame_number,gaze_frame_number,lc_T_s_numpy,rc_T_s_numpy):
 
         #lc_T_s & rc_T_s
-        if lc_T_s is not None:
-            lc_T_s_numpy=np.array(glm.transpose(lc_T_s).to_list(),dtype='float32')
+        if lc_T_s_numpy is not None:
             lc_T_s_list=self.convertHomogeneousToCSVROW(lc_T_s_numpy)
         else:
             lc_T_s_list=["NaN"]*12
 
-        if rc_T_s is not None:
-            rc_T_s_numpy=np.array(glm.transpose(rc_T_s).to_list(),dtype='float32')
+        if rc_T_s_numpy is not None:
             rc_T_s_list=self.convertHomogeneousToCSVROW(rc_T_s_numpy)
         else:
             rc_T_s_list=["NaN"]*12

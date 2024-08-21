@@ -13,12 +13,9 @@ import cv2
 from cv_bridge import CvBridge
 import os
 from sensor_msgs.msg import Joy
+from std_msgs.msg import String 
 
 
-RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
-LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
-Clutch_Topic='footpedals/clutch'
-Camera_Topic='footpedals/camera'
 
 
 
@@ -31,12 +28,10 @@ if __name__ == '__main__':
     rospy.Rate(10000)
 
     #Initialize the Renderer Class for both right and left eyes
-    tool_renderer=Renderer.Renderer()
+    tool_renderer=Renderer()
 
-    rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackRight,queue_size=1,buff_size=2**18)
-    rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackLeft,queue_size=1,buff_size=2**18)
+    rospy.Subscriber(name = Renderer.RightFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackRight,queue_size=1,buff_size=2**18)
+    rospy.Subscriber(name = Renderer.LeftFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackLeft,queue_size=1,buff_size=2**18)
+    rospy.Subscriber(name = Renderer.PC2_Time_Topic,data_class=String,callback=tool_renderer.pc2TimeCallback,queue_size=1,buff_size=2**7)
 
-    #rospy.Subscriber(Clutch_Topic,Joy,tool_renderer.clutchPedalCallback,queue_size=1,buff_size=1000000)
-    #rospy.Subscriber(Camera_Topic,Joy,tool_renderer.cameraPedalCallback,queue_size=1,buff_size=1000000)
-    #Running Application
     tool_renderer.run(frame_rate=1000)
