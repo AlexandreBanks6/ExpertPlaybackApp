@@ -245,7 +245,8 @@ def ransacRigidRransformation(A,B,num_iterations=1000,distance_threshold=0.005):
             continue
 
         #Apply the transformation to all the points in A
-        A_transformed=(R_candidate@A.T).T+t_candidate
+        #A_transformed=(R_candidate@A.T).T+t_candidate
+        A_transformed=np.matmul(R_candidate,A.T).T+t_candidate
 
         #Compute the distances to the corresponding points in B
         distances=np.linalg.norm(A_transformed-B,axis=1)

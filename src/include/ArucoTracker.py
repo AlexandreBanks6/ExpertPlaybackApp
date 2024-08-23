@@ -65,6 +65,7 @@ class ArucoTracker:
         #Init Aruco Marker things
         self.aruco_dict=aruco.getPredefinedDictionary(aruco.DICT_4X4_1000) #using the 4x4 dictionary to find markers
         self.aruco_params=aruco.DetectorParameters()
+        
         self.aruco_params.adaptiveThreshConstant=10
 
         self.app=app
@@ -196,7 +197,8 @@ class ArucoTracker:
 
             #print("image points:"+str(image_points))
             #print("model points"+str(model_points))
-            success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,self.mtx,self.dist,\
+            mtx=self.mtx
+            success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,mtx,self.dist,\
                                                                           iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
             #success,rotation_vector,translation_vector=cv2.solvePnP(model_points,image_points,self.mtx_left,self.dist_left,False,cv2.SOLVEPNP_IPPE_SQUARE)
             if success: #We successfully found rotation/translation to the scene with ransac
@@ -258,8 +260,8 @@ class ArucoTracker:
                     else:
                         image_points=np.vstack((image_points,corner[0]))
                         model_points=np.vstack((model_points,RINGOWIRE_MODELPOINTS[str(id[0])]))
-                
-                success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,self.mtx,self.dist,\
+                mtx=self.mtx
+                success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,mtx,self.dist,\
                                                                                         iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
                 
                 if success:
@@ -293,8 +295,8 @@ class ArucoTracker:
                     else:
                         image_points=np.vstack((image_points,corner[0]))
                         model_points=np.vstack((model_points,RINGOWIRE_MODELPOINTS[str(id[0])]))
-                
-                success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,self.mtx,self.dist,\
+                mtx=self.mtx
+                success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,mtx,self.dist,\
                                                                                         iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
                 
                 if success:

@@ -6,21 +6,15 @@ It has two functions:
 Uses a tkinter interface
 '''
 import rospy
-import glm
 import numpy as np
 from datetime import datetime
-import csv
-import os
-import tkinter as tk
-import dvrk
-import PyKDL
+import Tkinter as tk
 import cv2
+import time
 
 
 from include import DataLogger
-from include import utils
-from include import ArucoTracker
-from include import Renderer
+from include import ArucoTracker_ForPC2
 #from ROS_Msgs.msg import Mat4
 
 #ROS Topic Conversions
@@ -30,12 +24,27 @@ from std_msgs.msg import Float32MultiArray
 from std_msgs.msg import Int32
 from std_msgs.msg import String
 
+print("Imports Done")
+
+
+##################ROS Topics####################
+#Image Topic Subscriptions
+RightFrame_Topic='ubc_dVRK_ECM/right/decklink/camera/image_raw/compressed'
+LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
+
+#PC 2 Time Subscription
+PC2_Time_Topic='ExpertPlayback/pc2Time' #Published from PC2 (subscribed to by PC1)
+filecount_Topic='ExpertPlayback/fileCount' #Published from PC1 (subscribed to by PC2)
+lc_T_s_Topic='ExpertPlayback/lc_T_s' #Published from PC2 (subscribed to by PC1)
+rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
+MOTIONS_ROOT='../resources/Motions/'
+
 class PC2RecordAndPublish:
     def __init__(self):
 
         #AruCo Tracking Objects
-        self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
-        self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
+        self.aruco_tracker_left=ArucoTracker_ForPC2.ArucoTracker(self,'left')
+        self.aruco_tracker_right=ArucoTracker_ForPC2.ArucoTracker(self,'right')
 
         #Datalogger Objects
         self.pc2_datalogger=DataLogger.DataLogger(self)
@@ -55,8 +64,8 @@ class PC2RecordAndPublish:
         self.gui_window.title("dVRK Playback App PC2")
 
         #Configure Grid
-        self.gui_window.rowconfigure([0,1],weight=1)
-        self.gui_window.columnconfigure([0,1],weight=1)
+        #self.gui_window.rowconfigure([0,1],weight=1)
+        #self.gui_window.columnconfigure([0,1],weight=1)
         self.gui_window.minsize(100,50)
 
         #Title at top
@@ -71,15 +80,28 @@ class PC2RecordAndPublish:
         self.recordPC2DataButton=tk.Button(self.gui_window,text="Record PC2 Data (ecm frames, gaze frames, and lc_T_s/rc_T_s)",command=self.recordPC2DataCallback)
         self.recordPC2DataButton.grid(row=1,column=1,sticky="nsew")
 
+        #Show Aruco/Tracking Button
+        self.showArucoTrackingButton=tk.Button(self.gui_window,text="Show AruCo Tracking/Pose",command=self.showPoseTrackingCallback)
+        self.showArucoTrackingButton.grid(row=2,column=0,sticky="nsew")
         
         ###########Booleans and Vars############
         self.is_publish=False
         self.ranOnce=0
         self.is_Record=False
         self.file_count=1
+        self.is_showPoseTracking=False
 
+        self.new_time=time.time()
+        self.old_time=time.time()
+
+        #Used to check if any frames are coming in
+        self.right_frame_number_check=0 
+        self.left_frame_number_check=0
+
+        #Used to count number of frames received since recording started to align csv rows with video frames
         self.left_ecm_frame_number=0 #1 is the first frame
-        self.right_ecm_frame_number=0
+        self.right_ecm_frame_number=0       
+
         self.left_gaze_frame_number=0
         self.right_gaze_frame_number=0
 
@@ -102,33 +124,41 @@ class PC2RecordAndPublish:
         rospy.Rate(100)
 
         #Right/Left Frames Subscribers
-        rospy.Subscriber(name = Renderer.RightFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackRight,queue_size=1,buff_size=2**18)
-        rospy.Subscriber(name = Renderer.LeftFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackLeft,queue_size=1,buff_size=2**18)
+        rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackRight,queue_size=1,buff_size=2**18)
+        rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackLeft,queue_size=1,buff_size=2**18)
 
         #Cam-to-Scene Transform Publisher
-        self.lc_T_s_publisher=rospy.Publisher(name = Renderer.lc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
-        self.rc_T_s_publisher=rospy.Publisher(name = Renderer.rc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
+        self.lc_T_s_publisher=rospy.Publisher(name = lc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
+        self.rc_T_s_publisher=rospy.Publisher(name = rc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
 
         #PC2 Time Publisher
-        self.PC2_time_publiser=rospy.Publisher(name = Renderer.PC2_Time_Topic,data_class=String,queue_size=10)
+        self.PC2_time_publiser=rospy.Publisher(name = PC2_Time_Topic,data_class=String,queue_size=10)
 
         #file count (for saving data and syncing files) subscriber
-        rospy.Subscriber(name = Renderer.filecount_Topic, data_class=Int32, callback=self.filecountCallback,queue_size=1,buff_size=2**6)
+        rospy.Subscriber(name = filecount_Topic, data_class=Int32, callback=self.filecountCallback,queue_size=1,buff_size=2**6)
 
         ###############Main Loop################
         self.gui_window.after(1,self.mainCallback)
         self.gui_window.mainloop()
+        
 
     def frameCallbackRight(self,data):
-        self.right_ecm_frame_number+=1
+        self.right_frame_number_check+=1
         self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-        self.pc2_datalogger.right_video_writer.write(self.frame_right)
+        self.new_time=time.time()
+        print("Time Diff= "+str(self.new_time-self.old_time))
+        self.old_time=self.new_time
+        if self.is_Record:
+            self.pc2_datalogger.right_video_writer.write(self.frame_right)
+            self.right_ecm_frame_number+=1
         
 
     def frameCallbackLeft(self,data):
-        self.left_ecm_frame_number+=1
+        self.left_frame_number_check+=1
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-        self.pc2_datalogger.left_video_writer.write(self.frame_left)
+        if self.is_Record:
+            self.pc2_datalogger.left_video_writer.write(self.frame_left)
+            self.left_ecm_frame_number+=1
         
 
     def publishCamToSceneTransformCallback(self):
@@ -140,22 +170,36 @@ class PC2RecordAndPublish:
 
     def recordPC2DataCallback(self):
         self.is_Record=not self.is_Record
+        
+        if self.is_Record: #We are starting recording
+            #Init the csv
+            self.pc2_datalogger.initRecording_PC2(MOTIONS_ROOT,self.file_count)
+            #init frame numbers
+            self.left_ecm_frame_number=0
+            self.right_ecm_frame_number=0
+            self.left_gaze_frame_number=0
+            self.right_gaze_frame_number=0
 
-        #Init the csv
-        self.pc2_datalogger.initRecording_PC2(Renderer.MOTIONS_ROOT,self.file_count)
-
-
+    def showPoseTrackingCallback(self):
+        self.is_showPoseTracking=not self.is_showPoseTracking
+        if not self.is_showPoseTracking:
+            cv2.destroyAllWindows()
 
     def mainCallback(self):
-        if self.left_ecm_frame_number>0 and self.right_ecm_frame_number>0:
+        if self.left_frame_number_check>0 and self.left_frame_number_check>0:
             if self.is_publish: #Publish the lc_T_s and rc_T_s transforms
-                lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left)
-                rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right)
+
+                lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
+                rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
                 if lc_T_s is not None: #Updates values is there is an AruCo in view
                     self.lc_T_s=lc_T_s #Numpy array of transform
+                    #print("lc_T_s: "+str(lc_T_s))
+
                 
                 if rc_T_s is not None:
                     self.rc_T_s=rc_T_s #Numpy array of transform
+                    #print("rc_T_s: "+str(rc_T_s))
+
 
                 #Publishing the lc_T_s and rc_T_s messages
                 self.array_msg.data=self.lc_T_s.flatten().tolist()
@@ -166,13 +210,8 @@ class PC2RecordAndPublish:
 
             if self.is_Record: #Record data
                 if not self.is_publish: #Publish is not on, we must compute the cam-to-scene transform
-                    lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left)
-                    rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right)
-                    if lc_T_s is not None: #Updates values is there is an AruCo in view
-                        self.lc_T_s=lc_T_s #Numpy array of transform
-                    
-                    if rc_T_s is not None:
-                        self.rc_T_s=rc_T_s #Numpy array of transform
+                    lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
+                    rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
                 
                 #Gets the pc2 time
                 pc2_time=datetime.now().time()
@@ -181,16 +220,20 @@ class PC2RecordAndPublish:
                 self.PC2_time_message.data=str(pc2_time)
                 self.PC2_time_publiser.publish(self.PC2_time_message)
                 
-                #Increments the ecm frame number:                
-                self.pc2_datalogger.writeRow_PC2(pc2_time,self.left_ecm_frame_number,self.right_ecm_frame_number,self.left_gaze_frame_number,self.right_gaze_frame_number,self.lc_T_s,self.rc_T_s)
-            
+                #Writes the Row to the Data CSV            
+                self.pc2_datalogger.writeRow_PC2(pc2_time,self.left_ecm_frame_number,self.right_ecm_frame_number,self.left_gaze_frame_number,self.right_gaze_frame_number,lc_T_s,rc_T_s)
+        
+        self.gui_window.after(1,self.mainCallback)
+
 
             
 
-if __name__=='main':
+if __name__=='__main__':
+    print("Started")
     pc2_recorder_publisher=PC2RecordAndPublish()
-    pc2_recorder_publisher.pc2_datalogger.left_video_writer.release()
-    pc2_recorder_publisher.pc2_datalogger.right_video_writer.release()
+    if pc2_recorder_publisher.pc2_datalogger is not None:
+        pc2_recorder_publisher.pc2_datalogger.left_video_writer.release()
+        pc2_recorder_publisher.pc2_datalogger.right_video_writer.release()
     cv2.destroyAllWindows()
 
     

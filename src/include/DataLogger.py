@@ -1,17 +1,16 @@
 #Class to record robot kinematics/video from PC1 for expert playback app
 #Always start recording on PC1 before PC2
 
-import moderngl as mgl
-import sys
 import glm
 import numpy as np
 import cv2
 from datetime import datetime
 import csv
-import yaml
 import os
 from include import utils
-import Renderer
+
+CONSOLE_VIEWPORT_WIDTH=1400
+CONSOLE_VIEWPORT_HEIGHT=986
 
 
 #File Column Titles:
@@ -23,7 +22,7 @@ MOTION_HEADER_PC1=["Task Time","PC1 Time","PC2 Time","Gaze Calib","s_T_psm1"]+re
 
 MOTION_HEADER_PC2=["PC2 Time","Left ECM Frame #","Right ECM Frame #","Left Gaze Frame #","Right Gaze Frame #","lc_T_s"]+repeat_string+["rc_T_s"]+repeat_string
 
-FRAME_FPS=100
+FRAME_FPS=27
 
 class DataLogger:
     def __init__(self,app):
@@ -113,7 +112,7 @@ class DataLogger:
         #Initialize a new CSV file to save PC2 data to
         file_name=root_path+'PC2/Data_PC2_'+str(file_count)+'.csv'
         self.record_filename_pc2=file_name  #Creates a new data csv
-        with open(self.record_filename_pc2,'w',newline='') as file_object:
+        with open(self.record_filename_pc2,'w') as file_object:
             writer_object=csv.writer(file_object)
             writer_object.writerow(MOTION_HEADER_PC2)
             file_object.close()
@@ -124,8 +123,8 @@ class DataLogger:
 
         #initializes the video writer objects
         fourcc=cv2.VideoWriter_fourcc(*'mp4v')
-        self.left_video_writer=cv2.VideoWriter(self.left_ecm_filename_pc2,fourcc,FRAME_FPS,(Renderer.CONSOLE_VIEWPORT_WIDTH,Renderer.CONSOLE_VIEWPORT_HEIGHT))
-        self.right_video_writer=cv2.VideoWriter(self.right_ecm_filename_pc2,fourcc,FRAME_FPS,(Renderer.CONSOLE_VIEWPORT_WIDTH,Renderer.CONSOLE_VIEWPORT_HEIGHT))
+        self.left_video_writer=cv2.VideoWriter(self.left_ecm_filename_pc2,fourcc,FRAME_FPS,(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT))
+        self.right_video_writer=cv2.VideoWriter(self.right_ecm_filename_pc2,fourcc,FRAME_FPS,(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT))
 
 
 
@@ -227,11 +226,12 @@ class DataLogger:
             rc_T_s_list=["NaN"]*12
 
         row_to_write=[str(pc2_time),str(left_ecm_frame_number),str(right_ecm_frame_number),str(left_gaze_frame_number),str(right_gaze_frame_number),""]+lc_T_s_list+[""]+rc_T_s_list
+        row_to_write=list(row_to_write)
 
-        with open(self.record_filename_pc2,'a',newline='') as file_object:
-            writer_object=csv.writer(file_object)
+        with open(self.record_filename_pc2,'a') as file_obj:
+            writer_object=csv.writer(file_obj)
             writer_object.writerow(row_to_write)
-            file_object.close()
+            file_obj.close()
 
 
 

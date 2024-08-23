@@ -637,6 +637,7 @@ class Renderer:
             
 
             point_ecm_rep=ecm_T_psm_rep@tool_tip_point
+            #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
             point_ecm_rep=point_ecm_rep[0:3]
 
             if self.p_ecm_rep_list_psm1 is None:
@@ -693,6 +694,7 @@ class Renderer:
 
             # point_lc_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
             point_ecm_rep=ecm_T_psm_rep@tool_tip_point
+            #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
             point_ecm_rep=point_ecm_rep[0:3]
 
             if self.p_ecm_rep_list_psm3 is None:
@@ -764,6 +766,7 @@ class Renderer:
                     p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
 
                     est_point=self.ecmac_T_ecmrep_psm1_np@p_lc_rep_point
+                    #est_point=np.matmul(self.ecmac_T_ecmrep_psm1_np,p_lc_rep_point)
                     est_point=est_point[0:3]
 
 
@@ -819,6 +822,7 @@ class Renderer:
                     p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
 
                     est_point=self.ecmac_T_ecmrep_psm3_np@p_lc_rep_point
+                    #est_point=np.matmul(self.ecmac_T_ecmrep_psm3_np,p_lc_rep_point)
                     est_point=est_point[0:3]
 
 
