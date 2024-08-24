@@ -5,13 +5,11 @@ from std_msgs.msg import String
 from std_msgs.msg import Int32
 import cv2
 from cv_bridge import CvBridge
-from sensor_msgs.msg import Joy
+
 
 
 import moderngl as mgl
-import sys
 
-import skimage.transform
 
 from include import Model as mdl
 from include import Camera
@@ -19,7 +17,6 @@ from include import Light
 from include import mesh
 from include import scene
 from include import ArucoTracker
-from include import HandEye
 from include import utils
 from include import DataLogger
 from include import Playback
@@ -526,12 +523,13 @@ class Renderer:
 
     def rocordMotionsCallback(self):
         self.record_motions_on=not self.record_motions_on
-        #sets record time to zero:
-        self.record_time=0
-        self.pc2_time=None
-        #Initializes the csv file
-        self.dataLogger_pc1.initRecording_PC1(MOTIONS_ROOT)
-        self.filecount_pub.publish(self.dataLogger_pc1.file_count)
+        if self.record_motions_on:
+            #sets record time to zero:
+            self.record_time=0
+            self.pc2_time=None
+            #Initializes the csv file
+            self.dataLogger_pc1.initRecording_PC1(MOTIONS_ROOT)
+            self.filecount_pub.publish(self.dataLogger_pc1.file_count)
 
     
     def calibrateGazeCallback(self):
@@ -552,6 +550,7 @@ class Renderer:
 
     def pc2TimeCallback(self,data):
         self.pc2_time=data.data
+        #print("pc2_time: "+str(self.pc2_time))
 
     def lcTs_Callback(self,data):
         #Extracts the list
@@ -559,12 +558,14 @@ class Renderer:
         lc_T_s_numpy=np.array(lc_T_s_list,dtype='float32').reshape(4,4)
         self.lc_T_s=glm.mat4(*lc_T_s_numpy.T.flatten())
         self.inv_lc_T_s=utils.invHomogeneousGLM(self.lc_T_s)
+        #print("lc_T_s: "+str(self.lc_T_s))
 
     def rcTs_Callback(self,data):
         rc_T_s_list=data.data
         rc_T_s_numpy=np.array(rc_T_s_list,dtype='float32').reshape(4,4)
         self.rc_T_s=glm.mat4(*rc_T_s_numpy.T.flatten())  
         self.inv_rc_T_s=utils.invHomogeneousGLM(self.rc_T_s)  
+        #print("rc_T_s: "+str(self.rc_T_s))
 
      #########API Error Correction Methods
 
@@ -1096,11 +1097,11 @@ class Renderer:
     
     def render(self,dt):
         self.delta_time=dt
-        print("delta_time"+str(dt))
+        #print("delta_time"+str(dt))
 
         ############Real-Time Virtual Overlay##############
         #Get PSM Poses for virtual overlay and run instrument kinematics
-        if self.virtual_overlay_on and (not self.playback_on) and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+        if self.virtual_overlay_on and (not self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             cart_T_ecm=self.ecm.measured_cp()
             cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
             cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
@@ -1116,8 +1117,8 @@ class Renderer:
                 joint_vars_psm1=self.psm1.measured_js()[0]
                 jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
                 joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
-                #s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*ecmi_T_ecm*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #Uncomment if using kinematics based ecm motion
-                s_T_psm1=self.inv_lc_T_s*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #uncomment for visual based camera motion
+                #s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*ecmi_T_ecm*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #Uncomment if using kinematics based ecm motion (do not need this anymore)
+                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #uncomment for visual based camera motion
                 self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
             
             if self.PSM3_on:
@@ -1128,8 +1129,8 @@ class Renderer:
                 joint_vars_psm3=self.psm3.measured_js()[0]
                 jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
                 joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
-                #s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*ecmi_T_ecm*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #Uncomment if using kinematics based ecm motion
-                s_T_psm3=self.inv_lc_T_s*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #uncomment for visual based camera motion
+                #s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*ecmi_T_ecm*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #Uncomment if using kinematics based ecm motion (do not need this anymore)
+                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #uncomment for visual based camera motion
                 self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
             
             self.move_objects()
@@ -1295,9 +1296,9 @@ class Renderer:
             self.ctx_left.enable(mgl.DEPTH_TEST)
 
         ######Render Left Screen Instruments and Camera#######
-        if (self.virtual_overlay_on or self.playback_on) and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+        if (self.virtual_overlay_on or self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             
-            #inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
+            #inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm) #Uncomment for kinematics-based ECM motion
             #lc_T_s=opengl_T_opencv*self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si #Uncomment for Kinematics-Based ECM Motion
             lc_T_s=opengl_T_opencv*self.lc_T_s #Uncomment for visual-based ECM Motion
 
@@ -1381,7 +1382,7 @@ class Renderer:
         
 
         ######Render Right Screen Instruments and Camera#######
-        if (self.virtual_overlay_on or self.playback_on) and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
+        if (self.virtual_overlay_on or self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
             
             #rc_T_s=opengl_T_opencv*self.inv_ecm_T_rc*inv_ecmi_T_ecm*self.ecm_T_rc*self.rci_T_si #Uncomment for Kinematics-Based ECM Motion
             rc_T_s=opengl_T_opencv*self.rc_T_s #Uncomment for Visual-Based ECM Motion
@@ -1403,7 +1404,7 @@ class Renderer:
 
 
 
-    
+'''
 
 if __name__ == '__main__':
     
@@ -1422,3 +1423,5 @@ if __name__ == '__main__':
     rospy.Subscriber(name = rc_T_s_Topic,data_class=Float32MultiArray, callback=tool_renderer.rcTs_Callback,queue_size=1,buff_size=2**10)
 
     tool_renderer.run(frame_rate=1000)
+
+'''

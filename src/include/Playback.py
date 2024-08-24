@@ -3,7 +3,7 @@
 import csv
 import os
 from include import utils
-import Renderer
+from include import Renderer
 import numpy as np
 import pandas as pd
 import glm

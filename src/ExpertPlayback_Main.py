@@ -1,18 +1,10 @@
-#import rospy
-#from sensor_msgs.msg import CompressedImage
-import cv2
-#from cv_bridge import CvBridge
-import os
+
 from include import Renderer
-import multiprocessing
+
 
 #Ros and frame grabber imports
 import rospy
 from sensor_msgs.msg import CompressedImage
-import cv2
-from cv_bridge import CvBridge
-import os
-from sensor_msgs.msg import Joy
 from std_msgs.msg import String
 from std_msgs.msg import Float32MultiArray 
 
@@ -29,7 +21,7 @@ if __name__ == '__main__':
     rospy.Rate(10000)
 
     #Initialize the Renderer Class for both right and left eyes
-    tool_renderer=Renderer()
+    tool_renderer=Renderer.Renderer()
 
     rospy.Subscriber(name = Renderer.RightFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackRight,queue_size=1,buff_size=2**18)
     rospy.Subscriber(name = Renderer.LeftFrame_Topic, data_class=CompressedImage, callback=tool_renderer.frameCallbackLeft,queue_size=1,buff_size=2**18)
