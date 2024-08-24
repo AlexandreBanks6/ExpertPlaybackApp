@@ -266,7 +266,6 @@ class ArucoTracker:
                 
                 if success:
                     cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
-                    cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
                     cam_T_scene=glm.mat4(*cam_T_scene.T.flatten())
 
         return cam_T_scene
@@ -301,7 +300,6 @@ class ArucoTracker:
                 
                 if success:
                     cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
-                    cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
 
         return cam_T_scene
 

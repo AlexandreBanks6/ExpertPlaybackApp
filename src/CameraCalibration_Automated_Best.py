@@ -817,7 +817,6 @@ class CameraCalibGUI:
                             #print("translation_vector: "+str(translation_vector))
                             cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
                             #cam_T_scene=utils.invHomogeneousNumpy(cam_T_scene)
-                            cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
                             #cam_T_scene=utils.invHomogeneousNumpy(cam_T_scene)
                             #cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
 

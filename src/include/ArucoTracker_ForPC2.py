@@ -3,7 +3,6 @@ import cv2
 import yaml
 import numpy as np
 import glm
-from include import utils
 
 #Note: We only track aruco markers for one camera for the scene "calibration" but need to track for both camera for the hand-eye calibration
 
@@ -16,7 +15,7 @@ NUM_FRAME_DETECTIONS=10 #How many sets of aruco "frames" need to be detected, To
 # RANSAC_SCENE_ITERATIONS=275 #Number of iterations for scene localization RANSAC
 
 #Params that work with left:
-RANSAC_SCENE_REPROJECTION_ERROR=0.05 #Reprojection error for scene localization RANSAC (in meters)
+RANSAC_SCENE_REPROJECTION_ERROR=0.005 #Reprojection error for scene localization RANSAC (in meters)
 RANSAC_SCENE_ITERATIONS=400 #Number of iterations for scene localization RANSAC
 
 #Rigid Body Definition of Ring Over Wire Aruco Holder, each four coordinates define an ArUco marker with corresponding ID:
@@ -68,8 +67,9 @@ class ArucoTracker:
 
     def __init__(self,app,left_right):
         #Init Aruco Marker things
-        self.aruco_dict=cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_1000) #using the 4x4 dictionary to find markers
-        self.aruco_params=cv2.aruco.DetectorParameters_create()
+        self.aruco_dict=cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_1000) #using the 4x4 dictionary to find markers
+        self.aruco_params=cv2.aruco.DetectorParameters()
+        self.aruco_detector=cv2.aruco.ArucoDetector(self.aruco_dict,self.aruco_params)
         
         self.aruco_params.adaptiveThreshConstant=10
 
@@ -105,7 +105,7 @@ class ArucoTracker:
     def calibrateSceneDirectNumpy(self,frame,show_pose_tracking,disp_name):
         #Takes in a frame, and finds cam_T_scene (c_T_s) based on one frame
         frame_gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-        corners,ids,_=cv2.aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
+        corners,ids,_=self.aruco_detector.detectMarkers(frame_gray)
         cam_T_scene=None
         success=False
         rotation_vector=None
@@ -141,10 +141,9 @@ class ArucoTracker:
 
                 mtx=self.mtx               
                 success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,mtx,self.dist,\
-                                                                                        iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.SOLVEPNP_AP3P) #SOLVEPNP_AP3P
+                                                                                        iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC) #SOLVEPNP_AP3P
                 if success:
-                    cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
-                    cam_T_scene=utils.EnforceOrthogonalityNumpy_FullTransform(cam_T_scene)
+                    cam_T_scene=self.convertRvecTvectoHomo(rotation_vector,translation_vector)
 
                     if show_pose_tracking:
                         ids_print=np.array(ids_filtered)
@@ -161,6 +160,46 @@ class ArucoTracker:
 
     def flattenList(self,xss):
         return [x for xs in xss for x in xs]
+    
+
+    def convertRvecTvectoHomo(self,rvec,tvec):
+        tvec=tvec.flatten()
+        #print("tvec new: "+str(tvec))
+        #Input: OpenCV rvec (rotation) and tvec (translation)
+        #Output: Homogeneous Transform
+        Rot,_=cv2.Rodrigues(rvec)
+        #print("Rotation Matrix: "+str(Rot))
+        transform=np.identity(4)
+        transform[0:3,0:3]=Rot
+        transform[0:3,3]=tvec
+        transform=self.EnforceOrthogonalityNumpy_FullTransform(transform)
+        return transform
+
+    def EnforceOrthogonalityNumpy_FullTransform(self,transform):
+        transform[0:3,0:3]=self.EnforceOrthogonalityNumpy(transform[0:3,0:3])
+
+        return transform
+
+    def EnforceOrthogonalityNumpy(self,R):
+        #Function which enforces a rotation matrix to be orthogonal
+        #Input: R is a 4x numpy rotation
+
+        #Extracting columns of rotation matrix
+        x=R[:,0] 
+        y=R[:,1]
+        z=R[:,2]
+        diff_err=np.dot(x,y)
+        x_orth=x-(0.5*diff_err*y)
+        y_orth=y-(0.5*diff_err*x)
+        z_orth=np.cross(x_orth,y_orth)
+        x_norm=0.5*(3-np.dot(x_orth,x_orth))*x_orth
+        y_norm=0.5*(3-np.dot(y_orth,y_orth))*y_orth
+        z_norm=0.5*(3-np.dot(z_orth,z_orth))*z_orth
+        R_new=np.column_stack((x_norm,y_norm,z_norm))
+
+        return R_new
+    
+
 
         
     

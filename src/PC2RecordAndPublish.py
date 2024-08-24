@@ -8,7 +8,8 @@ Uses a tkinter interface
 import rospy
 import numpy as np
 from datetime import datetime
-import Tkinter as tk
+#import Tkinter as tk
+import tkinter as tk
 import cv2
 import time
 
@@ -37,6 +38,8 @@ PC2_Time_Topic='ExpertPlayback/pc2Time' #Published from PC2 (subscribed to by PC
 filecount_Topic='ExpertPlayback/fileCount' #Published from PC1 (subscribed to by PC2)
 lc_T_s_Topic='ExpertPlayback/lc_T_s' #Published from PC2 (subscribed to by PC1)
 rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
+Gaze_Number_Topic='ExpertPlayback/GazeFrameNumber'
+
 MOTIONS_ROOT='../resources/Motions/'
 
 class PC2RecordAndPublish:
@@ -102,8 +105,7 @@ class PC2RecordAndPublish:
         self.left_ecm_frame_number=0 #1 is the first frame
         self.right_ecm_frame_number=0       
 
-        self.left_gaze_frame_number=0
-        self.right_gaze_frame_number=0
+        self.gaze_frame_number=0
 
 
         ##########Transform Initialize###########
@@ -121,22 +123,24 @@ class PC2RecordAndPublish:
 
         ################ROS Init################
         rospy.init_node('ExpertPlayback_PC2')
-        rospy.Rate(100)
+        rospy.Rate(1000)
 
         #Right/Left Frames Subscribers
         rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackRight,queue_size=1,buff_size=2**18)
         rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackLeft,queue_size=1,buff_size=2**18)
 
         #Cam-to-Scene Transform Publisher
-        self.lc_T_s_publisher=rospy.Publisher(name = lc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
-        self.rc_T_s_publisher=rospy.Publisher(name = rc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
+        self.lc_T_s_publisher=rospy.Publisher(name = lc_T_s_Topic,data_class=Float32MultiArray,queue_size=1)
+        self.rc_T_s_publisher=rospy.Publisher(name = rc_T_s_Topic,data_class=Float32MultiArray,queue_size=1)
 
         #PC2 Time Publisher
-        self.PC2_time_publiser=rospy.Publisher(name = PC2_Time_Topic,data_class=String,queue_size=10)
+        self.PC2_time_publiser=rospy.Publisher(name = PC2_Time_Topic,data_class=String,queue_size=1)
 
         #file count (for saving data and syncing files) subscriber
         rospy.Subscriber(name = filecount_Topic, data_class=Int32, callback=self.filecountCallback,queue_size=1,buff_size=2**6)
 
+        #Gaze Number Topic
+        rospy.Subscriber(name = Gaze_Number_Topic, data_class=Int32, callback=self.gazeCountCallback,queue_size=1,buff_size=2**6)
         ###############Main Loop################
         self.gui_window.after(1,self.mainCallback)
         self.gui_window.mainloop()
@@ -145,9 +149,6 @@ class PC2RecordAndPublish:
     def frameCallbackRight(self,data):
         self.right_frame_number_check+=1
         self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
-        self.new_time=time.time()
-        print("Time Diff= "+str(self.new_time-self.old_time))
-        self.old_time=self.new_time
         if self.is_Record:
             self.pc2_datalogger.right_video_writer.write(self.frame_right)
             self.right_ecm_frame_number+=1
@@ -157,7 +158,11 @@ class PC2RecordAndPublish:
         self.left_frame_number_check+=1
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
         if self.is_Record:
+            init_time=time.time()
             self.pc2_datalogger.left_video_writer.write(self.frame_left)
+            after_time=time.time()
+            print("Time Diff="+str(after_time-init_time))
+
             self.left_ecm_frame_number+=1
         
 
@@ -177,16 +182,17 @@ class PC2RecordAndPublish:
             #init frame numbers
             self.left_ecm_frame_number=0
             self.right_ecm_frame_number=0
-            self.left_gaze_frame_number=0
-            self.right_gaze_frame_number=0
 
     def showPoseTrackingCallback(self):
         self.is_showPoseTracking=not self.is_showPoseTracking
         if not self.is_showPoseTracking:
             cv2.destroyAllWindows()
 
+    def gazeCountCallback(self,data):
+        self.gaze_frame_number=data.data
+
     def mainCallback(self):
-        if self.left_frame_number_check>0 and self.left_frame_number_check>0:
+        if self.left_frame_number_check>0 and self.right_frame_number_check>0:
             if self.is_publish: #Publish the lc_T_s and rc_T_s transforms
 
                 lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
@@ -211,6 +217,7 @@ class PC2RecordAndPublish:
             if self.is_Record: #Record data
                 if not self.is_publish: #Publish is not on, we must compute the cam-to-scene transform
                     lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
+                    
                     rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
                 
                 #Gets the pc2 time
@@ -218,18 +225,25 @@ class PC2RecordAndPublish:
 
                 #Publishes the pc2 time
                 self.PC2_time_message.data=str(pc2_time)
+
                 self.PC2_time_publiser.publish(self.PC2_time_message)
                 
-                #Writes the Row to the Data CSV            
-                self.pc2_datalogger.writeRow_PC2(pc2_time,self.left_ecm_frame_number,self.right_ecm_frame_number,self.left_gaze_frame_number,self.right_gaze_frame_number,lc_T_s,rc_T_s)
-        
+
+                #self.new_time=time.time()
+                #print("Time Diff Overall= "+str(self.new_time-self.old_time))
+                #self.old_time=self.new_time
+
+                #Writes the Row to the Data CSV  
+                          
+                self.pc2_datalogger.writeRow_PC2(pc2_time,self.left_ecm_frame_number,self.right_ecm_frame_number,self.gaze_frame_number,lc_T_s,rc_T_s)
+                
         self.gui_window.after(1,self.mainCallback)
 
 
             
 
 if __name__=='__main__':
-    print("Started")
+    print("Started PC2 Record and Publish")
     pc2_recorder_publisher=PC2RecordAndPublish()
     if pc2_recorder_publisher.pc2_datalogger is not None:
         pc2_recorder_publisher.pc2_datalogger.left_video_writer.release()

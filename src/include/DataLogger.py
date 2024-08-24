@@ -7,7 +7,6 @@ import cv2
 from datetime import datetime
 import csv
 import os
-from include import utils
 
 CONSOLE_VIEWPORT_WIDTH=1400
 CONSOLE_VIEWPORT_HEIGHT=986
@@ -20,7 +19,7 @@ MOTION_HEADER_PC1=["Task Time","PC1 Time","PC2 Time","Gaze Calib","s_T_psm1"]+re
             ["psm1_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+["psm3_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+\
             ["ecm_joints"]+["q1","q2","q3","q4"]
 
-MOTION_HEADER_PC2=["PC2 Time","Left ECM Frame #","Right ECM Frame #","Left Gaze Frame #","Right Gaze Frame #","lc_T_s"]+repeat_string+["rc_T_s"]+repeat_string
+MOTION_HEADER_PC2=["PC2 Time","Left ECM Frame #","Right ECM Frame #","Gaze Frame #","lc_T_s"]+repeat_string+["rc_T_s"]+repeat_string
 
 FRAME_FPS=27
 
@@ -61,42 +60,42 @@ class DataLogger:
             #Writing si_T_lci (scene to left camera initial)
             writer_object.writerow(['lci_T_si'])
             lci_T_si_numpy=np.array(glm.transpose(self.app.lci_T_si).to_list(),dtype='float32')
-            lci_T_si_list=utils.convertHomogeneousToCSVROW(lci_T_si_numpy)
+            lci_T_si_list=self.convertHomogeneousToCSVROW(lci_T_si_numpy)
             writer_object.writerow(["","","","",""]+lci_T_si_list)
 
             #Writing si_T_rci (scene to right camera initial)
             writer_object.writerow(['rci_T_si'])
             rci_T_si_numpy=np.array(glm.transpose(self.app.rci_T_si).to_list(),dtype='float32')
-            rci_T_si_list=utils.convertHomogeneousToCSVROW(rci_T_si_numpy)
+            rci_T_si_list=self.convertHomogeneousToCSVROW(rci_T_si_numpy)
             writer_object.writerow(["","","","",""]+rci_T_si_list)
 
             #Writing lc_T_ecm (hand-eye left)
             writer_object.writerow(['ecm_T_lc'])
             ecm_T_lc_numpy=np.array(glm.transpose(self.app.ecm_T_lc).to_list(),dtype='float32')
-            ecm_T_lc_list=utils.convertHomogeneousToCSVROW(ecm_T_lc_numpy)
+            ecm_T_lc_list=self.convertHomogeneousToCSVROW(ecm_T_lc_numpy)
             writer_object.writerow(["","","","",""]+ecm_T_lc_list)
 
             #Writing rc_T_ecm (hand-eye right)
             writer_object.writerow(['ecm_T_rc'])
             ecm_T_rc_numpy=np.array(glm.transpose(self.app.ecm_T_rc).to_list(),dtype='float32')
-            ecm_T_rc_list=utils.convertHomogeneousToCSVROW(ecm_T_rc_numpy)
+            ecm_T_rc_list=self.convertHomogeneousToCSVROW(ecm_T_rc_numpy)
             writer_object.writerow(["","","","",""]+ecm_T_rc_list)
 
             #Writing cart_T_ecmi (robot base to ecm initial)
             writer_object.writerow(['cart_T_ecmi'])
             cart_T_ecmi_numpy=np.array(glm.transpose(self.app.cart_T_ecmi).to_list(),dtype='float32')
-            cart_T_ecmi_list=utils.convertHomogeneousToCSVROW(cart_T_ecmi_numpy)
+            cart_T_ecmi_list=self.convertHomogeneousToCSVROW(cart_T_ecmi_numpy)
             writer_object.writerow(["","","","",""]+cart_T_ecmi_list)
 
             #ecmac_T_ecmrep_psm1 & ecmac_T_ecmrep_psm3 (API error correction)
             writer_object.writerow(['ecmac_T_ecmrep_psm1'])
             ecmac_T_ecmrep_psm1_numpy=np.array(glm.transpose(self.app.ecmac_T_ecmrep_psm1).to_list(),dtype='float32')
-            ecmac_T_ecmrep_psm1_list=utils.convertHomogeneousToCSVROW(ecmac_T_ecmrep_psm1_numpy)
+            ecmac_T_ecmrep_psm1_list=self.convertHomogeneousToCSVROW(ecmac_T_ecmrep_psm1_numpy)
             writer_object.writerow(["","","","",""]+ecmac_T_ecmrep_psm1_list)
 
             writer_object.writerow(['ecmac_T_ecmrep_psm3'])
             ecmac_T_ecmrep_psm3_numpy=np.array(glm.transpose(self.app.ecmac_T_ecmrep_psm3).to_list(),dtype='float32')
-            ecmac_T_ecmrep_psm3_list=utils.convertHomogeneousToCSVROW(ecmac_T_ecmrep_psm3_numpy)
+            ecmac_T_ecmrep_psm3_list=self.convertHomogeneousToCSVROW(ecmac_T_ecmrep_psm3_numpy)
             writer_object.writerow(["","","","",""]+ecmac_T_ecmrep_psm3_list)
 
             file_object.close()
@@ -122,7 +121,7 @@ class DataLogger:
         self.right_ecm_filename_pc2=root_path+'PC2/RightECM_PC2_'+str(file_count)+'.mp4'
 
         #initializes the video writer objects
-        fourcc=cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc=cv2.VideoWriter_fourcc(*'avc1')
         self.left_video_writer=cv2.VideoWriter(self.left_ecm_filename_pc2,fourcc,FRAME_FPS,(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT))
         self.right_video_writer=cv2.VideoWriter(self.right_ecm_filename_pc2,fourcc,FRAME_FPS,(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT))
 
@@ -212,7 +211,7 @@ class DataLogger:
             writer_object.writerow(row_to_write)
             file_object.close()
 
-    def writeRow_PC2(self,pc2_time,left_ecm_frame_number,right_ecm_frame_number,left_gaze_frame_number,right_gaze_frame_number,lc_T_s_numpy,rc_T_s_numpy):
+    def writeRow_PC2(self,pc2_time,left_ecm_frame_number,right_ecm_frame_number,gaze_frame_number,lc_T_s_numpy,rc_T_s_numpy):
 
         #lc_T_s & rc_T_s
         if lc_T_s_numpy is not None:
@@ -225,13 +224,25 @@ class DataLogger:
         else:
             rc_T_s_list=["NaN"]*12
 
-        row_to_write=[str(pc2_time),str(left_ecm_frame_number),str(right_ecm_frame_number),str(left_gaze_frame_number),str(right_gaze_frame_number),""]+lc_T_s_list+[""]+rc_T_s_list
+        row_to_write=[str(pc2_time),str(left_ecm_frame_number),str(right_ecm_frame_number),str(gaze_frame_number),""]+lc_T_s_list+[""]+rc_T_s_list
         row_to_write=list(row_to_write)
 
         with open(self.record_filename_pc2,'a') as file_obj:
             writer_object=csv.writer(file_obj)
             writer_object.writerow(row_to_write)
             file_obj.close()
+
+    def convertHomogeneousToCSVROW(self,transform):
+        #Input: 4x4 numpy array for homogeneous transform
+        #Output: 12x1 string list with: "Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"
+
+        string_list=[str(transform[0,3]),str(transform[1,3]),str(transform[2,3]),\
+                    str(transform[0,0]),str(transform[0,1]),str(transform[0,2]),\
+                    str(transform[1,0]),str(transform[1,1]),str(transform[1,2]),\
+                    str(transform[2,0]),str(transform[2,1]),str(transform[2,2])]
+        
+        
+        return string_list
 
 
 
