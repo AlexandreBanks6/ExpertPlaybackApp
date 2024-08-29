@@ -37,12 +37,13 @@ class Playback:
 
         with open(self.playback_filename_pc1,'r') as file_object:
             csv_reader=csv.reader(file_object)
-            #Skip the first 15 rows because we only care about s_T_psm1, s_T_psm3, psm1_joints, psm3_joints
-            for _ in range(15):
+            #Skip the first 10 rows because we only care about s_T_psm1, s_T_psm3, psm1_joints, psm3_joints
+            for _ in range(10):
                 next(csv_reader,None)
             
             #Read the first column
             render_times_list=[float(row[0]) for row in csv_reader if row] #Loops for the rows and returns time as a list of floats
+            
             self.playback_time_array=np.array(render_times_list,dtype='float32')
             file_object.close()
 
@@ -54,7 +55,7 @@ class Playback:
             self.app.playback_time=0.0000
             index=0
 
-        index=index+15 #Must increment by 15, because playback_time_array ignores first 15 lines
+        index=index+10 #Must increment by 10, because playback_time_array ignores first 10 lines
         data_row=pd.read_csv(self.playback_filename_pc1,skiprows=index,nrows=1)
         data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
 
@@ -63,18 +64,18 @@ class Playback:
     def getPSM1State(self,data_list):
         #Returns the 4x4 s_T_psm1 glm transform and three joint parameters: psm1_joints=[body rotation (q6), jaw rotation (q7), jaw seperation (theta_j)]
 
-        s_T_psm1_list=data_list[5:16]
+        s_T_psm1_list=data_list[5:17]
         s_T_psm1=self.ConvertDataRow_ToGLMPose(s_T_psm1_list)
-        psm1_joints=data_list[74:76]
+        psm1_joints=data_list[74:77]
 
         return s_T_psm1, psm1_joints
     
     def getPSM3State(self,data_list):
         #Returns the 4x4 s_T_psm3 glm transform and three joint parameters: psm3_joints=[body rotation (q6), jaw rotation (q7), jaw seperation (theta_j)]
 
-        s_T_psm3_list=data_list[18:29]
+        s_T_psm3_list=data_list[18:30]
         s_T_psm3=self.ConvertDataRow_ToGLMPose(s_T_psm3_list)
-        psm3_joints=data_list[83:85]
+        psm3_joints=data_list[82:85]
 
         return s_T_psm3, psm3_joints
 

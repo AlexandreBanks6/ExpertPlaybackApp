@@ -56,47 +56,43 @@ class DataLogger:
         with open(self.record_filename_pc1,'w',newline='') as file_object:
             writer_object=csv.writer(file_object)
             writer_object.writerow(MOTION_HEADER_PC1)
+            writer_object.writerow([""]) #Blank Space
 
             #Writing si_T_lci (scene to left camera initial)
-            writer_object.writerow(['lci_T_si'])
             lci_T_si_numpy=np.array(glm.transpose(self.app.lci_T_si).to_list(),dtype='float32')
             lci_T_si_list=self.convertHomogeneousToCSVROW(lci_T_si_numpy)
-            writer_object.writerow(["","","","",""]+lci_T_si_list)
+            writer_object.writerow(["lci_T_si","","","",""]+lci_T_si_list)
 
             #Writing si_T_rci (scene to right camera initial)
-            writer_object.writerow(['rci_T_si'])
             rci_T_si_numpy=np.array(glm.transpose(self.app.rci_T_si).to_list(),dtype='float32')
             rci_T_si_list=self.convertHomogeneousToCSVROW(rci_T_si_numpy)
-            writer_object.writerow(["","","","",""]+rci_T_si_list)
+            writer_object.writerow(["rci_T_si","","","",""]+rci_T_si_list)
 
             #Writing lc_T_ecm (hand-eye left)
-            writer_object.writerow(['ecm_T_lc'])
             ecm_T_lc_numpy=np.array(glm.transpose(self.app.ecm_T_lc).to_list(),dtype='float32')
             ecm_T_lc_list=self.convertHomogeneousToCSVROW(ecm_T_lc_numpy)
-            writer_object.writerow(["","","","",""]+ecm_T_lc_list)
+            writer_object.writerow(["ecm_T_lc","","","",""]+ecm_T_lc_list)
 
             #Writing rc_T_ecm (hand-eye right)
-            writer_object.writerow(['ecm_T_rc'])
             ecm_T_rc_numpy=np.array(glm.transpose(self.app.ecm_T_rc).to_list(),dtype='float32')
             ecm_T_rc_list=self.convertHomogeneousToCSVROW(ecm_T_rc_numpy)
-            writer_object.writerow(["","","","",""]+ecm_T_rc_list)
+            writer_object.writerow(["ecm_T_rc","","","",""]+ecm_T_rc_list)
 
             #Writing cart_T_ecmi (robot base to ecm initial)
-            writer_object.writerow(['cart_T_ecmi'])
             cart_T_ecmi_numpy=np.array(glm.transpose(self.app.cart_T_ecmi).to_list(),dtype='float32')
             cart_T_ecmi_list=self.convertHomogeneousToCSVROW(cart_T_ecmi_numpy)
-            writer_object.writerow(["","","","",""]+cart_T_ecmi_list)
+            writer_object.writerow(["cart_T_ecmi","","","",""]+cart_T_ecmi_list)
 
             #ecmac_T_ecmrep_psm1 & ecmac_T_ecmrep_psm3 (API error correction)
-            writer_object.writerow(['ecmac_T_ecmrep_psm1'])
             ecmac_T_ecmrep_psm1_numpy=np.array(glm.transpose(self.app.ecmac_T_ecmrep_psm1).to_list(),dtype='float32')
             ecmac_T_ecmrep_psm1_list=self.convertHomogeneousToCSVROW(ecmac_T_ecmrep_psm1_numpy)
-            writer_object.writerow(["","","","",""]+ecmac_T_ecmrep_psm1_list)
+            writer_object.writerow(["ecmac_T_ecmrep_psm1","","","",""]+ecmac_T_ecmrep_psm1_list)
 
-            writer_object.writerow(['ecmac_T_ecmrep_psm3'])
             ecmac_T_ecmrep_psm3_numpy=np.array(glm.transpose(self.app.ecmac_T_ecmrep_psm3).to_list(),dtype='float32')
             ecmac_T_ecmrep_psm3_list=self.convertHomogeneousToCSVROW(ecmac_T_ecmrep_psm3_numpy)
-            writer_object.writerow(["","","","",""]+ecmac_T_ecmrep_psm3_list)
+            writer_object.writerow(["ecmac_T_ecmrep_psm3","","","",""]+ecmac_T_ecmrep_psm3_list)
+
+            writer_object.writerow([""]) #Blank Space
 
             file_object.close()
     
