@@ -44,10 +44,11 @@ MOTIONS_ROOT='../resources/Motions/'
 
 class PC2RecordAndPublish:
     def __init__(self):
-
+        
         #AruCo Tracking Objects
         self.aruco_tracker_left=ArucoTracker_ForPC2.ArucoTracker(self,'left')
         self.aruco_tracker_right=ArucoTracker_ForPC2.ArucoTracker(self,'right')
+        
 
         #Datalogger Objects
         self.pc2_datalogger=DataLogger.DataLogger(self)
@@ -97,6 +98,8 @@ class PC2RecordAndPublish:
         self.new_time=time.time()
         self.old_time=time.time()
 
+        self.left_right='left'
+
         #Used to check if any frames are coming in
         self.right_frame_number_check=0 
         self.left_frame_number_check=0
@@ -126,21 +129,114 @@ class PC2RecordAndPublish:
         rospy.Rate(1000)
 
         #Right/Left Frames Subscribers
-        rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackRight,queue_size=1,buff_size=2**18)
-        rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackLeft,queue_size=1,buff_size=2**18)
+        try:
+            rospy.Subscriber(name = RightFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackRight,queue_size=1,buff_size=2**18)
+        except rospy.ROSInterruptException:
+            print("ROS Node Interrupted")
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+        except Exception as e:
+            print("Unexpected Error: "+str(e))
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+
+        try:
+            rospy.Subscriber(name = LeftFrame_Topic, data_class=CompressedImage, callback=self.frameCallbackLeft,queue_size=1,buff_size=2**18)
+        except rospy.ROSInterruptException:
+            print("ROS Node Interrupted")
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+        except Exception as e:
+            print("Unexpected Error: "+str(e))
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
 
         #Cam-to-Scene Transform Publisher
-        self.lc_T_s_publisher=rospy.Publisher(name = lc_T_s_Topic,data_class=Float32MultiArray,queue_size=1)
-        self.rc_T_s_publisher=rospy.Publisher(name = rc_T_s_Topic,data_class=Float32MultiArray,queue_size=1)
+        try:
+            self.lc_T_s_publisher=rospy.Publisher(name = lc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
+        except rospy.ROSInterruptException:
+            print("ROS Node Interrupted")
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+        except Exception as e:
+            print("Unexpected Error: "+str(e))
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+
+        try:
+            self.rc_T_s_publisher=rospy.Publisher(name = rc_T_s_Topic,data_class=Float32MultiArray,queue_size=10)
+        except rospy.ROSInterruptException:
+            print("ROS Node Interrupted")
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+        except Exception as e:
+            print("Unexpected Error: "+str(e))
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
 
         #PC2 Time Publisher
-        self.PC2_time_publiser=rospy.Publisher(name = PC2_Time_Topic,data_class=String,queue_size=1)
+        try:
+            self.PC2_time_publiser=rospy.Publisher(name = PC2_Time_Topic,data_class=String,queue_size=10)
+        except rospy.ROSInterruptException:
+            print("ROS Node Interrupted")
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+        except Exception as e:
+            print("Unexpected Error: "+str(e))
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
 
         #file count (for saving data and syncing files) subscriber
-        rospy.Subscriber(name = filecount_Topic, data_class=Int32, callback=self.filecountCallback,queue_size=1,buff_size=2**6)
+        try:
+            rospy.Subscriber(name = filecount_Topic, data_class=Int32, callback=self.filecountCallback,queue_size=1,buff_size=2**8)
+        except rospy.ROSInterruptException:
+            print("ROS Node Interrupted")
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+        except Exception as e:
+            print("Unexpected Error: "+str(e))
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
 
         #Gaze Number Topic
-        rospy.Subscriber(name = Gaze_Number_Topic, data_class=Int32, callback=self.gazeCountCallback,queue_size=1,buff_size=2**6)
+        try:
+            rospy.Subscriber(name = Gaze_Number_Topic, data_class=Int32, callback=self.gazeCountCallback,queue_size=1,buff_size=2**6)
+        except rospy.ROSInterruptException:
+            print("ROS Node Interrupted")
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+        except Exception as e:
+            print("Unexpected Error: "+str(e))
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
         ###############Main Loop################
         self.gui_window.after(1,self.mainCallback)
         self.gui_window.mainloop()
@@ -158,10 +254,10 @@ class PC2RecordAndPublish:
         self.left_frame_number_check+=1
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
         if self.is_Record:
-            init_time=time.time()
+            #init_time=time.time()
             self.pc2_datalogger.left_video_writer.write(self.frame_left)
-            after_time=time.time()
-            print("Time Diff="+str(after_time-init_time))
+            #after_time=time.time()
+            #print("Time Diff="+str(after_time-init_time))
 
             self.left_ecm_frame_number+=1
         
@@ -192,62 +288,119 @@ class PC2RecordAndPublish:
         self.gaze_frame_number=data.data
 
     def mainCallback(self):
-        if self.left_frame_number_check>0 and self.right_frame_number_check>0:
-            if self.is_publish: #Publish the lc_T_s and rc_T_s transforms
+        if not rospy.is_shutdown():
+            if self.left_frame_number_check>0 and self.right_frame_number_check>0:
+                if self.is_publish: #Publish the lc_T_s and rc_T_s transforms
 
-                lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
-                rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
-                if lc_T_s is not None: #Updates values is there is an AruCo in view
-                    self.lc_T_s=lc_T_s #Numpy array of transform
-                    #print("lc_T_s: "+str(lc_T_s))
-
-                
-                if rc_T_s is not None:
-                    self.rc_T_s=rc_T_s #Numpy array of transform
-                    #print("rc_T_s: "+str(rc_T_s))
-
-
-                #Publishing the lc_T_s and rc_T_s messages
-                self.array_msg.data=self.lc_T_s.flatten().tolist()
-                self.lc_T_s_publisher.publish(self.array_msg)
-
-                self.array_msg.data=self.rc_T_s.flatten().tolist()
-                self.rc_T_s_publisher.publish(self.array_msg)
-
-            if self.is_Record: #Record data
-                if not self.is_publish: #Publish is not on, we must compute the cam-to-scene transform
                     lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
-                    
                     rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
-                
-                #Gets the pc2 time
-                pc2_time=datetime.now().time()
-
-                #Publishes the pc2 time
-                self.PC2_time_message.data=str(pc2_time)
-
-                self.PC2_time_publiser.publish(self.PC2_time_message)
-                
-
-                #self.new_time=time.time()
-                #print("Time Diff Overall= "+str(self.new_time-self.old_time))
-                #self.old_time=self.new_time
-
-                #Writes the Row to the Data CSV  
-                          
-                self.pc2_datalogger.writeRow_PC2(pc2_time,self.left_ecm_frame_number,self.right_ecm_frame_number,self.gaze_frame_number,lc_T_s,rc_T_s)
-                
-        self.gui_window.after(1,self.mainCallback)
 
 
-            
+                    if lc_T_s is not None: #Updates values is there is an AruCo in view
+                        self.lc_T_s=lc_T_s #Numpy array of transform
+                        #print("lc_T_s: "+str(lc_T_s))
+
+                    
+                    if rc_T_s is not None:
+                        self.rc_T_s=rc_T_s #Numpy array of transform
+                        #print("rc_T_s: "+str(rc_T_s))
+
+
+                    #Publishing the lc_T_s and rc_T_s messages
+                    self.array_msg.data=self.lc_T_s.flatten().tolist()
+                    try:
+                        self.lc_T_s_publisher.publish(self.array_msg)
+                    except rospy.ROSInterruptException:
+                        print("ROS Node Interrupted")
+                        self.pc2_datalogger.left_video_writer.release()
+                        self.pc2_datalogger.right_video_writer.release()
+                        cv2.destroyAllWindows()
+                        exit()
+                    except Exception as e:
+                        print("Unexpected Error: "+str(e))
+                        self.pc2_datalogger.left_video_writer.release()
+                        self.pc2_datalogger.right_video_writer.release()
+                        cv2.destroyAllWindows()
+                        exit()
+                    
+
+
+                    self.array_msg.data=self.rc_T_s.flatten().tolist()
+                    try:
+                        self.rc_T_s_publisher.publish(self.array_msg)
+                    except rospy.ROSInterruptException:
+                        print("ROS Node Interrupted")
+                        self.pc2_datalogger.left_video_writer.release()
+                        self.pc2_datalogger.right_video_writer.release()
+                        cv2.destroyAllWindows()
+                        exit()
+                    except Exception as e:
+                        print("Unexpected Error: "+str(e))
+                        self.pc2_datalogger.left_video_writer.release()
+                        self.pc2_datalogger.right_video_writer.release()
+                        cv2.destroyAllWindows()
+                        exit()
+                    #Gets the pc2 time
+                    pc2_time=datetime.now().time()
+
+                    #Publishes the pc2 time
+                    self.PC2_time_message.data=str(pc2_time)
+                    try:
+                        self.PC2_time_publiser.publish(self.PC2_time_message)
+                    except rospy.ROSInterruptException:
+                        print("ROS Node Interrupted")
+                        self.pc2_datalogger.left_video_writer.release()
+                        self.pc2_datalogger.right_video_writer.release()
+                        cv2.destroyAllWindows()
+                        exit()
+                    except Exception as e:
+                        print("Unexpected Error: "+str(e))
+                        self.pc2_datalogger.left_video_writer.release()
+                        self.pc2_datalogger.right_video_writer.release()
+                        cv2.destroyAllWindows()
+                        exit()
+
+
+                if self.is_Record: #Record data
+                    if not self.is_publish: #Publish is not on, we must compute the cam-to-scene transform
+                        lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
+                        #init_time=time.time()
+                        rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
+                        #after_time=time.time()
+                        #print("Time Diff="+str(after_time-init_time))
+                        pc2_time=datetime.now().time()
+                    
+
+                    # self.new_time=time.time()
+                    # print("Time Diff Overall= "+str(self.new_time-self.old_time))
+                    # self.old_time=self.new_time
+
+                    #Writes the Row to the Data CSV  
+                    self.pc2_datalogger.writeRow_PC2(pc2_time,self.left_ecm_frame_number,self.right_ecm_frame_number,self.gaze_frame_number,lc_T_s,rc_T_s)
+                    
+            self.gui_window.after(1,self.mainCallback)
+        else:
+            #ROS is shutdown
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            self.gui_window.quit()
+            exit()
+
+
+
 
 if __name__=='__main__':
     print("Started PC2 Record and Publish")
-    pc2_recorder_publisher=PC2RecordAndPublish()
+    try:
+        pc2_recorder_publisher=PC2RecordAndPublish()
+    except Exception as e:
+        print("Error: "+str(e))
+        exit()
+        
+
     if pc2_recorder_publisher.pc2_datalogger is not None:
         pc2_recorder_publisher.pc2_datalogger.left_video_writer.release()
         pc2_recorder_publisher.pc2_datalogger.right_video_writer.release()
     cv2.destroyAllWindows()
 
-    
