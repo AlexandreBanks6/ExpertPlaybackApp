@@ -845,7 +845,7 @@ class CameraCalibGUI:
         right_cam_T_scene_rvec_new=[]
         right_cam_T_scene_tvec_new=[]
 
-        for i in range(len(rb_T_ecm_right)-1):
+        for i in range(len(rb_T_ecm_right)):
             if i not in FRAMES_TO_REMOVE_RIGHT:
                 rb_T_ecm_right_new.append(rb_T_ecm_right[i])
                 rightcam_T_scene_new.append(rightcam_T_scene[i])
@@ -859,7 +859,7 @@ class CameraCalibGUI:
         left_cam_T_scene_tvec_new=[]
         rb_T_ecm_left_new=[]
         leftcam_T_scene_new=[]
-        for i in range(len(rb_T_ecm_left)-1):
+        for i in range(len(rb_T_ecm_left)):
             if i not in FRAMES_TO_REMOVE_LEFT:
                 rb_T_ecm_left_new.append(rb_T_ecm_left[i])
                 leftcam_T_scene_new.append(leftcam_T_scene[i])
