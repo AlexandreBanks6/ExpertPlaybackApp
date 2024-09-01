@@ -35,7 +35,7 @@ RANSAC_SCENE_ITERATIONS=1000000 #Number of iterations for scene localization RAN
 #3D model origin is the top left of AruCO ID 6
 ARUCO_SIDELENGTH=0.0254508#0.0253492 #0.025527 #0.0253492 #in meters
 ARUCO_SEPERATION=0.10226 #From closest edges, in meters
-ARUCO_HEIGHT_OFFSET=0######!!!!!!!!!!Use Planar ArUco rig!!!!!!!!!!!!!!
+ARUCO_HEIGHT_OFFSET=0.005 ######!!!!!!!!!!Use Planar ArUco rig!!!!!!!!!!!!!!
 
 RINGOWIRE_MODELPOINTS={
     "6":np.array([
@@ -64,9 +64,9 @@ RINGOWIRE_MODELPOINTS={
 }
 
 
-FRAMES_TO_REMOVE_RIGHT=[1,11,18,22,24,27,29,31,34]   #These frames were determined to be garbage visually
-FRAMES_TO_REMOVE_LEFT=[1,2,11,15,22,24,27,28,31]
-NUM_FRAMES_CAPTURED=35
+FRAMES_TO_REMOVE_RIGHT=[8,13,15,19,20,31]   #These frames were determined to be garbage visually
+FRAMES_TO_REMOVE_LEFT=[2,13,19,26,33]
+NUM_FRAMES_CAPTURED=36
 
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
 ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
@@ -860,7 +860,7 @@ class CameraCalibGUI:
         rb_T_ecm_left_new=[]
         leftcam_T_scene_new=[]
         for i in range(len(rb_T_ecm_left)-1):
-            if i not in FRAMES_TO_REMOVE_RIGHT:
+            if i not in FRAMES_TO_REMOVE_LEFT:
                 rb_T_ecm_left_new.append(rb_T_ecm_left[i])
                 leftcam_T_scene_new.append(leftcam_T_scene[i])
                 left_cam_T_scene_rvec_new.append(left_cam_T_scene_rvec[i])
@@ -1024,7 +1024,7 @@ class CameraCalibGUI:
         ecm_T_leftcam_cv[0:3,3]=t_cam2gripper.flatten()
         #print("ecm_T_leftcam_cv: "+str(ecm_T_leftcam_cv))
         
-        #ecm_T_leftcam_cv_list=ecm_T_leftcam_cv.tolist()
+        ecm_T_leftcam_cv_list=ecm_T_leftcam_cv.tolist()
         
         ecm_T_leftcam_list=ecm_T_leftcam.tolist()
         data_left = {'ecm_T_leftcam': ecm_T_leftcam_list}

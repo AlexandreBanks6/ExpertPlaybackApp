@@ -683,7 +683,7 @@ class Renderer:
 
             
 
-            #############Gets Reported Point for left camera
+            #############Gets Reported Point
             #rospy.sleep(0.5)
             try_true=False
             try:
@@ -1196,7 +1196,7 @@ class Renderer:
                         joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
 
                         if self.is_kinematics_cam:
-                            s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*ecmi_T_ecm*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
+                            s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
                         else:
                             s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #for visual based camera motion
                         self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
@@ -1217,7 +1217,7 @@ class Renderer:
                         jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
                         joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
                         if self.is_kinematics_cam:
-                            s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*ecmi_T_ecm*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
+                            s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
                         else:
                             s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #for visual based camera motion
                         self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
@@ -1254,7 +1254,7 @@ class Renderer:
             else: #Did not computed needed transforms above in virtual overlay
                 try_true=False
                 try:
-                    cart_T_ecm=self.ecm.measured_cp()
+                    cart_T_ecm=self.ecm.setpoint_cp()
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
@@ -1286,9 +1286,9 @@ class Renderer:
                             psm1_joints=psm1_joints.tolist()
 
                             if self.is_kinematics_cam:
-                                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*ecmi_T_ecm*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #Uncomment if using kinematics based ecm motion
+                                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #Uncomment if using kinematics based ecm motion
                             else:
-                                s_T_psm1=self.inv_lc_T_s*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #uncomment for visual based camera motion
+                                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #uncomment for visual based camera motion
                     else:
                         ecm_T_psm1=None
                         psm1_joints=None
@@ -1313,9 +1313,9 @@ class Renderer:
                             psm3_joints=psm3_joints.tolist()
 
                             if self.is_kinematics_cam:
-                                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*ecmi_T_ecm*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #Uncomment if using kinematics based ecm motion
+                                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #Uncomment if using kinematics based ecm motion
                             else:
-                                s_T_psm3=self.inv_lc_T_s*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #uncomment for visual based camera motion
+                                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #uncomment for visual based camera motion
                     else:
                         ecm_T_psm3=None
                         psm3_joints=None
@@ -1474,6 +1474,8 @@ class Renderer:
             if self.is_kinematics_cam:
                 inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm) #Uncomment for kinematics-based ECM motion
                 lc_T_s=opengl_T_opencv*self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si #Uncomment for Kinematics-Based ECM Motion
+                #print("Kinematics Based lc_T_s: "+str(self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si))
+                #print("Visual Based lc_T_s: "+str(self.lc_T_s))
             else:
                 lc_T_s=opengl_T_opencv*self.lc_T_s #Uncomment for visual-based ECM Motion
 

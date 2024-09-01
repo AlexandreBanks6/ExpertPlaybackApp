@@ -4,43 +4,127 @@ import numpy as np
 import dvrk
 import rospy
 from include import utils
-
-psm=dvrk.psm("PSM1")
-psm.enable()
-psm.home()
+import tf_conversions.posemath as pm
+import PyKDL
 
 ecm=dvrk.ecm("ECM")
 ecm.enable()
 ecm.home()
 
+#Create Motion Matrices:
+frame_list=[]
+#1
+#Rotate
+R=utils.rotationX(2*(np.pi/180))
+R=R*utils.rotationY(3*(np.pi/180))
+frame=np.eye(4)
+frame[:3,:3]=R
+#Translate
+frame[:3,3]=np.array([0,0.005,0],dtype='float32')
+frame_list.append(frame)
 
+#2
+#Rotate
+R=utils.rotationZ(2.5*(np.pi/180))
+R=R*utils.rotationY(6*(np.pi/180))
+frame=np.eye(4)
+frame[:3,:3]=R
+#Translate
+frame[:3,3]=np.array([0.008,0,0],dtype='float32')
+frame_list.append(frame)
 
+#3
+#Rotate
+R=utils.rotationX(-2*(np.pi/180))
+R=R*utils.rotationZ(-6*(np.pi/180))
+frame=np.eye(4)
+frame[:3,:3]=R
+#Translate
+frame[:3,3]=np.array([0,0,0.01],dtype='float32')
+frame_list.append(frame)
+
+#4
+#Rotate
+R=utils.rotationY(-4*(np.pi/180))
+R=R*utils.rotationX(-3*(np.pi/180))
+frame=np.eye(4)
+frame[:3,:3]=R
+#Translate
+frame[:3,3]=np.array([0.005,0,-0.012],dtype='float32')
+frame_list.append(frame)
+
+#5
+#Rotate
+R=utils.rotationY(2*(np.pi/180))
+R=R*utils.rotationZ(-2*(np.pi/180))
+frame=np.eye(4)
+frame[:3,:3]=R
+#Translate
+frame[:3,3]=np.array([0,0.001,0.02],dtype='float32')
+frame_list.append(frame)
+
+#6
+#Rotate
+# R=utils.rotationX(10*(np.pi/180))
+# R=R*utils.rotationY(8*(np.pi/180))
+# frame=np.eye(4)
+# frame[:3,:3]=R
+# #Translate
+# frame[3,:3]=np.array([0,0.05,0],dtype='float32')
+# frame_list.append(frame)
+
+def convertNumpyFrameToPyKDL(frame_numpy):
+    rotation_matrix=frame_numpy[:3,:3]
+    translation_vector=frame_numpy[:3,3]
+    kdl_rotation=PyKDL.Rotation(
+        rotation_matrix[0,0],rotation_matrix[0,1],rotation_matrix[0,2],
+        rotation_matrix[1,0],rotation_matrix[1,1],rotation_matrix[1,2],
+        rotation_matrix[2,0],rotation_matrix[2,1],rotation_matrix[2,2]
+    )
+    kdl_translation=PyKDL.Vector(translation_vector[0],translation_vector[1],translation_vector[2])
+    kdl_frame=PyKDL.Frame(kdl_rotation,kdl_translation)
+    return kdl_frame
 
 rospy.sleep(1)
 
 
 
-while(1):
-    ecm_T_psm=psm.measured_cp()
-    ecm_T_psm=utils.enforceOrthogonalPyKDL(ecm_T_psm)
-    ecm_T_psm_rotation=ecm_T_psm.M.GetQuaternion()
-    #ecm_T_psm=utils.convertPyDK_To_GLM(ecm_T_psm)
+for i in range(0,len(frame_list)):
     
+    #Gets starting ECM pose
+    cart_T_ecmi=ecm.setpoint_cp()
+    cart_T_ecmi=utils.enforceOrthogonalPyKDL(cart_T_ecmi)
+    cart_T_ecmi=utils.convertPyDK_To_GLM(cart_T_ecmi)
 
-    cart_T_ecm=ecm.measured_cp()
-    cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
-    cart_T_ecm_rotation=cart_T_ecm.M.GetQuaternion()
-    #cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
 
-    print("ecm_T_psm rotation: "+str(ecm_T_psm_rotation))
-    print("ecm_T_psm translation: "+str(ecm_T_psm.p))
+    #Moves the ECM
+    desired_motion=frame_list[i] #Motion in Numpy
+    desired_motion_glm=glm.mat4(*desired_motion.T.flatten())
+    print("Desired Motion: "+str(desired_motion_glm))
+    desired_pose=cart_T_ecmi*desired_motion_glm
+    desired_pose=np.array(glm.transpose(desired_pose).to_list(),dtype='float32')
+    desired_pose=convertNumpyFrameToPyKDL(desired_pose)
+    ecm.move_cp(desired_pose).wait()
+    rospy.sleep(2)
+    
+    #Gets current ECM pose
+    cart_T_ecmcurr=ecm.setpoint_cp()    
+    cart_T_ecmcurr=utils.enforceOrthogonalPyKDL(cart_T_ecmcurr)
+    cart_T_ecmcurr=utils.convertPyDK_To_GLM(cart_T_ecmcurr)
 
-    print("cart_T_ecm rotation: "+str(cart_T_ecm_rotation))
-    print("cart_T_ecm translation: "+str(cart_T_ecm.p))
-    print("")
 
-    #print("ecm_T_psm: "+str(ecm_T_psm))
-    #print("cart_T_ecm: "+str(cart_T_ecm))
+    #Calculates motion
+    ecmi_T_ecmcurr=utils.invHomogeneousGLM(cart_T_ecmi)*cart_T_ecmcurr
+    print("Actual Motion: "+str(ecmi_T_ecmcurr))
+
+    ecmi_T_ecmcurr=np.array(glm.transpose(ecmi_T_ecmcurr).to_list(),dtype='float32')
+    angle_diff,translation_diff=utils.decomposed_difference(ecmi_T_ecmcurr,desired_motion)
+    angle_diff=angle_diff*(180/np.pi)
+    print("angle_diff: "+str(angle_diff))
+    print("translation_diff: "+str(translation_diff))
+
+
+
     rospy.sleep(4)
 
 
