@@ -69,8 +69,19 @@ rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
 
 ##################Constants#####################
 #Tool and Console Constants
-CONSOLE_VIEWPORT_WIDTH=1400
-CONSOLE_VIEWPORT_HEIGHT=986
+
+#ECM Frame Size
+ECM_FRAME_WIDTH=1400   
+ECM_FRAME_HEIGHT=986
+
+ECM_FRAME_WIDTH_DESIRED=1024
+ECM_FRAME_HEIGHT_DESIRED=722
+
+
+
+#Console Viewport Size
+CONSOLE_VIEWPORT_WIDTH=1024
+CONSOLE_VIEWPORT_HEIGHT=768
 
 tool_tip_offset=0.0102  #PSM1 tooltip offset (large needle driver)
 tool_tip_offset_psm3=0.0102 #PSM3 tooltip offset
@@ -331,7 +342,7 @@ class Renderer:
         self.render_button.grid(row=4,column=3,sticky="nsew")
 
         #Toggle kinematics/visual camera motion
-        self.cam_motion=tk.Button(self.gui_window,text="Toggle visual- or kinematics-based ECM motion (default=visual)",command=self.kinematicsCamCallback)
+        self.cam_motion=tk.Button(self.gui_window,text="Toggle visual- or kinematics-based ECM motion (default=kinematics)",command=self.kinematicsCamCallback)
         self.cam_motion.grid(row=5,column=0,sticky="nsew")
 
 
@@ -397,8 +408,8 @@ class Renderer:
         self.playback_time=0 #For playback (playback is a continuous loop)
         self.pc2_time=None
 
-        ##Boolean to use video-based camera motion updates, or kinematics based, default is video based
-        self.is_kinematics_cam=False 
+        ##Boolean to use video-based camera motion updates, or kinematics based, default is kinematics based
+        self.is_kinematics_cam=True 
 
         ###########Converts the dictionary of model (scene) points to a list of list of points
         ARUCO_IDs=[6,4,5,7]
@@ -416,6 +427,8 @@ class Renderer:
         #Camera to scene registration Initial
         self.lci_T_si=None
         self.rci_T_si=None
+        self.lc_T_s=None
+        self.rc_T_s=None
 
         self.inv_lci_T_si=None
         self.inv_rci_T_si=None
@@ -430,6 +443,7 @@ class Renderer:
         #Initial ECM Pose
         self.cart_T_ecmi=None
         self.inv_cart_T_ecmi=None
+        ecmi_T_ecm=None
 
 
         ###Getting hand-eye calibration matrices
@@ -496,7 +510,6 @@ class Renderer:
                 self.inv_ecmac_T_ecmrep_psm3=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)
                 self.is_psmerror_calib=True 
                 file.close()
-
 
 
         
@@ -670,7 +683,8 @@ class Renderer:
             point_si_list.append(1)
             point_si=glm.vec4(point_si_list)
 
-            point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+            #point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+            point_ecm_ac=self.lci_T_si*point_si
 
             point_ecm_ac_list=[point_ecm_ac[0],point_ecm_ac[1],point_ecm_ac[2]]
 
@@ -687,7 +701,7 @@ class Renderer:
             #rospy.sleep(0.5)
             try_true=False
             try:
-                ecm_T_psm_rep=self.psm1.measured_cp()
+                ecm_T_psm_rep=self.psm1.setpoint_cp()
                 try_true=True
             except Exception as e:
                 print("Unable to read psm1: "+str(e))
@@ -699,7 +713,7 @@ class Renderer:
 
                 
 
-                point_ecm_rep=ecm_T_psm_rep@tool_tip_point
+                point_ecm_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
                 #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
                 point_ecm_rep=point_ecm_rep[0:3]
 
@@ -735,7 +749,8 @@ class Renderer:
             point_si_list.append(1)
             point_si=glm.vec4(point_si_list)
 
-            point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+            #point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+            point_ecm_ac=self.lci_T_si*point_si
 
             point_ecm_ac_list=[point_ecm_ac[0],point_ecm_ac[1],point_ecm_ac[2]]
 
@@ -750,13 +765,13 @@ class Renderer:
 
             #############Gets Reported Point for left camera
             #rospy.sleep(0.5)
-            ecm_T_psm_rep=self.psm3.measured_cp()
+            ecm_T_psm_rep=self.psm3.setpoint_cp()
             ecm_T_psm_rep=utils.enforceOrthogonalPyKDL(ecm_T_psm_rep)
             ecm_T_psm_rep=pm.toMatrix(ecm_T_psm_rep) #Numpy array
 
 
             # point_lc_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
-            point_ecm_rep=ecm_T_psm_rep@tool_tip_point
+            point_ecm_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
             #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
             point_ecm_rep=point_ecm_rep[0:3]
 
@@ -896,8 +911,7 @@ class Renderer:
                 trans_diff=np.mean(translation_diff_list)
                 print('registration error psm3 lc: '+str(trans_diff))
                 self.is_psmerror_calib=True
-
-    
+  
     
     
     ######################Support Methods#####################
@@ -1030,7 +1044,15 @@ class Renderer:
         frame_new=cv2.flip(frame,0)
         #Converts the frame to RGB
         frame_new=cv2.cvtColor(frame_new,cv2.COLOR_BGR2RGB)
-        return frame_new
+
+        #Create frame of correct size:
+        frame_new=cv2.resize(frame_new,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+        frame_sized=np.zeros((CONSOLE_VIEWPORT_HEIGHT,CONSOLE_VIEWPORT_WIDTH,3),np.uint8)
+        frame_sized[int(round((CONSOLE_VIEWPORT_HEIGHT-ECM_FRAME_HEIGHT_DESIRED)/2)):int(round((CONSOLE_VIEWPORT_HEIGHT-ECM_FRAME_HEIGHT_DESIRED)/2))+ECM_FRAME_HEIGHT_DESIRED,:]=frame_new
+
+
+
+        return frame_sized
     
 
     #############Instrument Kinematics Methods############
@@ -1131,6 +1153,14 @@ class Renderer:
     def move_objects(self):
         #This is the method where we pass the matrix to move_obj to move the object and also 
         #select which object to move: "shaft", "body","jaw_right","jaw_left"
+        if self.PSM3_on:
+            for obj_name in obj_names:
+                #if obj_name=='jaw_right' or obj_name=='jaw_left':
+                #   continue
+                #print(obj_name)
+                move_mat=self.instrument_dict_PSM3[obj_name]
+                self.scene_PSM3.move_obj(obj_name,move_mat)
+
         if self.PSM1_on:
             for obj_name in obj_names:
                 #if obj_name=='jaw_right' or obj_name=='jaw_left':
@@ -1139,13 +1169,7 @@ class Renderer:
                 move_mat=self.instrument_dict_PSM1[obj_name]
                 self.scene_PSM1.move_obj(obj_name,move_mat)
 
-        if self.PSM3_on:
-            for obj_name in obj_names:
-                #if obj_name=='jaw_right' or obj_name=='jaw_left':
-                #   continue
-                #print(obj_name)
-                move_mat=self.instrument_dict_PSM3[obj_name]
-                self.scene_PSM3.move_obj(obj_name,move_mat)
+        
     
 
 
@@ -1163,7 +1187,7 @@ class Renderer:
 
         ############Real-Time Virtual Overlay##############
         #Get PSM Poses for virtual overlay and run instrument kinematics
-        if self.virtual_overlay_on and (not self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+        if self.virtual_overlay_on and (not self.playback_on) and self.is_psmerror_calib: #self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             try_true=False
             try:
                 cart_T_ecm=self.ecm.setpoint_cp()
@@ -1174,15 +1198,13 @@ class Renderer:
             if try_true:
                 cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                 cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
-                if self.is_kinematics_cam:
-                    ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
-                    #print("ecmi_T_ecm: "+str(ecmi_T_ecm))
+                ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
 
 
                 if self.PSM1_on:
                     try_true=False
                     try:
-                        ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                        ecm_T_psm1=self.psm1.setpoint_cp() #Gets ecm_T_psm1 from API
                         try_true=True
                     except Exception as e:
                         print("Unable to read psm1: "+str(e))
@@ -1195,16 +1217,14 @@ class Renderer:
                         jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
                         joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
 
-                        if self.is_kinematics_cam:
-                            s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
-                        else:
-                            s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #for visual based camera motion
+                        
+                        s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
                         self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
                 
                 if self.PSM3_on:
                     try_true=False
                     try:
-                        ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
+                        ecm_T_psm3=self.psm3.setpoint_cp() #Gets ecm_T_psm3 from API
                         try_true=True
                     except Exception as e:
                         print("Unable to read psm1: "+str(e))
@@ -1215,11 +1235,9 @@ class Renderer:
 
                         joint_vars_psm3=self.psm3.measured_js()[0]
                         jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
-                        joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
-                        if self.is_kinematics_cam:
-                            s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
-                        else:
-                            s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #for visual based camera motion
+                        joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]   
+
+                        s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
                         self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
                 
                 self.move_objects()
@@ -1263,8 +1281,7 @@ class Renderer:
                 if try_true:
                     cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                     cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
-                    if self.is_kinematics_cam:
-                        ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
+                    ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
 
                     ecm_joints=self.ecm.measured_js()[0]
                     ecm_joints=ecm_joints.tolist()
@@ -1272,7 +1289,7 @@ class Renderer:
                     if self.PSM1_on:
                         try_true=False
                         try:
-                            ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                            ecm_T_psm1=self.psm1.setpoint_cp() #Gets ecm_T_psm1 from API
                             try_true=True
                         except Exception as e:
                             print("Unable to read psm1: "+str(e))
@@ -1285,10 +1302,7 @@ class Renderer:
                             psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
                             psm1_joints=psm1_joints.tolist()
 
-                            if self.is_kinematics_cam:
-                                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #Uncomment if using kinematics based ecm motion
-                            else:
-                                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #uncomment for visual based camera motion
+                            s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecmi_T_ecm*ecm_T_psm1 #uncomment for visual based camera motion
                     else:
                         ecm_T_psm1=None
                         psm1_joints=None
@@ -1298,7 +1312,7 @@ class Renderer:
                     if self.PSM3_on:
                         try_true=False
                         try:
-                            ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm1 from API
+                            ecm_T_psm3=self.psm3.setpoint_cp() #Gets ecm_T_psm1 from API
                             try_true=True
                         except Exception as e:
                             print("Unable to read psm1: "+str(e))
@@ -1312,10 +1326,7 @@ class Renderer:
                             psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
                             psm3_joints=psm3_joints.tolist()
 
-                            if self.is_kinematics_cam:
-                                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #Uncomment if using kinematics based ecm motion
-                            else:
-                                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #uncomment for visual based camera motion
+                            s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecmi_T_ecm*ecm_T_psm3 #uncomment for visual based camera motion
                     else:
                         ecm_T_psm3=None
                         psm3_joints=None
@@ -1332,7 +1343,7 @@ class Renderer:
 
             #Writing the row to the csv file
             self.dataLogger_pc1.writeRow_PC1(self.record_time,pc1_time,self.pc2_time,gaze_calib_show,s_T_psm1,s_T_psm3,\
-                                             cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints)
+                                             cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints,ecmi_T_ecm)
             
             #update task time
             self.record_time+=self.delta_time
@@ -1396,7 +1407,7 @@ class Renderer:
                 ####PSM1
                 try_true=False
                 try:
-                    ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                    ecm_T_psm1=self.psm1.setpoint_cp() #Gets ecm_T_psm1 from API
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
@@ -1414,7 +1425,7 @@ class Renderer:
                 #####PSM 3
                 try_true=False
                 try:
-                    ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
+                    ecm_T_psm3=self.psm3.setpoint_cp() #Gets ecm_T_psm3 from API
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
@@ -1469,14 +1480,14 @@ class Renderer:
             self.ctx_left.enable(mgl.DEPTH_TEST)
 
         ######Render Left Screen Instruments and Camera#######
-        if (self.virtual_overlay_on or self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+        if (self.virtual_overlay_on or self.playback_on) and (self.is_psmerror_calib or (self.lc_T_s is not None)): #and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             
-            if self.is_kinematics_cam:
+            if self.is_kinematics_cam and self.is_psmerror_calib:
                 inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm) #Uncomment for kinematics-based ECM motion
                 lc_T_s=opengl_T_opencv*self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si #Uncomment for Kinematics-Based ECM Motion
                 #print("Kinematics Based lc_T_s: "+str(self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si))
                 #print("Visual Based lc_T_s: "+str(self.lc_T_s))
-            else:
+            elif self.lc_T_s is not None:
                 lc_T_s=opengl_T_opencv*self.lc_T_s #Uncomment for visual-based ECM Motion
 
             #Update the camera
@@ -1484,10 +1495,11 @@ class Renderer:
             self.camera_left.update(lc_T_s)
 
             #Render the instruments:
-            if self.PSM3_on:
-                self.scene_PSM3.render(self.ctx_left)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_left)
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_left)
+            
 
 
 
@@ -1581,10 +1593,10 @@ class Renderer:
         
 
         ######Render Right Screen Instruments and Camera#######
-        if (self.virtual_overlay_on or self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
-            if self.is_kinematics_cam:
+        if (self.virtual_overlay_on or self.playback_on) and (self.is_psmerror_calib or (self.lc_T_s is not None)): #and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
+            if self.is_kinematics_cam and self.is_psmerror_calib:
                 rc_T_s=opengl_T_opencv*self.inv_ecm_T_rc*inv_ecmi_T_ecm*self.ecm_T_rc*self.rci_T_si #Uncomment for Kinematics-Based ECM Motion
-            else:
+            elif self.lc_T_s is not None:
                 rc_T_s=opengl_T_opencv*self.rc_T_s #Uncomment for Visual-Based ECM Motion
 
             rc_T_s=utils.scaleGLMTranform(rc_T_s,METERS_TO_RENDER_SCALE)
@@ -1592,10 +1604,11 @@ class Renderer:
             self.camera_right.update(rc_T_s)
 
             #Render the instruments:
-            if self.PSM3_on:
-                self.scene_PSM3.render(self.ctx_right)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_right)
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_right)
+            
 
 
         ########Update GUI

@@ -6,7 +6,7 @@ from scipy.spatial.transform import Rotation
 
 
 class FilterPose:
-    def __init__(self,filter_length=15):
+    def __init__(self,filter_length=8):
         self.list_quaternions=[]    #List of 1x4 rows with the quaternion
         self.list_translation=[] #List of 1x3 rows with the x,y,z translation
         self.filter_length=filter_length

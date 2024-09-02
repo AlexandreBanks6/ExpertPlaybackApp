@@ -17,7 +17,7 @@ repeat_string=["Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R
 MOTION_HEADER_PC1=["Task Time","PC1 Time","PC2 Time","Gaze Calib","s_T_psm1"]+repeat_string+["s_T_psm3"]+repeat_string+\
     ["cart_T_ecm"]+repeat_string+["ecm_T_psm1"]+repeat_string+["ecm_T_psm3"]+repeat_string+\
             ["psm1_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+["psm3_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+\
-            ["ecm_joints"]+["q1","q2","q3","q4"]
+            ["ecm_joints"]+["q1","q2","q3","q4"]+["ecmi_T_ecm"]+repeat_string
 
 MOTION_HEADER_PC2=["PC2 Time","Left ECM Frame #","Right ECM Frame #","Gaze Frame #","lc_T_s"]+repeat_string+["rc_T_s"]+repeat_string
 
@@ -135,7 +135,7 @@ class DataLogger:
         
         return string_list
     
-    def writeRow_PC1(self,task_time,pc1_time,pc2_time,gaze_calib,s_T_psm1,s_T_psm3,cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints):
+    def writeRow_PC1(self,task_time,pc1_time,pc2_time,gaze_calib,s_T_psm1,s_T_psm3,cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints,ecmi_T_ecm):
         #PC2 time is published as a ROS topic from PC2
 
         #s_T_psm1 & s_T_psm3
@@ -196,11 +196,17 @@ class DataLogger:
         if pc2_time is None:
             pc2_time="NaN"
 
+        if ecmi_T_ecm is not None:
+            ecmi_T_ecm_numpy=np.array(glm.transpose(ecmi_T_ecm).to_list(),dtype='float32')
+            ecmi_T_ecm_list=self.convertHomogeneousToCSVROW(ecmi_T_ecm_numpy)
+        else:
+            ecmi_T_ecm_list=["NaN"]*12
+
         #pc2_time is already a string
         #Write the row
         row_to_write=[str(task_time),str(pc1_time),pc2_time,str(gaze_calib),""]+s_T_psm1_list+[""]+s_T_psm3_list+[""]+\
         cart_T_ecm_list+[""]+ecm_T_psm1_list+[""]+ecm_T_psm3_list+[""]+joint_list_psm1+[""]+joint_list_psm3+[""]+\
-        joint_list_ecm
+        joint_list_ecm+[""]+ecmi_T_ecm_list
 
         with open(self.record_filename_pc1,'a',newline='') as file_object:
             writer_object=csv.writer(file_object)
