@@ -8,6 +8,7 @@ import threading
 import os
 import yaml
 from include import HandEye
+from include import Renderer
 from scipy.spatial.transform import Rotation
 
 import dvrk
@@ -17,6 +18,8 @@ from include import utils
 import cv2.aruco as aruco
 #####To Do: Add a functionality to calibrate using an ArUco board, also add functionality to change size of checkerboard
 
+ECM_FRAME_WIDTH_DESIRED=1024
+ECM_FRAME_HEIGHT_DESIRED=722
 
 ##################Change These Variables If Needed#############################
 #These Dimensions should be in meters, should change over to meters
@@ -27,8 +30,8 @@ NUM_FRAME_DETECTIONS=8 #How many sets of aruco "frames" need to be detected, ToD
 CHECKERBOARD_DIM=(8,8) #Number of inner corners in the checkerboard (corners height, corners width)
 CHECKER_WIDTH=0.0078232 #Width of each checker in the checkerboard (in meters)
 
-RANSAC_SCENE_REPROJECTION_ERROR=0.000005 #Reprojection error for scene localization RANSAC (in meters)
-RANSAC_SCENE_ITERATIONS=1000000 #Number of iterations for scene localization RANSAC
+RANSAC_SCENE_REPROJECTION_ERROR=0.0005 #Reprojection error for scene localization RANSAC (in meters)
+RANSAC_SCENE_ITERATIONS=1000 #Number of iterations for scene localization RANSAC
 
 #Rigid Body Definition of Ring Over Wire Aruco Holder, each four coordinates define an ArUco marker with corresponding ID:
 #Marker corners are defined clockwise from top left
@@ -64,9 +67,9 @@ RINGOWIRE_MODELPOINTS={
 }
 
 
-FRAMES_TO_REMOVE_RIGHT=[8,13,15,19,20,31]   #These frames were determined to be garbage visually
-FRAMES_TO_REMOVE_LEFT=[2,13,19,26,33]
-NUM_FRAMES_CAPTURED=36
+FRAMES_TO_REMOVE_RIGHT=[22,28]   #These frames were determined to be garbage visually
+FRAMES_TO_REMOVE_LEFT=[22,26,28,31]
+NUM_FRAMES_CAPTURED=41
 
 REQUIRED_CHECKERBOARD_NUM=10 #Number of checkerboard images needed for the calibration
 ERROR_THRESHOLD=10 #Pixel Error Threshold for centering ECM above checkerboard
@@ -239,7 +242,7 @@ class CameraCalibGUI:
 
         #Execution Loop  
         #Window where we display the left/right frames:
-        cv2.namedWindow("Left/Right Frames",cv2.WINDOW_NORMAL)
+        #cv2.namedWindow("Left/Right Frames",cv2.WINDOW_NORMAL)
         
 
 
@@ -266,19 +269,26 @@ class CameraCalibGUI:
     def showFramesCallback(self):
 
         if self.ranOnce>=2:
-            img_combined=cv2.hconcat([self.frameLeft,self.frameRight])
-            img_combined=cv2.resize(img_combined,(700,246),interpolation=cv2.INTER_LINEAR)
-            cv2.imshow("Left/Right Frames",img_combined)
+            #print("Entered")
+            frameLeft=cv2.resize(self.frameLeft,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+            frameRight=cv2.resize(self.frameRight,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+            cv2.imshow("Left Frame",frameLeft)
+            cv2.imshow("Right Frame",frameRight)
+            # img_combined=cv2.hconcat([self.frameLeft,self.frameRight])
+            # img_combined=cv2.resize(img_combined,(361,512),interpolation=cv2.INTER_LINEAR)
+            # cv2.imshow("Left/Right Frames",img_combined)
             cv2.waitKey(1)
         self.window.after(1,self.showFramesCallback)
     
     #Callback for grabbing frames
     def frameCallbackRight(self,data):
         self.frameRight=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        self.frameRight=cv2.resize(self.frameRight,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
         self.ranOnce+=1
 
     def frameCallbackLeft(self,data):
         self.frameLeft=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        self.frameLeft=cv2.resize(self.frameLeft,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
         self.ranOnce+=1
         #print("New Frame")
     def findArUcos(self,frame):
@@ -344,6 +354,9 @@ class CameraCalibGUI:
 
 
     def grabFramesCallback(self):
+        frameLeft=cv2.resize(self.frameLeft,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+        frameRight=cv2.resize(self.frameRight,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+
         if self.isManual:
             #Manually grab the frames
             if self.frame_number==0:
@@ -366,8 +379,8 @@ class CameraCalibGUI:
             self.rb_T_ecm_setpoint_list.append(rb_T_ecm)
 
 
-            cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",self.frameRight)
-            cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",self.frameLeft)
+            cv2.imwrite(file_name_right+"frame_right"+str(self.frame_number)+".jpg",frameRight)
+            cv2.imwrite(file_name_left+"frame_left"+str(self.frame_number)+".jpg",frameLeft)
 
             self.frame_number+=1
             self.calbration_message_label.config(text="Frame Count: "+str(self.frame_number))
@@ -847,6 +860,7 @@ class CameraCalibGUI:
 
         for i in range(len(rb_T_ecm_right)):
             if i not in FRAMES_TO_REMOVE_RIGHT:
+                #print("i: "+str(i))
                 rb_T_ecm_right_new.append(rb_T_ecm_right[i])
                 rightcam_T_scene_new.append(rightcam_T_scene[i])
                 right_cam_T_scene_rvec_new.append(right_cam_T_scene_rvec[i])

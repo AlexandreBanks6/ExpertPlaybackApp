@@ -18,8 +18,8 @@ from vectors import *
 from math import *
 
 
-CONSOLE_VIEWPORT_WIDTH=1400
-CONSOLE_VIEWPORT_HEIGHT=986
+CONSOLE_VIEWPORT_WIDTH=1024
+CONSOLE_VIEWPORT_HEIGHT=722
 
 class ECM_Class:
     left_frame=None

@@ -8,8 +8,8 @@ from datetime import datetime
 import csv
 import os
 
-CONSOLE_VIEWPORT_WIDTH=1400
-CONSOLE_VIEWPORT_HEIGHT=986
+CONSOLE_VIEWPORT_WIDTH=1024
+CONSOLE_VIEWPORT_HEIGHT=722
 
 
 #File Column Titles:

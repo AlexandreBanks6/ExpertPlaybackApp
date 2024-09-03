@@ -67,6 +67,7 @@ class Playback:
         s_T_psm1_list=data_list[5:17]
         s_T_psm1=self.ConvertDataRow_ToGLMPose(s_T_psm1_list)
         psm1_joints=data_list[74:77]
+        psm1_joints[-1]=-1*psm1_joints[-1]
 
         return s_T_psm1, psm1_joints
     
@@ -76,6 +77,7 @@ class Playback:
         s_T_psm3_list=data_list[18:30]
         s_T_psm3=self.ConvertDataRow_ToGLMPose(s_T_psm3_list)
         psm3_joints=data_list[82:85]
+        psm3_joints[-1]=-1*psm3_joints[-1]
 
         return s_T_psm3, psm3_joints
 
