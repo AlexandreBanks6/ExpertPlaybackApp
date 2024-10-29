@@ -9,6 +9,7 @@ from include import utils
 
 DEFAULT_CAMCALIB_DIR='../resources/Calib/Calib_Best/'
 ARUCO_IDs=[4,5,6,7] #List containing the IDs of the aruco markers that we are tracking
+ARUCO_IDs_Validation=[9]
 NUM_FRAME_DETECTIONS=10 #How many sets of aruco "frames" need to be detected, ToDo for later
 
 RANSAC_SCENE_REPROJECTION_ERROR=0.0005 #Reprojection error for scene localization RANSAC (in meters)
@@ -45,6 +46,13 @@ RINGOWIRE_MODELPOINTS={
     [2*ARUCO_SIDELENGTH+ARUCO_SEPERATION,0.0,3*ARUCO_HEIGHT_OFFSET],
     [2*ARUCO_SIDELENGTH+ARUCO_SEPERATION,-ARUCO_SIDELENGTH,3*ARUCO_HEIGHT_OFFSET],
     [ARUCO_SIDELENGTH+ARUCO_SEPERATION,-ARUCO_SIDELENGTH,3*ARUCO_HEIGHT_OFFSET]],dtype='float32')
+}
+SINGLE_ARUCO_MODEL_POINTS={
+    "9":np.array([
+    [0.0,0.0,0.0],
+    [ARUCO_SIDELENGTH,0.0,0.0],
+    [ARUCO_SIDELENGTH,-ARUCO_SIDELENGTH,0.0],
+    [0.0,-ARUCO_SIDELENGTH,0.0]],dtype='float32')
 }
 
 #Index of numbering-scheme for hand-eye calibration corners w.r.t. above structure
@@ -262,8 +270,12 @@ class ArucoTracker:
                         model_points=np.vstack((model_points,RINGOWIRE_MODELPOINTS[str(id[0])]))
                 mtx=self.mtx
                 success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,mtx,self.dist,\
-                                                                                        iterationsCount=RANSAC_SCENE_ITERATIONS,reprojectionError=RANSAC_SCENE_REPROJECTION_ERROR,flags=cv2.USAC_MAGSAC)
+                                                                                        iterationsCount=400,reprojectionError=0.005,flags=cv2.USAC_MAGSAC)
                 
+                self.rvec_scene=rotation_vector
+                self.tvec_scene=translation_vector
+
+
                 if success:
                     cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
                     cam_T_scene=glm.mat4(*cam_T_scene.T.flatten())
@@ -302,12 +314,52 @@ class ArucoTracker:
                     cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
 
         return cam_T_scene
+    
+
+    def calibrateSceneDirectValidation(self,frame):
+        #Takes in a frame, and finds cam_T_scene (c_T_s) based on one frame
+        frame_gray=cv2.cvtColor(frame.copy(),cv2.COLOR_BGR2GRAY)
+        corners,ids,_=aruco.detectMarkers(frame_gray,dictionary=self.aruco_dict,parameters=self.aruco_params)
+        cam_T_scene=None
+        
+        if ids is not None:
+            corners_filtered=[]
+            ids_filtered=[]
+            for id,corner in zip(ids,corners):
+                if id[0] in ARUCO_IDs_Validation:
+                    corners_filtered.append(corner)
+                    ids_filtered.append([id[0]])
+            
+            image_points=None
+            model_points=None
+            if len(ids_filtered)>0: #We found IDs after filtering    
+                for id,corner in zip(ids_filtered,corners_filtered):
+                    if image_points is None:
+                        image_points=corner[0]
+                        model_points=SINGLE_ARUCO_MODEL_POINTS[str(id[0])]
+                    else:
+                        image_points=np.vstack((image_points,corner[0]))
+                        model_points=np.vstack((model_points,SINGLE_ARUCO_MODEL_POINTS[str(id[0])]))
+                mtx=self.mtx
+                success,rotation_vector,translation_vector,_=cv2.solvePnPRansac(model_points,image_points,mtx,self.dist,\
+                                                                                        iterationsCount=400,reprojectionError=0.005,flags=cv2.USAC_MAGSAC)
+                self.rvec_scene=rotation_vector
+                self.tvec_scene=translation_vector
+
+
+                if success:
+                    cam_T_scene=utils.convertRvecTvectoHomo(rotation_vector,translation_vector)
+                    cam_T_scene=glm.mat4(*cam_T_scene.T.flatten())
+        
+        return cam_T_scene
 
 
 
 
     def flattenList(self,xss):
         return [x for xs in xss for x in xs]
+    
+
 
         
     

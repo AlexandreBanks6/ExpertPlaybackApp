@@ -50,6 +50,8 @@ import tf_conversions
 import yaml
 import pandas as pd
 
+from tkinter import ttk
+
 
 #################File Names#####################
 MOTIONS_ROOT='../resources/Motions/'
@@ -68,6 +70,18 @@ rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
 
 
 ##################Constants#####################
+
+#Segment indices
+TWO_HANDED_SEGMENT_INDICES=[0,399,742,1036,1312,1609,1907,2309,2860,3358,3613] #Start of each segment trajectory, and end of trajectory is final index
+TWO_HANDED_SEGMENT_PSMs=['RIGHT','LEFT','RIGHT','LEFT','RIGHT','RIGHT','LEFT','RIGHT','LEFT','RIGHT']
+
+ONE_HANDED_SEGMENT_INDICES=[0,417,825,937,1077,1165,1246,1468,1523,1777,1867,1944,2053,2145,2560]
+ONE_HANDED_SEGMENT_PSMs=['','UNDERHAND','OVERHAND','UNDERHAND','OVERHAND','UNDERHAND','OVERHAND','','UNDERHAND','OVERHAND','UNDERHAND','OVERHAND','UNDERHAND','OVERHAND']
+
+
+PICK_AND_PLACE_INDICES=[0,490,560,1508,1582,2461,2519,2585,2634,10568]
+PICK_AND_PLACE_SEGMENT_PSMs=['','CLUTCH','','CLUTCH','','CLUTCH','','CLUTCH','']
+
 #Tool and Console Constants
 
 #ECM Frame Size
@@ -166,9 +180,8 @@ class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
 
         self.WIN_SIZE=win_size
-
-        #Creates the pyglet window
         config=Config(major_version=3,minor_version=3,depth_size=3,double_buffer=True)
+        #Creates the pyglet windowONE_HANDED_SEGMENT_PSMs
         self.window_left = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Left Eye')
         self.window_right = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Right Eye')
 
@@ -176,7 +189,7 @@ class Renderer:
 
         #ArUco tracking objects
         self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
-        cam_mat=self.aruco_tracker_left.mtx 
+        cam_mat=self.aruco_tracker_left.mtx
         self.cam_mat_left=glm.mat3(*cam_mat.T.flatten())
         
         self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
@@ -286,9 +299,11 @@ class Renderer:
 
         ##############GUI SETUP################
         self.gui_window=tk.Tk()
+        style=ttk.Style()
+        style.theme_use('clam')
         self.gui_window.title("dVRK Playback App PC1")
 
-        self.gui_window.rowconfigure([0,1,2,3,4,5,6],weight=1)
+        self.gui_window.rowconfigure([0,1,2,3,4,5,6,7],weight=1)
         self.gui_window.columnconfigure([0,1,2,3],weight=1)
         self.gui_window.minsize(300,100)
 
@@ -341,13 +356,23 @@ class Renderer:
         self.calibrate_gaze_button=tk.Button(self.gui_window,text="Calibrate Gaze (Record Motions is Pressed First)",command=self.calibrateGazeCallback)
         self.calibrate_gaze_button.grid(row=4,column=2,sticky="nsew")
 
-        #Playback Tools Button
-        self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.playbackMotionsCallback)
-        self.render_button.grid(row=4,column=3,sticky="nsew")
 
         #Toggle kinematics/visual camera motion
         self.cam_motion=tk.Button(self.gui_window,text="Toggle visual- or kinematics-based ECM motion (default=kinematics)",command=self.kinematicsCamCallback)
-        self.cam_motion.grid(row=5,column=0,sticky="nsew")
+        self.cam_motion.grid(row=4,column=3,sticky="nsew")
+
+        #Playback Tools Button
+        self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.playbackMotionsCallback)
+        self.render_button.grid(row=5,column=0,sticky="nsew")
+
+        self.checkbox_simpleplayback=tk.Checkbutton(self.gui_window,text="Basic Playback",onvalue=1,offvalue=0,command=self.basicPlaybackCallback)
+        self.checkbox_simpleplayback.grid(row=5,column=1,sticky='nsew')
+
+        self.checkbox_textplayback=tk.Checkbutton(self.gui_window,text=" Playback with Text Overlay",onvalue=1,offvalue=0,command=self.textOverlayPlaybackCallback)
+        self.checkbox_textplayback.grid(row=5,column=2,sticky='nsew')
+
+        self.checkbox_segmentedplayback=tk.Checkbutton(self.gui_window,text="Playback with Segments (2-handed only)",onvalue=1,offvalue=0,command=self.segmentedPlaybackCallback)
+        self.checkbox_segmentedplayback.grid(row=5,column=3,sticky='nsew')
 
 
         #Check Boxes to Select Which Task we are Using
@@ -360,10 +385,9 @@ class Renderer:
         self.checkbox_pickPlace=tk.Checkbutton(self.gui_window,text="Pick & Place",onvalue=1,offvalue=0,command=self.pickAndPlaceCallback)
         self.checkbox_pickPlace.grid(row=6,column=2,sticky='nsew')
 
-        self.checkbox_suture=tk.Checkbutton(self.gui_window,text="Suturing",onvalue=1,offvalue=0,command=self.oneHandedRingWireCallback)
-        self.checkbox_suture.grid(row=6,column=3,sticky='nsew')
-
-
+        self.slider_playbackSpeed=tk.Scale(self.gui_window,from_=0.25,to=2,resolution=0.25,orient=tk.HORIZONTAL, command=self.playbackSpeedCallback)
+        self.slider_playbackSpeed.grid(row=7,column=0,sticky='nsew')
+        self.slider_playbackSpeed.set(1)
 
         ####################Initializing Variables##################
 
@@ -435,11 +459,53 @@ class Renderer:
         ##Boolean to use video-based camera motion updates, or kinematics based, default is kinematics based
         self.is_kinematics_cam=True 
 
-        ##Boolean to select which task we are doing
+
+        ##############Variables for Playback
+
+        #Boolean to select which task we are doing
         self.is_one_handed_ringwire=False
         self.is_two_handed_ringwire=False
         self.is_pick_and_place=False
-        self.is_suture=False
+
+        #Keeps file name that we are running playback from
+        self.playback_filename='PC1_TwoHanded.csv' #Defaults to two handed
+
+        #Playback speed variable
+        self.playback_speed=1
+
+        #Are we doing segmented playback?
+        self.is_segmentedPlayback=False
+
+        #Are we adding text to the screen during playback?
+        self.is_textPlayback=False
+
+        self.segmentIndexCount=0 #Which segment are we on?
+        self.maxSegmentIndexCount=10    #Max number of segments (includes 0 and final segment)
+
+        self.segment_trajectory_left=None
+        self.start_segment_left=None
+        self.end_segment_left=None
+
+        self.segment_trajectory_right=None
+        self.start_segment_right=None
+        self.end_segment_right=None
+
+        self.segment_indices=ONE_HANDED_SEGMENT_INDICES #defaults to one handed segments
+        self.segment_PSMs=ONE_HANDED_SEGMENT_PSMs
+
+        self.segment_trajectories_right=[] #List containing all the segment trajectories for the right
+        self.segment_trajectories_left=[] #List containing all the segment trajectories for the right
+
+        self.starts_segment_left=[]
+        self.ends_segment_left=[]
+        self.starts_segment_right=[]
+        self.ends_segment_right=[]
+        self.handText=None
+ 
+
+
+
+
 
         ###########Converts the dictionary of model (scene) points to a list of list of points
         ARUCO_IDs=[6,4,5,7]
@@ -657,18 +723,92 @@ class Renderer:
         if self.playback_on:
             self.playback_time=0
             self.playback_object.initPlayback(MOTIONS_ROOT) #Initializes the playback file and parameters
+            self.segmentIndexCount=0 #Used also for the text display
+
+            #We get the segment trajectories at the start:
+            if self.is_segmentedPlayback and self.is_two_handed_ringwire: #Onlye get segmented if two-handed
+
+                try_true=False
+                try:
+                    cart_T_ecm=self.ecm.setpoint_cp()
+                    try_true=True
+                except Exception as e:
+                    print("Unable to read psm1: "+str(e))
+                    return
+                if try_true:
+                    cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+                    cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+                    ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
+                    inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
+
+                    for i in range(0,self.maxSegmentIndexCount):
+                        print('Entered Once')
+                        
+                        c_T_s=self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si
+                        self.segment_trajectory_left,self.start_segment_left,self.end_segment_left=self.playback_object.startSegment(self.segment_indices[i],\
+                                                                                                                    self.segment_indices[i+1],\
+                                                                                                                    self.segment_PSMs[i],c_T_s,self.cam_mat_left,self.aruco_tracker_left.dist,self.aruco_tracker_left.mtx)
+                        self.segment_trajectories_left.append(self.segment_trajectory_left)
+                        # self.starts_segment_left.append(self.start_segment_left)
+                        # self.ends_segment_left.append(self.end_segment_left)
+
+                        c_T_s=self.inv_ecm_T_rc*inv_ecmi_T_ecm*self.ecm_T_rc*self.rci_T_si
+                        self.segment_trajectory_right,self.start_segment_right,self.end_segment_right=self.playback_object.startSegment(self.segment_indices[i],\
+                                                                                                                    self.segment_indices[i+1],\
+                                                                                                                        self.segment_PSMs[i],c_T_s,self.cam_mat_right,self.aruco_tracker_right.dist,self.aruco_tracker_right.mtx)
+                        self.segment_trajectories_right.append(self.segment_trajectory_right)
+                        # self.starts_segment_right.append(self.start_segment_right)
+                        # self.ends_segment_right.append(self.end_segment_right)
+                        #print("Segment Index: "+str(TWO_HANDED_SEGMENT_INDICES[i]))
+                        print("Completed Trajectory: "+str(i))
+            
+            self.playback_time=0
+            self.delta_time=0.001
 
     def oneHandedRingWireCallback(self):
         self.is_one_handed_ringwire=not self.is_one_handed_ringwire
+        if self.is_one_handed_ringwire:
+            self.playback_filename='PC1_OneHanded.csv'  
+            self.segment_indices=ONE_HANDED_SEGMENT_INDICES
+            self.segment_PSMs=ONE_HANDED_SEGMENT_PSMs 
+            self.maxSegmentIndexCount=14
 
     def twoHandedRingWireCallback(self):
         self.is_two_handed_ringwire=not self.is_two_handed_ringwire
+        if self.is_two_handed_ringwire:
+            self.playback_filename='PC1_TwoHanded.csv'
+            self.maxSegmentIndexCount=10
+            self.segment_indices=TWO_HANDED_SEGMENT_INDICES
+            self.segment_PSMs=TWO_HANDED_SEGMENT_PSMs
+
 
     def pickAndPlaceCallback(self):
         self.is_pick_and_place=not self.is_pick_and_place
+        print("Pick and Place Callback")
+        if self.is_pick_and_place:
+            self.playback_filename='PC1_PickAndPlace.csv'
+            self.maxSegmentIndexCount=9
+            self.segment_indices=PICK_AND_PLACE_INDICES
+            self.segment_PSMs=PICK_AND_PLACE_SEGMENT_PSMs
+
+            print("Pick and Place Names"+str(self.segment_PSMs))
+
+    def playbackSpeedCallback(self,sliderVal):
+        self.playback_speed=float(sliderVal)
+
+    def basicPlaybackCallback(self):
+        self.is_segmentedPlayback=False
+        self.is_textPlayback=False
+
+    def segmentedPlaybackCallback(self):
+        self.is_segmentedPlayback=True
+        self.is_textPlayback=False
+
+    def textOverlayPlaybackCallback(self):
+        self.is_segmentedPlayback=False
+        self.is_textPlayback=True
+
     
-    def sutureCallback(self):
-        self.is_suture=not self.is_suture
 
 
 
@@ -783,7 +923,7 @@ class Renderer:
             #rospy.sleep(0.5)
             try_true=False
             try:
-                ecm_T_psm_rep=self.psm1.setpoint_cp()
+                ecm_T_psm_rep=self.psm1.measured_cp()
                 try_true=True
             except Exception as e:
                 print("Unable to read psm1: "+str(e))
@@ -881,7 +1021,7 @@ class Renderer:
             #rospy.sleep(0.5)
             try_true=False
             try:
-                ecm_T_psm_rep=self.psm3.setpoint_cp()
+                ecm_T_psm_rep=self.psm3.measured_cp()
                 try_true=True
             except Exception as e:
                 print("Unable to read psm1: "+str(e))
@@ -1476,7 +1616,7 @@ class Renderer:
                 if self.PSM1_on:
                     try_true=False
                     try:
-                        ecm_T_psm1=self.psm1.setpoint_cp() #Gets ecm_T_psm1 from API
+                        ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
                         try_true=True
                     except Exception as e:
                         print("Unable to read psm1: "+str(e))
@@ -1496,7 +1636,7 @@ class Renderer:
                 if self.PSM3_on:
                     try_true=False
                     try:
-                        ecm_T_psm3=self.psm3.setpoint_cp() #Gets ecm_T_psm3 from API
+                        ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
                         try_true=True
                     except Exception as e:
                         print("Unable to read psm1: "+str(e))
@@ -1562,7 +1702,7 @@ class Renderer:
                     if self.PSM1_on:
                         try_true=False
                         try:
-                            ecm_T_psm1=self.psm1.setpoint_cp() #Gets ecm_T_psm1 from API
+                            ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
                             try_true=True
                         except Exception as e:
                             print("Unable to read psm1: "+str(e))
@@ -1585,7 +1725,7 @@ class Renderer:
                     if self.PSM3_on:
                         try_true=False
                         try:
-                            ecm_T_psm3=self.psm3.setpoint_cp() #Gets ecm_T_psm1 from API
+                            ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm1 from API
                             try_true=True
                         except Exception as e:
                             print("Unable to read psm1: "+str(e))
@@ -1637,19 +1777,66 @@ class Renderer:
                 ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
                 inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
 
-            
-            data_list=self.playback_object.getDataRow() #Gets a list with the recorded motions (s_T_psm1, s_T_psm3, psm1_joints, psm3_joints)
-            if self.PSM1_on:
-                s_T_psm1,psm1_joints=self.playback_object.getPSM1State(data_list)
-                self.instrument_kinematics(psm1_joints,s_T_psm1,'PSM1')
+            if self.is_segmentedPlayback and self.is_two_handed_ringwire: #Only shows segment if two-handed (beta)
+                if self.segmentIndexCount==self.maxSegmentIndexCount:
+                    if self.playback_time<3:
+                        self.segmentIndexCount=0
 
-            if self.PSM3_on:
-                s_T_psm3,psm3_joints=self.playback_object.getPSM3State(data_list)
-                self.instrument_kinematics(psm3_joints,s_T_psm3,'PSM3')
+                if self.segmentIndexCount<self.maxSegmentIndexCount:
+
+                    is_segmentStart=self.playback_object.isSegmentStart(self.segment_indices[self.segmentIndexCount]) #Are we starting the segment
+                    
+                    #print("is_segmentStart: "+str(is_segmentStart))
+                    if is_segmentStart: #We are starting the segment so we draw upcoming segment
+                        self.handText=self.segment_PSMs[self.segmentIndexCount]
+                        #print("segmentIndexCount: "+str(self.segmentIndexCount))
+                        self.segment_trajectory_left=self.segment_trajectories_left[self.segmentIndexCount]
+                        # self.start_segment_left=self.starts_segment_left[self.segmentIndexCount]
+                        # self.end_segment_left=self.ends_segment_left[self.segmentIndexCount]
+
+                        self.segment_trajectory_right=self.segment_trajectories_right[self.segmentIndexCount]
+                        # self.start_segment_right=self.starts_segment_right[self.segmentIndexCount]
+                        # self.end_segment_right=self.ends_segment_right[self.segmentIndexCount]
+                        self.segmentIndexCount+=1
+                
+
+                data_list=self.playback_object.getDataRow() #Gets a list with the recorded motions (s_T_psm1, s_T_psm3, psm1_joints, psm3_joints)
+                if self.PSM1_on:
+                    s_T_psm1,psm1_joints=self.playback_object.getPSM1State(data_list)
+                    self.instrument_kinematics(psm1_joints,s_T_psm1,'PSM1')
+
+                if self.PSM3_on:
+                    s_T_psm3,psm3_joints=self.playback_object.getPSM3State(data_list)
+                    self.instrument_kinematics(psm3_joints,s_T_psm3,'PSM3')
+
+            else:
+                #Simple Playback
+                data_list=self.playback_object.getDataRow() #Gets a list with the recorded motions (s_T_psm1, s_T_psm3, psm1_joints, psm3_joints)
+                if self.PSM1_on:
+                    s_T_psm1,psm1_joints=self.playback_object.getPSM1State(data_list)
+                    self.instrument_kinematics(psm1_joints,s_T_psm1,'PSM1')
+
+                if self.PSM3_on:
+                    s_T_psm3,psm3_joints=self.playback_object.getPSM3State(data_list)
+                    self.instrument_kinematics(psm3_joints,s_T_psm3,'PSM3')
+
+                #We are showing text as well
+                if self.is_textPlayback:
+
+                    if self.segmentIndexCount==self.maxSegmentIndexCount:
+                        if self.playback_time<3:
+                            self.segmentIndexCount=0
+                    if self.segmentIndexCount<self.maxSegmentIndexCount:
+                        is_segmentStart=self.playback_object.isSegmentStart(self.segment_indices[self.segmentIndexCount]) #Are we starting the segment
+                    
+                        #print("is_segmentStart: "+str(is_segmentStart))
+                        if is_segmentStart: #We are starting the segment so we draw upcoming segment
+                            self.handText=self.segment_PSMs[self.segmentIndexCount]
+                            self.segmentIndexCount+=1
             
             self.move_objects()
             
-            self.playback_time+=self.delta_time
+            self.playback_time+=(self.delta_time*self.playback_speed)
 
 
         ################Render to left window###################
@@ -1694,7 +1881,7 @@ class Renderer:
                 ####PSM1
                 try_true=False
                 try:
-                    ecm_T_psm1=self.psm1.setpoint_cp() #Gets ecm_T_psm1 from API
+                    ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
@@ -1711,7 +1898,7 @@ class Renderer:
                 #####PSM 3
                 try_true=False
                 try:
-                    ecm_T_psm3=self.psm3.setpoint_cp() #Gets ecm_T_psm3 from API
+                    ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
@@ -1757,9 +1944,22 @@ class Renderer:
                 
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
 
+            elif self.is_segmentedPlayback and self.is_two_handed_ringwire:
+                self.frame_left_converted=frame_left
+                cv2.polylines(self.frame_left_converted,[self.segment_trajectory_left],isClosed=False,color=(0,255,0),thickness=3)
+                #cv2.arrowedLine(self.frame_left_converted,self.start_segment_left,self.end_segment_left,color=(0,0,255),thickness=8,tipLength=0.5)
+                if self.handText is not None:
+                    cv2.putText(self.frame_left_converted,self.handText,(int(round(ECM_FRAME_WIDTH_DESIRED/2)),100),cv2.FONT_HERSHEY_SIMPLEX,
+                                fontScale=1.5,color=(0,255,0),thickness=4,lineType=cv2.LINE_AA)
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+            elif self.is_textPlayback: #We show text along with the regular playback (for all three modes)
+                self.frame_left_converted=frame_left
+                
+                if self.handText is not None:
+                    cv2.putText(self.frame_left_converted,self.handText,(int(round(ECM_FRAME_WIDTH_DESIRED/2)),100),cv2.FONT_HERSHEY_SIMPLEX,
+                                fontScale=1.5,color=(0,255,0),thickness=4,lineType=cv2.LINE_AA)
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
 
-
-            
             else:
                 self.frame_left_converted=self.cvFrame2Gl(frame_left)
 
@@ -1771,9 +1971,9 @@ class Renderer:
             self.ctx_left.enable(mgl.DEPTH_TEST)
 
         ######Render Left Screen Instruments and Camera#######
-        if (self.virtual_overlay_on or self.playback_on) and (self.is_psmerror_calib or (self.lc_T_s is not None)): #and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+        if (self.virtual_overlay_on or self.playback_on): #and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             
-            if self.is_kinematics_cam and self.is_psmerror_calib:
+            if self.is_kinematics_cam:
                 lc_T_s=opengl_T_opencv*self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si #Uncomment for Kinematics-Based ECM Motion
                 #print("Kinematics Based lc_T_s: "+str(self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si))
                 #print("Visual Based lc_T_s: "+str(self.lc_T_s))
@@ -1874,6 +2074,22 @@ class Renderer:
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
 
             
+            elif self.is_segmentedPlayback:
+                self.frame_right_converted=frame_right
+                cv2.polylines(self.frame_right_converted,[self.segment_trajectory_right],isClosed=False,color=(0,255,0),thickness=3)
+                if self.handText is not None:
+                    cv2.putText(self.frame_right_converted,self.handText,(int(round(ECM_FRAME_WIDTH_DESIRED/2)),100),cv2.FONT_HERSHEY_SIMPLEX,
+                                fontScale=1.5,color=(0,255,0),thickness=4,lineType=cv2.LINE_AA)
+                #cv2.arrowedLine(self.frame_right_converted,self.start_segment_right,self.end_segment_right,color=(0,0,255),thickness=8,tipLength=0.5)
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
+
+            elif self.is_textPlayback:
+                self.frame_right_converted=frame_right
+                if self.handText is not None:
+                    cv2.putText(self.frame_right_converted,self.handText,(int(round(ECM_FRAME_WIDTH_DESIRED/2)),100),cv2.FONT_HERSHEY_SIMPLEX,
+                                fontScale=1.5,color=(0,255,0),thickness=4,lineType=cv2.LINE_AA)
+                #cv2.arrowedLine(self.frame_right_converted,self.start_segment_right,self.end_segment_right,color=(0,0,255),thickness=8,tipLength=0.5)
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
             else:
                 self.frame_right_converted=self.cvFrame2Gl(frame_right)
 
@@ -1886,8 +2102,8 @@ class Renderer:
         
 
         ######Render Right Screen Instruments and Camera#######
-        if (self.virtual_overlay_on or self.playback_on) and (self.is_psmerror_calib or (self.rc_T_s is not None)): #and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
-            if self.is_kinematics_cam and self.is_psmerror_calib:
+        if (self.virtual_overlay_on or self.playback_on): #and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
+            if self.is_kinematics_cam:
                 rc_T_s=opengl_T_opencv*self.inv_ecm_T_rc*inv_ecmi_T_ecm*self.ecm_T_rc*self.rci_T_si #Uncomment for Kinematics-Based ECM Motion
             elif self.rc_T_s is not None:
                 rc_T_s=opengl_T_opencv*self.rc_T_s #Uncomment for Visual-Based ECM Motion

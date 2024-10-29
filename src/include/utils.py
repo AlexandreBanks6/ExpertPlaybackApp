@@ -47,7 +47,7 @@ def EnforceOrthogonalityNumpy_FullTransform(transform):
     return transform
 
 def EnforceOrthogonalityNumpy(R):
-    return R
+    
     #Function which enforces a rotation matrix to be orthogonal
     #Input: R is a 3x3 numpy rotation
     #return R
