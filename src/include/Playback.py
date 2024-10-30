@@ -56,7 +56,7 @@ class Playback:
     def getDataRow(self):
         index=np.argmin(np.abs(self.playback_time_array-self.app.playback_time)) #Index where current playback time is closest to recorded task time
         
-        print("Playback Time: "+str(self.playback_time_array[index]))
+        #print("Playback Time: "+str(self.playback_time_array[index]))
         #Reset the playback_time in the main app to zero if we reached the end of the data
         #We trim 4 positions off the bottom
         if index>=(len(self.playback_time_array)-5):

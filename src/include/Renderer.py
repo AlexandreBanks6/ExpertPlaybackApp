@@ -300,94 +300,121 @@ class Renderer:
         ##############GUI SETUP################
         self.gui_window=tk.Tk()
         style=ttk.Style()
-        style.theme_use('clam')
-        self.gui_window.title("dVRK Playback App PC1")
+        style.theme_use('alt')
+        #style.configure('TButton',padding=6,relief="flat")
 
-        self.gui_window.rowconfigure([0,1,2,3,4,5,6,7],weight=1)
-        self.gui_window.columnconfigure([0,1,2,3],weight=1)
-        self.gui_window.minsize(300,100)
+        self.gui_window.title("dv-FlexAR")
+        self.gui_window.rowconfigure(list(range(0,13)),weight=1)
+        self.gui_window.columnconfigure(list(range(0,3)),weight=1)
+        self.gui_window.columnconfigure(0, minsize=75)  # Set minimum width for column 0
+        self.gui_window.columnconfigure(1, minsize=75)  # Set minimum width for column 1
+        self.gui_window.columnconfigure(2, minsize=75)  # Set minimum width for column 2
+
+        #self.gui_window.minsize(300,100)
 
         #Title at top
-        self.welcome_text=tk.Label(self.gui_window,text="Welcome to the dVRK Playback App PC1")
-        self.welcome_text.grid(row=0,column=1,sticky='n')
+        self.welcome_text=tk.Label(self.gui_window,text="Welcome to the dv-FlexAR", font=("Arial", 16, "bold"))
+        self.welcome_text.grid(row=0,column=0,columnspan=3,sticky='n')
 
+
+        #Cluster Description (camera scene calib)
+        self.calib_scene_calib=tk.Label(self.gui_window,text="--------------------Camera-Scene Calibration--------------------", font=("Arial", 14))
+        self.calib_scene_calib.grid(row=1,column=0,columnspan=2,sticky='n')
         #Show ArUco Button
         self.aruco_button=tk.Button(self.gui_window,text="Show ArUco",command=self.arucoToggleCallback)
-        self.aruco_button.grid(row=1,column=0,sticky="nsew")
+        self.aruco_button.grid(row=2,column=0,sticky="nsew")
         #Button to calibrate the scene (register camera to rigid object)
         self.calibrate_scene_button=tk.Button(self.gui_window,text="Calibrate Scene",command=self.calibrateToggleCallback)
-        self.calibrate_scene_button.grid(row=1,column=1,sticky="nsew")       
+        self.calibrate_scene_button.grid(row=2,column=1,sticky="nsew")       
 
 
-        #Buttons to calibrate PSM API error
-        self.start_psmerror_calibration=tk.Button(self.gui_window,text="Start PSM Error Calib",command=self.startPSMErrorCalib)
-        self.start_psmerror_calibration.grid(row=2,column=0,sticky="nsew")
+        #Cluster Description (camera scene calib)
+        self.calib_APIerr=tk.Label(self.gui_window,text="--------------------API Error Calibration--------------------", font=("Arial", 14))
+        self.calib_APIerr.grid(row=3,column=0,columnspan=2,sticky='n')
+        
+        #Buttons to calibrate PSM API error 
+        self.start_psmerror_calibration=tk.Button(self.gui_window,text="Start API Error Calib",command=self.startPSMErrorCalib)
+        self.start_psmerror_calibration.grid(row=4,column=0,sticky="nsew")
 
         self.grab_psm1_pointbutton=tk.Button(self.gui_window,text="Grab PSM1 Point",command=self.grabPSM1PointCallback)
-        self.grab_psm1_pointbutton.grid(row=2,column=1,sticky="nsew")
+        self.grab_psm1_pointbutton.grid(row=4,column=1,sticky="nsew")
 
         self.grab_psm3_pointbutton=tk.Button(self.gui_window,text="Grab PSM3 Point",command=self.grabPSM3PointCallback)
-        self.grab_psm3_pointbutton.grid(row=2,column=2,sticky="nsew")
+        self.grab_psm3_pointbutton.grid(row=5,column=1,sticky="nsew")
 
         self.calibrate_psmerror_button=tk.Button(self.gui_window,text="Calibrate PSM Error",command=self.calibratePSMErrorCallback)
-        self.calibrate_psmerror_button.grid(row=2,column=3,sticky="nsew")
+        self.calibrate_psmerror_button.grid(row=5,column=0,sticky="nsew")
+
+        ############Buttons for validating PSM1/PSM3, virtual overlay, recording motions, and playing back motions##########
+        # self.recordValid=tk.Label(self.gui_window,text="-----------------Select PSMs for Record/Playback-----------------", font=("Arial", 14))
+        # self.recordValid.grid(row=5,column=0,columnspan=4,sticky='n')
+
+        
+        
+        self.recordValid=tk.Label(self.gui_window,text="--------------------Record And Validate--------------------", font=("Arial", 14))
+        self.recordValid.grid(row=6,column=0,columnspan=3,sticky='n')
 
         #Select PSM (to record/playback/overlay) Checkboxes
         self.checkbox_PSM1=tk.Checkbutton(self.gui_window,text="PSM1",onvalue=1,offvalue=0,command=self.psm1Checkbox)
-        self.checkbox_PSM1.grid(row=3,column=0,sticky='nsew')
+        self.checkbox_PSM1.grid(row=7,column=0,sticky="w")
 
         self.checkbox_PSM3=tk.Checkbutton(self.gui_window,text="PSM3",onvalue=1,offvalue=0,command=self.psm3Checkbox)
-        self.checkbox_PSM3.grid(row=3,column=1,sticky='nsew')
-        
-        ############Buttons for validating PSM1/PSM3, virtual overlay, recording motions, and playing back motions##########
+        self.checkbox_PSM3.grid(row=8,column=0,sticky="w")
 
-        self.validate_error_correction_button=tk.Button(self.gui_window,text="Validate API Err Correction",command=self.validateErrorCorrectionCallback)
-        self.validate_error_correction_button.grid(row=3,column=2,sticky="nsew")
+        #Toggle kinematics/visual camera motion
+        self.cam_motion=tk.Button(self.gui_window,text="Kinematics-(def)/Visual-based ECM motion",command=self.kinematicsCamCallback)
+        self.cam_motion.grid(row=9,column=0,sticky="nsew")
+
 
         #Virtual Overlay Button
         self.virtual_overlay_button=tk.Button(self.gui_window,text="Virtual Overlay",command=self.virtualOverlayCallback)
-        self.virtual_overlay_button.grid(row=4,column=0,sticky="nsew")
+        self.virtual_overlay_button.grid(row=7,column=1,sticky="nsew")
+
+        self.validate_error_correction_button=tk.Button(self.gui_window,text="Validate API Err Correction",command=self.validateErrorCorrectionCallback)
+        self.validate_error_correction_button.grid(row=8,column=1,sticky="nsew")        
         
         #Record Expert Motions Button
         self.record_motions_button=tk.Button(self.gui_window,text="Record Motions (Start on PC1 before PC2)",command=self.rocordMotionsCallback)
-        self.record_motions_button.grid(row=4,column=1,sticky="nsew")
+        self.record_motions_button.grid(row=7,column=2,sticky="nsew")
 
         #Playback Tools Button
         self.calibrate_gaze_button=tk.Button(self.gui_window,text="Calibrate Gaze (Record Motions is Pressed First)",command=self.calibrateGazeCallback)
-        self.calibrate_gaze_button.grid(row=4,column=2,sticky="nsew")
+        self.calibrate_gaze_button.grid(row=8,column=2,sticky="nsew")
 
 
-        #Toggle kinematics/visual camera motion
-        self.cam_motion=tk.Button(self.gui_window,text="Toggle visual- or kinematics-based ECM motion (default=kinematics)",command=self.kinematicsCamCallback)
-        self.cam_motion.grid(row=4,column=3,sticky="nsew")
-
-        #Playback Tools Button
-        self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.playbackMotionsCallback)
-        self.render_button.grid(row=5,column=0,sticky="nsew")
+        self.playbackLabel=tk.Label(self.gui_window,text="--------------------Playback--------------------", font=("Arial", 14))
+        self.playbackLabel.grid(row=10,column=0,columnspan=3,sticky='n',pady=(10,20))
 
         self.checkbox_simpleplayback=tk.Checkbutton(self.gui_window,text="Basic Playback",onvalue=1,offvalue=0,command=self.basicPlaybackCallback)
-        self.checkbox_simpleplayback.grid(row=5,column=1,sticky='nsew')
+        self.checkbox_simpleplayback.grid(row=11,column=0,sticky='w')
 
-        self.checkbox_textplayback=tk.Checkbutton(self.gui_window,text=" Playback with Text Overlay",onvalue=1,offvalue=0,command=self.textOverlayPlaybackCallback)
-        self.checkbox_textplayback.grid(row=5,column=2,sticky='nsew')
+        self.checkbox_textplayback=tk.Checkbutton(self.gui_window,text="Playback with Text Overlay",onvalue=1,offvalue=0,command=self.textOverlayPlaybackCallback)
+        self.checkbox_textplayback.grid(row=11,column=1,sticky='w')
 
         self.checkbox_segmentedplayback=tk.Checkbutton(self.gui_window,text="Playback with Segments (2-handed only)",onvalue=1,offvalue=0,command=self.segmentedPlaybackCallback)
-        self.checkbox_segmentedplayback.grid(row=5,column=3,sticky='nsew')
+        self.checkbox_segmentedplayback.grid(row=11,column=2,sticky='w')
 
 
         #Check Boxes to Select Which Task we are Using
         self.checkbox_twoHandedRingWire=tk.Checkbutton(self.gui_window,text="2-Handed Ring Wire",onvalue=1,offvalue=0,command=self.twoHandedRingWireCallback)
-        self.checkbox_twoHandedRingWire.grid(row=6,column=0,sticky='nsew')
+        self.checkbox_twoHandedRingWire.grid(row=12,column=0,sticky='w')
 
         self.checkbox_oneHandedRingWire=tk.Checkbutton(self.gui_window,text="1-Handed Ring Wire",onvalue=1,offvalue=0,command=self.oneHandedRingWireCallback)
-        self.checkbox_oneHandedRingWire.grid(row=6,column=1,sticky='nsew')
+        self.checkbox_oneHandedRingWire.grid(row=12,column=1,sticky='w')
 
         self.checkbox_pickPlace=tk.Checkbutton(self.gui_window,text="Pick & Place",onvalue=1,offvalue=0,command=self.pickAndPlaceCallback)
-        self.checkbox_pickPlace.grid(row=6,column=2,sticky='nsew')
+        self.checkbox_pickPlace.grid(row=12,column=2,sticky='w')
 
-        self.slider_playbackSpeed=tk.Scale(self.gui_window,from_=0.25,to=2,resolution=0.25,orient=tk.HORIZONTAL, command=self.playbackSpeedCallback)
-        self.slider_playbackSpeed.grid(row=7,column=0,sticky='nsew')
-        self.slider_playbackSpeed.set(1)
+        #Playback Tools Button
+        self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.playbackMotionsCallback)
+        self.render_button.grid(row=13,column=0,sticky="nsew")
+
+        self.slider_label = tk.Label(self.gui_window, text="Playback Speed:")
+        self.slider_label.grid(row=13, column=1, sticky="e")  # Align to the right for spacing
+
+        self.slider_playbackSpeed=tk.Scale(self.gui_window,from_=0.25,to=2.00,resolution=0.25,orient=tk.HORIZONTAL, command=self.playbackSpeedCallback)
+        self.slider_playbackSpeed.grid(row=13,column=2,sticky='w')
+        self.slider_playbackSpeed.set(float(1.00))
 
         ####################Initializing Variables##################
 
@@ -773,6 +800,13 @@ class Renderer:
             self.segment_PSMs=ONE_HANDED_SEGMENT_PSMs 
             self.maxSegmentIndexCount=14
 
+            #Deselecting other checkboxes
+            self.checkbox_twoHandedRingWire.deselect()
+            self.checkbox_pickPlace.deselect()
+
+            self.is_two_handed_ringwire=False
+            self.is_pick_and_place=False
+
     def twoHandedRingWireCallback(self):
         self.is_two_handed_ringwire=not self.is_two_handed_ringwire
         if self.is_two_handed_ringwire:
@@ -781,32 +815,57 @@ class Renderer:
             self.segment_indices=TWO_HANDED_SEGMENT_INDICES
             self.segment_PSMs=TWO_HANDED_SEGMENT_PSMs
 
+            #Deselecting other checkboxes
+            self.checkbox_oneHandedRingWire.deselect()
+            self.checkbox_pickPlace.deselect()
+
+            self.is_one_handed_ringwire=False
+            self.is_pick_and_place=False
+
 
     def pickAndPlaceCallback(self):
         self.is_pick_and_place=not self.is_pick_and_place
-        print("Pick and Place Callback")
+        #print("Pick and Place Callback")
         if self.is_pick_and_place:
             self.playback_filename='PC1_PickAndPlace.csv'
             self.maxSegmentIndexCount=9
             self.segment_indices=PICK_AND_PLACE_INDICES
             self.segment_PSMs=PICK_AND_PLACE_SEGMENT_PSMs
 
-            print("Pick and Place Names"+str(self.segment_PSMs))
+            #Deselecting other checkboxes
+            self.checkbox_oneHandedRingWire.deselect()
+            self.checkbox_twoHandedRingWire.deselect()
+
+            self.is_one_handed_ringwire=False
+            self.is_two_handed_ringwire=False
+
+            #print("Pick and Place Names"+str(self.segment_PSMs))
 
     def playbackSpeedCallback(self,sliderVal):
+        #print("Slider Val: "+str(sliderVal))
         self.playback_speed=float(sliderVal)
+        #self.slider_playbackSpeed.config(label=f"{self.playback_speed:.2f}")
 
     def basicPlaybackCallback(self):
         self.is_segmentedPlayback=False
         self.is_textPlayback=False
+        self.checkbox_segmentedplayback.deselect()
+        self.checkbox_textplayback.deselect()
 
     def segmentedPlaybackCallback(self):
-        self.is_segmentedPlayback=True
-        self.is_textPlayback=False
+        self.is_segmentedPlayback=not self.is_segmentedPlayback
+        if self.is_segmentedPlayback:
+            self.is_textPlayback=False
+            self.checkbox_simpleplayback.deselect()
+            self.checkbox_textplayback.deselect()
 
     def textOverlayPlaybackCallback(self):
         self.is_segmentedPlayback=False
-        self.is_textPlayback=True
+        self.is_textPlayback=not self.is_textPlayback
+        if self.is_textPlayback:
+            self.is_segmentedPlayback=False
+            self.checkbox_simpleplayback.deselect()
+            self.checkbox_segmentedplayback.deselect()
 
     
 
