@@ -47,6 +47,7 @@ import os
 
 #################File Names#####################
 PATH_TO_NDI_APPLE3='../resources/NDI_DRF_Models/APPLE03.rom' 
+#PATH_TO_NDI_APPLE3='../resources/NDI_DRF_Models/APPLE09.rom' 
 PATH_TO_VALIDATION_CSV='../resources/validation/camToScene/'
 PATH_TO_POSE_VALIDATION_CSV='../resources/validation/PSMPose/'
 
@@ -63,14 +64,17 @@ rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
 
 ###############Header for Cam-to-Scene Validation CSV#############
 repeat_string=["Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"] #First number is row of R, second number is column
+#Camera to scene transform validation
 CAM_TO_SCENE_VALIDATION_HEADER=["Timestamp","Trial #",'Compute Time',"NDI_Tracker",\
-                                            "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
+                                            "Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22","Tracking Quality",\
                                             "visual_frame","Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"]
 
-S_T_PSM_VALIDATION_HEADER=["Timestamp","Trial #",'Compute Time',"NDI_Tracker",\
-                                            "Tx","Ty","Tz","Q0","Qx","Qy","Qz","Tracking Quality",\
-                                            "s_T_psm_estimate","Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"]
+#Scene to PSM validation
 
+S_T_PSM_VALIDATION_HEADER=["Timestamp","Trial #",'Compute Time',"NDI_Tracker",\
+                                            "Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22","Tracking Quality",\
+                                            "s_T_psm_estimate","Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"]
+#Camera to PSM validation
 LC_T_PSM_VALIDATION_HEADER=["Timestamp","Trial #",'Compute Time',"lc_T_aruco",\
                                             "Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22",\
                                             "lc_T_psm_estimate","Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"]
@@ -88,8 +92,11 @@ CONSOLE_VIEWPORT_WIDTH=1024
 CONSOLE_VIEWPORT_HEIGHT=722
 
 
-tool_tip_offset=0.0102  #PSM1 tooltip offset (large needle driver)
-tool_tip_offset_psm3=0.0102 #PSM3 tooltip offset
+#tool_tip_offset=0.0102  #PSM1 tooltip offset (large needle driver)
+tool_tip_offset=0.021082 #For Fenestrated Bipolar Forceps
+#tool_tip_offset_psm3=0.0102 #PSM3 tooltip offset
+tool_tip_offset_psm3=0.021082
+
 
 tool_tip_point=np.array([0,0,tool_tip_offset+0.001,1],dtype=np.float32) #Point of tooltip for API correction
 METERS_TO_RENDER_SCALE=1000 #OpenGL in mm, real word in m
@@ -293,8 +300,8 @@ class Renderer:
         self.p_ecm_ac_list_psm3_right=None
         self.p_ecm_rep_list_psm3_right=None
 
-        self.is_new_psm1_points_right=False
-        self.is_new_psm3_points_right=False
+        self.is_new_psm1_points=False
+        self.is_new_psm3_points=False
 
 
 
@@ -537,7 +544,7 @@ class Renderer:
                         "romfiles": [PATH_TO_NDI_APPLE3]
                     }
                 self.ndi_tracker=NDITracker(settings)
-                self.ndi_tracker.use_quaternions=True
+                self.ndi_tracker.use_quaternions=False
                 self.ndi_tracker.start_tracking()
                 print('Started NDI Tracker')
 
@@ -616,6 +623,7 @@ class Renderer:
     def grabPSMPoseCallback(self):
         self.is_GrabPose = not self.is_GrabPose
         self.num_frames_captured+=1
+        self.delta_Time_PoseValid=0
 
     
     def startPSMPoseCallback(self):
@@ -630,7 +638,7 @@ class Renderer:
                     "romfiles": [PATH_TO_NDI_APPLE3]
                 }
             self.ndi_tracker=NDITracker(settings)
-            self.ndi_tracker.use_quaternions=True
+            self.ndi_tracker.use_quaternions=False
             self.ndi_tracker.start_tracking()
             print('Started NDI Tracker')
 
@@ -1218,34 +1226,44 @@ class Renderer:
     def writeFramesToCSV(self,compute_time,NDI_dat,frame,csv_name,count):
 
         bool_check=False
-
+        print("NDI Data: ")
+        print(NDI_dat)
         timestamp=NDI_dat[1]    #Timestamp
-        quat_list=NDI_dat[3] #quaternion
+        print("Timestamp: "+str(timestamp))
+        transform_list=NDI_dat[3] #Transform
         quality=NDI_dat[4]  #Tracking Quality
+        print("quality: "+str(quality))
 
-        data_list=[" "]*25 #Initializes the list of data as empty spaces
+        data_list=[" "]*29 #Initializes the list of data as empty spaces
 
-        data_list[0]=timestamp
+        data_list[0]=timestamp[0]
         data_list[1]=count
         data_list[2]=compute_time
 
-        if len(quat_list)>0: #Quaternion is found                            
-            quat_list=quat_list[0][0].tolist()
-            data_list[4:10]=quat_list
-            data_list[11]=quality[0]
+        if len(transform_list)>0: #Quaternion is found                            
+            transform_list=transform_list[0]
+            data_list[4:16]=self.convertHomogeneousToCSVROW(transform_list)
+            #print("Saved NDI Data: ")
+            #print(data_list[4:16])
+            data_list[16]=quality[0]
             if frame is not None:
                 
                 frame_numpy=np.array(glm.transpose(frame).to_list(),dtype='float32')
+               #print("Frame Data: ")
+                #print(frame_numpy)
                 frame_list=self.convertHomogeneousToCSVROW(frame_numpy)
 
-                data_list[13:-1]=frame_list
+                data_list[18:-1]=frame_list
+                #print("Saved Frame Data: ")
+                #print(data_list[18:-1])
                 bool_check=True
                 #Write the row:
                 with open(csv_name,'a',newline='') as file_object:
                     writer_object=csv.writer(file_object)
                     writer_object.writerow(data_list)
                     file_object.close()
-        
+        print("Total Data: ")
+        print(data_list)
         return bool_check
     
     def writeFramesToCSV_Aruco(self,compute_time,aruco_frame,frame,csv_name,count):
@@ -1284,10 +1302,10 @@ class Renderer:
         #Input: 4x4 numpy array for homogeneous transform
         #Output: 12x1 string list with: "Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R22"
 
-        string_list=[str(transform[0,3]),str(transform[1,3]),str(transform[2,3]),\
-                    str(transform[0,0]),str(transform[0,1]),str(transform[0,2]),\
-                    str(transform[1,0]),str(transform[1,1]),str(transform[1,2]),\
-                    str(transform[2,0]),str(transform[2,1]),str(transform[2,2])]
+        string_list=[transform[0,3],transform[1,3],transform[2,3],\
+                    transform[0,0],transform[0,1],transform[0,2],\
+                    transform[1,0],transform[1,1],transform[1,2],\
+                    transform[2,0],transform[2,1],transform[2,2]]
         
         
         return string_list
@@ -1476,7 +1494,7 @@ class Renderer:
                     cart_T_ecm=self.ecm.setpoint_cp()
                     try_true=True
                 except Exception as e:
-                    print("Unable to read psm1: "+str(e))
+                    print("Unable to read ECM: "+str(e))
                     return
                 if try_true:
                     cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
@@ -1499,7 +1517,7 @@ class Renderer:
                             ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
                             ecm_T_psm=ecm_T_psm1
 
-                    if self.PSM3_on: # We are validating PSM1
+                    if self.PSM3_on: # We are validating PSM3
                         T_correct=self.inv_ecmac_T_ecmrep_psm3
                         try_true=False
                         try:
@@ -1628,7 +1646,7 @@ class Renderer:
                     #Doing calibration directly on single frame
                     self.rci_T_si=None
                     start_time=time.time()
-                    self.rci_T_si=self.aruco_tracker_left.calibrateSceneDirect(frame_right)
+                    self.rci_T_si=self.aruco_tracker_right.calibrateSceneDirect(frame_right)
                     end_time=time.time()
                     time_delay=end_time-start_time
                     if self.rci_T_si is not None:
@@ -1677,6 +1695,15 @@ class Renderer:
             self.ctx_right.enable(mgl.DEPTH_TEST)
 
         
+        #Makes sure the PSM's jaw is closed
+        if self.PSM1_on:
+            # jawAng=self.psm1.jaw.measured_js()
+            # jawAng[0]=-20.0
+            self.psm1.jaw.move_jp(np.array([-20.0]))
+        if self.PSM3_on:
+            self.psm3.jaw.move_jp(np.array([-20.0]))
+
+
 
         ########Update GUI
         self.gui_window.update()

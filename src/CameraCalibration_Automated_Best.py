@@ -979,10 +979,16 @@ class CameraCalibGUI:
         translation_diff_list=np.array(translation_diff_list,dtype='float32')
         angle_diff=np.mean(angle_diff_list)
         translation_diff=np.mean(translation_diff_list)
+
+        std_angle_diff=np.std(angle_diff_list)
+        std_translation_diff=np.std(translation_diff_list)
         print("Angle Difference List Right: "+str(angle_diff_list))
         print("Translation Difference List Right: "+str(translation_diff_list))
-        print("Angle Difference Right: "+str(angle_diff))
-        print("Translation Difference Right: "+str(translation_diff))
+        print("Mean Angle Difference Right: "+str(angle_diff))
+        print("Mean Translation Difference Right: "+str(translation_diff))
+
+        print("STD Angle Difference Right: "+str(std_angle_diff))
+        print("STD Translation Difference Right: "+str(std_translation_diff))
         
 
 
@@ -1065,10 +1071,18 @@ class CameraCalibGUI:
         translation_diff_list=np.array(translation_diff_list,dtype='float32')
         angle_diff=np.mean(angle_diff_list)
         translation_diff=np.mean(translation_diff_list)
+
+        std_angle_diff=np.std(angle_diff_list)
+        std_translation_diff=np.std(translation_diff_list)
         print("Angle Difference List Left: "+str(angle_diff_list))
         print("Translation Difference List Left: "+str(translation_diff_list))
         print("Angle Difference Left: "+str(angle_diff))
         print("Translation Difference Left: "+str(translation_diff))
+
+
+
+        print("STD Angle Difference Left: "+str(std_angle_diff))
+        print("STD Translation Difference Left: "+str(std_translation_diff))
 
 
 
