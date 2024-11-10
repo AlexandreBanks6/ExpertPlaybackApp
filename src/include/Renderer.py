@@ -451,6 +451,9 @@ class Renderer:
         self.p_ecm_ac_list_psm3_right=None
         self.p_ecm_rep_list_psm3_right=None
 
+        self.is_new_psm1_points=False
+        self.is_new_psm3_points=False
+
         self.is_new_psm1_points_right=False
         self.is_new_psm3_points_right=False
 
@@ -918,6 +921,11 @@ class Renderer:
      #########API Error Correction Methods
 
     def startPSMErrorCalib(self):
+        self.is_new_psm1_points=False
+        self.is_new_psm3_points=False
+
+        self.is_new_psm1_points_right=False
+        self.is_new_psm3_points_right=False
         
         #PSM1
         self.psm1_points_count=0
@@ -1152,6 +1160,76 @@ class Renderer:
             proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
             self.project_point_psm3_right=proj_point
 
+    def calibratePSMErrorIndividual(self,p_ecm_ac_list,p_ecm_rep_list,testing_data=False):
+        points_shape=p_ecm_rep_list.shape
+        if testing_data:
+            train_indices=list(range(0,points_shape[0],2))
+            #Training lists
+            #p_ecm_ac_list=[p_ecm_ac_list[i] for i in train_indices]
+            p_ecm_ac_list=p_ecm_ac_list[train_indices]
+            p_ecm_rep_list=p_ecm_rep_list[train_indices]
+            points_shape=p_ecm_rep_list.shape #Updates point shape
+
+
+            #Testing lists
+            test_indices=list(range(1,points_shape[0],2))
+            #Training lists
+            p_ecm_ac_list_test=p_ecm_ac_list[test_indices]
+            p_ecm_rep_list_test=p_ecm_rep_list[test_indices]
+            points_shape_test=p_ecm_rep_list_test.shape
+
+
+
+        ecmac_T_ecmrep_np,_=utils.ransacRigidRransformation(p_ecm_ac_list,p_ecm_rep_list)
+        #Saving Results
+        ecmac_T_ecmrep_list=ecmac_T_ecmrep_np.tolist()
+
+        ecmac_T_ecmrep_glm=glm.mat4(*ecmac_T_ecmrep_np.T.flatten())
+        inv_ecmac_T_ecmrep_glm=utils.invHomogeneousGLM(ecmac_T_ecmrep_glm)
+
+        #Finding translation error on training data:
+        translation_diff_list=[]
+        for i in range(points_shape[0]): #Loops for the number of training points captured
+            p_lc_rep_point=p_ecm_rep_list[i].tolist()
+            p_lc_rep_point.append(1)
+            p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
+            p_lc_rep_point=glm.vec4(p_lc_rep_point)
+
+            est_point=inv_ecmac_T_ecmrep_glm*p_lc_rep_point
+            est_point=np.array([est_point.x,est_point.y,est_point.z],dtype=np.float32)
+
+            trans_diff=est_point-p_ecm_ac_list[i]
+            trans_diff=np.linalg.norm(trans_diff)
+            translation_diff_list.append(trans_diff)
+
+        translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
+        trans_diff_mean=np.mean(translation_diff_list)
+        trans_diff_std=np.std(translation_diff_list)
+
+        trans_diff_test_mean=None
+        trans_diff_test_std=None
+        if testing_data:    #Run test
+            translation_diff_list=[]
+            for i in range(points_shape_test[0]): #Loops for the number of training points captured
+                p_lc_rep_point=p_ecm_rep_list_test[i].tolist()
+                p_lc_rep_point.append(1)
+                p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
+                p_lc_rep_point=glm.vec4(p_lc_rep_point)
+
+                est_point=inv_ecmac_T_ecmrep_glm*p_lc_rep_point
+                est_point=np.array([est_point.x,est_point.y,est_point.z],dtype=np.float32)              
+
+                trans_diff=est_point-p_ecm_ac_list_test[i]
+                trans_diff=np.linalg.norm(trans_diff)
+                translation_diff_list.append(trans_diff)
+
+            translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
+            trans_diff_test_mean=np.mean(translation_diff_list)
+            trans_diff_test_std=np.std(translation_diff_list)
+
+
+        return ecmac_T_ecmrep_np,ecmac_T_ecmrep_list,ecmac_T_ecmrep_glm,inv_ecmac_T_ecmrep_glm,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std
+
     def calibratePSMErrorCallback(self):
         if not os.path.isdir(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/'): #Creates store directory
             os.mkdir(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/')
@@ -1166,51 +1244,28 @@ class Renderer:
             self.p_ecm_rep_list_psm1=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm1.npy')
 
 
-        #Finding the error compensation transform, psm1 lc (psm1 left camera)
-
+        #Finding the error compensation transform
         psm1_lc_points_shape=self.p_ecm_rep_list_psm1.shape
-
-
         if psm1_lc_points_shape is not None:
             if psm1_lc_points_shape[0]>3:
-                
-
-
                 print("p_ecm_ac_list_psm1: "+str(self.p_ecm_ac_list_psm1))
                 print("p_ecm_rep_list_psm1: "+str(self.p_ecm_rep_list_psm1))
-                self.ecmac_T_ecmrep_psm1_np,_=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1)
-
-
-                #Saving Results
-                ecmac_T_ecmrep_psm1_list=self.ecmac_T_ecmrep_psm1_np.tolist()
+                self.ecmac_T_ecmrep_psm1_np,ecmac_T_ecmrep_psm1_list,self.ecmac_T_ecmrep_psm1,self.inv_ecmac_T_ecmrep_psm1,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1,True)
+                
+                print('mean registration error psm1 lc: '+str(trans_diff_mean))
+                print('std registration error psm1 lc: '+str(trans_diff_std))
+                print('test mean registration error psm1 lc: '+str(trans_diff_test_mean))
+                print('test std registration error psm1 lc: '+str(trans_diff_test_std))
+                
                 data_psm1={'ecmac_T_ecmrep_psm1':ecmac_T_ecmrep_psm1_list}
                 with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm1.yaml','w') as f:
-                    yaml.dump(data_psm1,f)
-                    f.close()
+                            yaml.dump(data_psm1,f)
+                            f.close()
 
-                self.ecmac_T_ecmrep_psm1=glm.mat4(*self.ecmac_T_ecmrep_psm1_np.T.flatten())
-                self.inv_ecmac_T_ecmrep_psm1=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)
-
-                #Finding translation error:
-                translation_diff_list=[]
-                for i in range(psm1_lc_points_shape[0]): #Loops for the number of points captured
-                    p_lc_rep_point=self.p_ecm_rep_list_psm1[i].tolist()
-                    p_lc_rep_point.append(1)
-                    p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
-
-                    est_point=self.ecmac_T_ecmrep_psm1_np@p_lc_rep_point
-                    #est_point=np.matmul(self.ecmac_T_ecmrep_psm1_np,p_lc_rep_point)
-                    est_point=est_point[0:3]
-
-
-                    trans_diff=est_point-self.p_ecm_ac_list_psm1[i]
-                    trans_diff=np.linalg.norm(trans_diff)
-                    translation_diff_list.append(trans_diff)
-                translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
-                trans_diff=np.mean(translation_diff_list)
-                print('registration error psm1 lc: '+str(trans_diff))
 
                 self.is_psmerror_calib=True
+
 
         #PSM1 Right:
         #Store the psm1 points first (both lc and rc)
@@ -1222,49 +1277,25 @@ class Renderer:
             self.p_ecm_rep_list_psm1_right=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm1_right.npy')
 
 
-        #Finding the error compensation transform, psm1 lc (psm1 left camera)
-
+        #Finding the error compensation transform, psm1 rc (psm1 right camera)
         psm1_rc_points_shape=self.p_ecm_rep_list_psm1_right.shape
-
-
         if psm1_rc_points_shape is not None:
             if psm1_rc_points_shape[0]>3:
-                
-
-
                 print("p_ecm_ac_list_psm1_right: "+str(self.p_ecm_ac_list_psm1_right))
                 print("p_ecm_rep_list_psm1_right: "+str(self.p_ecm_rep_list_psm1_right))
-                self.ecmac_T_ecmrep_psm1_right_np,_=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm1_right,self.p_ecm_rep_list_psm1_right)
-
-
-                #Saving Results
-                ecmac_T_ecmrep_psm1_right_list=self.ecmac_T_ecmrep_psm1_right_np.tolist()
+                self.ecmac_T_ecmrep_psm1_right_np,ecmac_T_ecmrep_psm1_right_list,self.ecmac_T_ecmrep_psm1_right,self.inv_ecmac_T_ecmrep_psm1_right,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm1_right,self.p_ecm_rep_list_psm1_right,True)
+                
+                print('mean registration error psm1 rc: '+str(trans_diff_mean))
+                print('std registration error psm1 rc: '+str(trans_diff_std))
+                print('test mean registration error psm1 rc: '+str(trans_diff_test_mean))
+                print('test std registration error psm1 rc: '+str(trans_diff_test_std))
+                
                 data_psm1={'ecmac_T_ecmrep_psm1_right':ecmac_T_ecmrep_psm1_right_list}
                 with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm1_right.yaml','w') as f:
                     yaml.dump(data_psm1,f)
                     f.close()
 
-                self.ecmac_T_ecmrep_psm1_right=glm.mat4(*self.ecmac_T_ecmrep_psm1_right_np.T.flatten())
-                self.inv_ecmac_T_ecmrep_psm1_right=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1_right)
-
-                #Finding translation error:
-                translation_diff_list=[]
-                for i in range(psm1_rc_points_shape[0]): #Loops for the number of points captured
-                    p_lc_rep_point=self.p_ecm_rep_list_psm1_right[i].tolist()
-                    p_lc_rep_point.append(1)
-                    p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
-
-                    est_point=self.ecmac_T_ecmrep_psm1_right_np@p_lc_rep_point
-                    #est_point=np.matmul(self.ecmac_T_ecmrep_psm1_np,p_lc_rep_point)
-                    est_point=est_point[0:3]
-
-
-                    trans_diff=est_point-self.p_ecm_ac_list_psm1_right[i]
-                    trans_diff=np.linalg.norm(trans_diff)
-                    translation_diff_list.append(trans_diff)
-                translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
-                trans_diff=np.mean(translation_diff_list)
-                print('registration error psm1 rc: '+str(trans_diff))
 
                 self.is_psmerror_calib=True
 
@@ -1279,48 +1310,27 @@ class Renderer:
             self.p_ecm_rep_list_psm3=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm3.npy')
 
 
-        #Finding the error compensation transform, psm1 lc (psm1 left camera)
+        #Finding the error compensation transform, psm3 lc (psm3 left camera)
 
         psm3_lc_points_shape=self.p_ecm_rep_list_psm3.shape
 
-
         if psm3_lc_points_shape is not None:
             if psm3_lc_points_shape[0]>3:
-                
-
-
                 print("p_ecm_ac_list_psm3: "+str(self.p_ecm_ac_list_psm3))
                 print("p_ecm_rep_list_psm3: "+str(self.p_ecm_rep_list_psm3))
-                self.ecmac_T_ecmrep_psm3_np,_=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3)
-
-                #Saving Results
-                ecmac_T_ecmrep_psm3_list=self.ecmac_T_ecmrep_psm3_np.tolist()
+                self.ecmac_T_ecmrep_psm3_np,ecmac_T_ecmrep_psm3_list,self.ecmac_T_ecmrep_psm3,self.inv_ecmac_T_ecmrep_psm3,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3,True)
+                
+                print('mean registration error psm3 lc: '+str(trans_diff_mean))
+                print('std registration error psm3 lc: '+str(trans_diff_std))
+                print('test mean registration error psm3 lc: '+str(trans_diff_test_mean))
+                print('test std registration error psm3 lc: '+str(trans_diff_test_std))
+                
                 data_psm3={'ecmac_T_ecmrep_psm3':ecmac_T_ecmrep_psm3_list}
                 with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm3.yaml','w') as f:
                     yaml.dump(data_psm3,f)
                     f.close()
 
-                self.ecmac_T_ecmrep_psm3=glm.mat4(*self.ecmac_T_ecmrep_psm3_np.T.flatten())
-                self.inv_ecmac_T_ecmrep_psm3=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)
-
-                #Finding translation error:
-                translation_diff_list=[]
-                for i in range(psm3_lc_points_shape[0]): #Loops for the number of points captured
-                    p_lc_rep_point=self.p_ecm_rep_list_psm3[i].tolist()
-                    p_lc_rep_point.append(1)
-                    p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
-
-                    est_point=self.ecmac_T_ecmrep_psm3_np@p_lc_rep_point
-                    #est_point=np.matmul(self.ecmac_T_ecmrep_psm3_np,p_lc_rep_point)
-                    est_point=est_point[0:3]
-
-
-                    trans_diff=est_point-self.p_ecm_ac_list_psm3[i]
-                    trans_diff=np.linalg.norm(trans_diff)
-                    translation_diff_list.append(trans_diff)
-                translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
-                trans_diff=np.mean(translation_diff_list)
-                print('registration error psm3 lc: '+str(trans_diff))
                 self.is_psmerror_calib=True
   
         #PSM3 Right:
@@ -1337,47 +1347,25 @@ class Renderer:
 
         psm3_rc_points_shape=self.p_ecm_rep_list_psm3_right.shape
 
-
         if psm3_rc_points_shape is not None:
             if psm3_rc_points_shape[0]>3:
-                
-
-
                 print("p_ecm_ac_list_psm3_right: "+str(self.p_ecm_ac_list_psm3_right))
                 print("p_ecm_rep_list_psm3_right: "+str(self.p_ecm_rep_list_psm3_right))
-                self.ecmac_T_ecmrep_psm3_right_np,_=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm3_right,self.p_ecm_rep_list_psm3_right)
-
-
-                #Saving Results
-                ecmac_T_ecmrep_psm3_right_list=self.ecmac_T_ecmrep_psm3_right_np.tolist()
+                self.ecmac_T_ecmrep_psm3_right_np,ecmac_T_ecmrep_psm3_right_list,self.ecmac_T_ecmrep_psm3_right,self.inv_ecmac_T_ecmrep_psm3_right,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm3_right,self.p_ecm_rep_list_psm3_right,True)
+                
+                print('mean registration error psm3 rc: '+str(trans_diff_mean))
+                print('std registration error psm3 rc: '+str(trans_diff_std))
+                print('test mean registration error psm3 rc: '+str(trans_diff_test_mean))
+                print('test std registration error psm3 rc: '+str(trans_diff_test_std))
+                
                 data_psm3={'ecmac_T_ecmrep_psm3_right':ecmac_T_ecmrep_psm3_right_list}
                 with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm3_right.yaml','w') as f:
                     yaml.dump(data_psm3,f)
                     f.close()
 
-                self.ecmac_T_ecmrep_psm3_right=glm.mat4(*self.ecmac_T_ecmrep_psm3_right_np.T.flatten())
-                self.inv_ecmac_T_ecmrep_psm3_right=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3_right)
-
-                #Finding translation error:
-                translation_diff_list=[]
-                for i in range(psm3_rc_points_shape[0]): #Loops for the number of points captured
-                    p_lc_rep_point=self.p_ecm_rep_list_psm3_right[i].tolist()
-                    p_lc_rep_point.append(1)
-                    p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
-
-                    est_point=self.ecmac_T_ecmrep_psm3_right_np@p_lc_rep_point
-                    #est_point=np.matmul(self.ecmac_T_ecmrep_psm1_np,p_lc_rep_point)
-                    est_point=est_point[0:3]
-
-
-                    trans_diff=est_point-self.p_ecm_ac_list_psm3_right[i]
-                    trans_diff=np.linalg.norm(trans_diff)
-                    translation_diff_list.append(trans_diff)
-                translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
-                trans_diff=np.mean(translation_diff_list)
-                print('registration error psm3 rc: '+str(trans_diff))
-
                 self.is_psmerror_calib=True
+
     
     ######################Support Methods#####################
     

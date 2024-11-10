@@ -702,18 +702,22 @@ class CameraCalibGUI:
                 return
             
             #Finding Re-projection error
-            mean_error = 0
+            error_list=[]
             for j in range(len(objpoints)):
                 imgpoints2, _ = cv2.projectPoints(objpoints[j], rvecs[j], tvecs[j], mtx, dist)
                 error = cv2.norm(imgpoints[j], imgpoints2, cv2.NORM_L2)/len(imgpoints2)
-                mean_error += error
+                error_list.append(error)
+            print("error list: "+str(error_list))
+            error_list=np.array(error_list,dtype='float32')
             data = {'camera_matrix': np.asarray(mtx).tolist(),
                         'dist_coeff': np.asarray(dist).tolist(),
-                        'mean reprojection error': [mean_error/len(objpoints)]}
+                        'mean reprojection error': float(np.mean(error_list)),
+                        'std reprojection error': float(np.std(error_list))}
             
             #Writing data to file
             with open(calibration_params_path+"calibration_matrix.yaml","w") as f:
                 yaml.dump(data,f)
+
         print("Finished Camera Calibration")
 
 
@@ -739,7 +743,7 @@ class CameraCalibGUI:
 
         #Open Up the rb_T_ecm list
         rb_T_ecm_path=self.rootName+BASE_TO_ECM_DIR+'rb_T_ecm_setpoint.npy'
-        print("rb_T_ecm_path: "+str(rb_T_ecm_path))
+        #print("rb_T_ecm_path: "+str(rb_T_ecm_path))
         rb_T_ecm_list=np.load(rb_T_ecm_path)
 
         #print("rb_T_ecm_list: "+str(rb_T_ecm_list))
@@ -763,7 +767,7 @@ class CameraCalibGUI:
             
             #Loops for each ArUco that we previously captured
             for frame_num in range(NUM_FRAMES_CAPTURED):
-                print('frame_num: '+str(frame_num))
+                #print('frame_num: '+str(frame_num))
                 filename=checkerboard_frames_path+frame_name+str(frame_num)+".jpg"
                 img = cv2.imread(filename) # Capture frame-by-frame
                 frame_gray=cv2.cvtColor(img.copy(),cv2.COLOR_BGR2GRAY)
@@ -836,7 +840,7 @@ class CameraCalibGUI:
                             rb_T_ecm=rb_T_ecm_list[frame_num]
                             
                             rb_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(rb_T_ecm)
-                            print('rb_T_ecm: '+str(rb_T_ecm))
+                            #print('rb_T_ecm: '+str(rb_T_ecm))
                             #rb_T_ecm=utils.EnforceOrthogonalityNumpy_FullTransform(rb_T_ecm)
 
                             #Updating the lists
@@ -1135,8 +1139,11 @@ def decomposed_difference(A, B):
     quatA, quatB = Rotation.from_matrix(RA).as_quat(), Rotation.from_matrix(RB).as_quat()
 
     # Calculate the angular difference between quaternions
-    rotation_diff = Rotation.from_quat(quatA).inv() * Rotation.from_quat(quatB)
-    angle_diff = rotation_diff.magnitude()
+    #rotation_diff = Rotation.from_quat(quatA).inv() * Rotation.from_quat(quatB)
+    #angle_diff = rotation_diff.magnitude()
+    dot_product=np.abs(np.dot(quatA,quatB))
+    dot_product=np.clip(dot_product,-1.0,1.0)
+    angle_diff=2*np.arccos(dot_product)
 
     # Calculate the Euclidean distance between translation vectors
     
