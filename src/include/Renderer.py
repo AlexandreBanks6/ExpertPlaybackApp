@@ -1251,7 +1251,7 @@ class Renderer:
                 print("p_ecm_ac_list_psm1: "+str(self.p_ecm_ac_list_psm1))
                 print("p_ecm_rep_list_psm1: "+str(self.p_ecm_rep_list_psm1))
                 self.ecmac_T_ecmrep_psm1_np,ecmac_T_ecmrep_psm1_list,self.ecmac_T_ecmrep_psm1,self.inv_ecmac_T_ecmrep_psm1,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
-                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1,True)
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1,False)
                 
                 print('mean registration error psm1 lc: '+str(trans_diff_mean))
                 print('std registration error psm1 lc: '+str(trans_diff_std))
@@ -1284,7 +1284,7 @@ class Renderer:
                 print("p_ecm_ac_list_psm1_right: "+str(self.p_ecm_ac_list_psm1_right))
                 print("p_ecm_rep_list_psm1_right: "+str(self.p_ecm_rep_list_psm1_right))
                 self.ecmac_T_ecmrep_psm1_right_np,ecmac_T_ecmrep_psm1_right_list,self.ecmac_T_ecmrep_psm1_right,self.inv_ecmac_T_ecmrep_psm1_right,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
-                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm1_right,self.p_ecm_rep_list_psm1_right,True)
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm1_right,self.p_ecm_rep_list_psm1_right,False)
                 
                 print('mean registration error psm1 rc: '+str(trans_diff_mean))
                 print('std registration error psm1 rc: '+str(trans_diff_std))
@@ -1319,7 +1319,7 @@ class Renderer:
                 print("p_ecm_ac_list_psm3: "+str(self.p_ecm_ac_list_psm3))
                 print("p_ecm_rep_list_psm3: "+str(self.p_ecm_rep_list_psm3))
                 self.ecmac_T_ecmrep_psm3_np,ecmac_T_ecmrep_psm3_list,self.ecmac_T_ecmrep_psm3,self.inv_ecmac_T_ecmrep_psm3,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
-                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3,True)
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3,False)
                 
                 print('mean registration error psm3 lc: '+str(trans_diff_mean))
                 print('std registration error psm3 lc: '+str(trans_diff_std))
@@ -1352,7 +1352,7 @@ class Renderer:
                 print("p_ecm_ac_list_psm3_right: "+str(self.p_ecm_ac_list_psm3_right))
                 print("p_ecm_rep_list_psm3_right: "+str(self.p_ecm_rep_list_psm3_right))
                 self.ecmac_T_ecmrep_psm3_right_np,ecmac_T_ecmrep_psm3_right_list,self.ecmac_T_ecmrep_psm3_right,self.inv_ecmac_T_ecmrep_psm3_right,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
-                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm3_right,self.p_ecm_rep_list_psm3_right,True)
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm3_right,self.p_ecm_rep_list_psm3_right,False)
                 
                 print('mean registration error psm3 rc: '+str(trans_diff_mean))
                 print('std registration error psm3 rc: '+str(trans_diff_std))
