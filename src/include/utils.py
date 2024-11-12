@@ -314,3 +314,10 @@ def projectPointsWithDistortion(X,Y,Z,dist_coeffs,intrinsics):
 
 
     return u_dis,v_dis
+
+def setting_arm_state(arm):
+    #Funcion that enables the arms on the dVRK
+    #Checks to see if they have not already been enabled
+    if arm.operating_state() == "DISABLED":
+        arm.enable()
+        arm.home()

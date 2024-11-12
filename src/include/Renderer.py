@@ -681,15 +681,10 @@ class Renderer:
         self.psm3=dvrk.psm("PSM3") #Mapped to right hand
         self.ecm=dvrk.ecm("ECM")
 
-        #Enabling and Homing
-        self.psm1.enable()
-        self.psm1.home()
-
-        self.psm3.enable()
-        self.psm3.home()
-
-        self.ecm.enable()
-        self.ecm.home()
+        #Enabling and Homing the arms
+        utils.setting_arm_state(self.psm1)
+        utils.setting_arm_state(self.psm3)
+        utils.setting_arm_state(self.ecm)
 
 
         rospy.sleep(1)
