@@ -30,7 +30,7 @@ class GazeRecorder:
         self.frame_fail_count=0
         self.file_count=1 #File number that we save gaze to
         self.gaze_filename=None
-        print("Booleans")
+
         #Sets up ROS Node and Publisher
         rospy.init_node('GazeTracker')
         rospy.Rate(1000)

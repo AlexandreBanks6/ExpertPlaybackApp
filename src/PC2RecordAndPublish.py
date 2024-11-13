@@ -41,6 +41,8 @@ rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
 Gaze_Number_Topic='ExpertPlayback/GazeFrameNumber'
 
 MOTIONS_ROOT='../resources/Motions/'
+ECM_FRAME_WIDTH_DESIRED=1024
+ECM_FRAME_HEIGHT_DESIRED=722
 
 class PC2RecordAndPublish:
     def __init__(self):
@@ -245,14 +247,19 @@ class PC2RecordAndPublish:
     def frameCallbackRight(self,data):
         self.right_frame_number_check+=1
         self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        self.frame_right=cv2.resize(self.frame_right,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+                   
         if self.is_Record:
             self.pc2_datalogger.right_video_writer.write(self.frame_right)
             self.right_ecm_frame_number+=1
+            print("Right Frame Record")
         
 
     def frameCallbackLeft(self,data):
         self.left_frame_number_check+=1
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        self.frame_left=cv2.resize(self.frame_left,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+ 
         if self.is_Record:
             #init_time=time.time()
             self.pc2_datalogger.left_video_writer.write(self.frame_left)
@@ -260,6 +267,7 @@ class PC2RecordAndPublish:
             #print("Time Diff="+str(after_time-init_time))
 
             self.left_ecm_frame_number+=1
+            print("Left Frame Record")
         
 
     def publishCamToSceneTransformCallback(self):
@@ -287,11 +295,13 @@ class PC2RecordAndPublish:
     def gazeCountCallback(self,data):
         self.gaze_frame_number=data.data
 
+
     def mainCallback(self):
         if not rospy.is_shutdown():
             if self.left_frame_number_check>0 and self.right_frame_number_check>0:
                 if self.is_publish: #Publish the lc_T_s and rc_T_s transforms
-
+                    self.frame_left=cv2.resize(self.frame_left,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+                    self.frame_right=cv2.resize(self.frame_right,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
                     lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
                     rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
 
@@ -363,6 +373,9 @@ class PC2RecordAndPublish:
 
                 if self.is_Record: #Record data
                     if not self.is_publish: #Publish is not on, we must compute the cam-to-scene transform
+                        self.frame_left=cv2.resize(self.frame_left,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+                        self.frame_right=cv2.resize(self.frame_right,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+
                         lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
                         #init_time=time.time()
                         rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
