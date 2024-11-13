@@ -722,6 +722,7 @@ class Renderer:
     def rocordMotionsCallback(self):
         self.record_motions_on=not self.record_motions_on
         if self.record_motions_on:
+            print("Recording Task")
             #sets record time to zero:
             self.record_time=0
             self.pc2_time=None
@@ -730,6 +731,9 @@ class Renderer:
             print(self.dataLogger_pc1.file_count)
             #self.filecount_msg.data=self.dataLogger_pc1.file_count
             self.filecount_pub.publish(self.dataLogger_pc1.file_count)
+        elif not self.record_motions_on:
+            print("Done Recording")
+            self.dataLogger_pc1.stopRecording_PC1()
 
     
     def calibrateGazeCallback(self):
@@ -1704,7 +1708,7 @@ class Renderer:
             pc1_time=datetime.now().time()
 
             ####Transforms to Record
-            if self.virtual_overlay_on: #Already computed some transforms transforms
+            if self.virtual_overlay_on: #Already computed some transforms
                 ecm_joints=self.ecm.measured_js()[0]
 
                 if self.PSM1_on:
