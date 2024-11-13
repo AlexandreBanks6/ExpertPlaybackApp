@@ -47,6 +47,7 @@ class DataLogger:
         #Initializng Arduino Reader Things
         self.ser_port=serial.Serial('/dev/ttyACM0',57600) #Use 'COM5' or similar if windows
         self.arduino_list=["NaN"]*5 #Inits this value
+        
     def initRecording_PC1(self,root_path):
         #Check if path exists
         if not os.path.exists(root_path+'PC1'):
@@ -116,7 +117,7 @@ class DataLogger:
 
 
     def stopRecording_PC1(self):
-        self.ser_port.write(b'\n') #Sends Enter to stop
+        self.ser_port.write(b'\n') #Sends Enter to stop command
 
     
     def initRecording_PC2(self,root_path,file_count):

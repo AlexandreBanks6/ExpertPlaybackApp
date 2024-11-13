@@ -65,6 +65,7 @@ LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 #PC 2 Time Subscription
 PC2_Time_Topic='ExpertPlayback/pc2Time' #Published from PC2 (subscribed to by PC1)
 filecount_Topic='ExpertPlayback/fileCount' #Published from PC1 (subscribed to by PC2)
+recordingToggle_Topic='ExpertPlayback/recordingToggle' #Published from PC1 (subscribed to by PC2) => If we are starting a new recording
 lc_T_s_Topic='ExpertPlayback/lc_T_s' #Published from PC2 (subscribed to by PC1)
 rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
 
@@ -214,6 +215,12 @@ class Renderer:
         rospy.sleep(1)
         #self.filecount_msg.data=self.dataLogger_pc1.file_count
         self.filecount_pub.publish(self.dataLogger_pc1.file_count)
+
+        #Object to push if we are recording or not (1 = recording) (0 = not recording)
+        self.recordingToggle_msg=Int32()
+        self.recordingToggle_pub=rospy.Publisher(name=recordingToggle_Topic,data_class=Int32,queue_size=10,latch=True)
+        rospy.sleep(1)
+        self.recordingToggle_pub.publish(0) #Not recording yet
 
         ############Left Window Initialization
         self.window_left.switch_to()
@@ -731,9 +738,11 @@ class Renderer:
             print(self.dataLogger_pc1.file_count)
             #self.filecount_msg.data=self.dataLogger_pc1.file_count
             self.filecount_pub.publish(self.dataLogger_pc1.file_count)
+            self.recordingToggle_pub.publish(1)    #Starting the recording
         elif not self.record_motions_on:
             print("Done Recording")
             self.dataLogger_pc1.stopRecording_PC1()
+            self.recordingToggle_pub.publish(0)     #Ending the recording
 
     
     def calibrateGazeCallback(self):
@@ -1705,7 +1714,8 @@ class Renderer:
             ####Time and Indexes to record
             
             #PC1 Time
-            pc1_time=datetime.now().time()
+            pc1_time_raw=datetime.now()
+            pc1_time=pc1_time_raw.strftime('%H:%M:%S.%f')
 
             ####Transforms to Record
             if self.virtual_overlay_on: #Already computed some transforms

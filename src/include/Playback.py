@@ -53,6 +53,9 @@ class Playback:
             self.playback_time_array=np.array(render_times_list,dtype='float32')
             file_object.close()
 
+        #Initializes the Pandas Frame
+        self.csv_obj=pd.read_csv(self.playback_filename_pc1)
+
     def getDataRow(self):
         index=np.argmin(np.abs(self.playback_time_array-self.app.playback_time)) #Index where current playback time is closest to recorded task time
         
@@ -64,9 +67,9 @@ class Playback:
             index=0
 
         index=index+10 #Must increment by 10, because playback_time_array ignores first 10 lines
-        data_row=pd.read_csv(self.playback_filename_pc1,skiprows=index,nrows=1)
-        data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
-
+        # data_row=pd.read_csv(self.playback_filename_pc1,skiprows=index,nrows=1)
+        # data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
+        data_list=self.csv_obj.iloc[index].to_list()
         return data_list
     
     def getPSM1State(self,data_list):
