@@ -5,10 +5,10 @@ close all
 DATA_ROOT_CamToScene='..\resources\validation\camToScene';
 DATA_ROOT_sTpsm='..\resources\validation\PSMPose';
 
-NDI_T_ARUCO_RIGID_TRANSFORM=[1,0,0,-0.05225;
-                            0,0,-1,0.076327;
-                            0,1,0,0.048387;
-                            0,0,0,1];
+% NDI_T_ARUCO_RIGID_TRANSFORM=[1,0,0,-0.05225;
+%                             0,0,-1,0.076327;
+%                             0,1,0,0.048387;
+%                             0,0,0,1];
 
 % NDI_T_ARUCO_RIGID_TRANSFORM=[0,0,1,-0.076327;
 %                             1,0,0,-0.05225;
@@ -20,6 +20,26 @@ NDI_T_ARUCO_RIGID_TRANSFORM=[1,0,0,-0.05225;
 %                             0,0,-1,0.076327;
 %                             0,0,0,1];
 
+NDI_T_ARUCO_RIGID_TRANSFORM=[0,0,-1,0.0745744;
+                            1,0,0,-0.05207;
+                            0,-1,0,-0.0485902;
+                            0,0,0,1];
+
+% PSM_T_ARUCO_RIGID_TRANSFORM=[-1,0,0,0.0061722;
+%                             0,0,1,0.0104394;
+%                             0,1,0,0.0315722;
+%                             0,0,0,1];
+
+PSM_T_ARUCO_RIGID_TRANSFORM=[-1,0,0,0.004572;
+                            0,0,1,0.0096774;
+                            0,1,0,0.0325882;
+                            0,0,0,1];
+
+PSM3_T_ARUCO_RIGID_TRANSFORM=[1,0,0,-0.004572;
+                            0,0,-1,-0.0096774;
+                            0,1,0,0.0325882;
+                            0,0,0,1];
+
 %%%%%%%%%%%%%%%%%%%%%%%Cam-To-Scene Transforms%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Reading in data
 data_multiple_left=xlsread([DATA_ROOT_CamToScene,'\cam_to_scene_multiple_left.csv']);
@@ -27,179 +47,74 @@ data_multiple_right=xlsread([DATA_ROOT_CamToScene,'\cam_to_scene_multiple_right.
 data_single_left=xlsread([DATA_ROOT_CamToScene,'\cam_to_scene_single_left.csv']);
 data_single_right=xlsread([DATA_ROOT_CamToScene,'\cam_to_scene_single_right.csv']);
 
+
+% Analyzing Error Multiple Left 
 [NDI_Mul_left_Angles,NDI_Mul_left_Tanslation,Estim_Mul_Left_Angles,Estim_Mul_Left_Translation]=...
-    compareFrameToNDI(data_multiple_left(:,5:16),data_multiple_left(:,19:30),NDI_T_ARUCO_RIGID_TRANSFORM,1);
+    compareFramesRelative(data_multiple_left(:,5:16),data_multiple_left(:,19:30),...
+    NDI_T_ARUCO_RIGID_TRANSFORM,0,"Left camTscene Multi-Frame Registration ");
+%Get rid of first row (outlier)
+NDI_Mul_left_Angles(1,:)=[];
+NDI_Mul_left_Tanslation(1,:)=[];
+Estim_Mul_Left_Angles(1,:)=[];
+Estim_Mul_Left_Translation(1,:)=[];
 
-% Analyzing error
-Mul_Left_TransError=NDI_Mul_left_Tanslation-Estim_Mul_Left_Translation;
-Mul_Left_TransError=sqrt(sum(Mul_Left_TransError.^2,2));
-Mul_Left_TransMean=mean(Mul_Left_TransError);
+[Mul_Left_TransError,Mul_Left_TransMean,Mul_Left_TransStd,Mul_Left_AngleError,...
+    Mul_Left_AngleMean,Mul_Left_AngleStd]=runStats(NDI_Mul_left_Tanslation, ...
+    Estim_Mul_Left_Translation,NDI_Mul_left_Angles,Estim_Mul_Left_Angles);
+%Plotting Error
+showErrorBoxPlots(abs(Mul_Left_TransError),abs(Mul_Left_AngleError),'Left camTscene Multi-Frame Registration ');
 
 
 
 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%lc_T_psm Transforms%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Reading Data
+%%%%%%%%%%%%%%%%%%%%%lc_T_psm Transforms%%%%%%%%%%%%%%%%%%%%%%%%
+%% Reading in data
 data_PSM1_withErrCorr=readmatrix([DATA_ROOT_sTpsm,'\lc_T_psm_PSM1__withErrCorr.csv']);
-data_PSM1_withoutErrCorr=readmatrix([DATA_ROOT_sTpsm,'\lc_T_psm_PSM1__withoutErrCorr.csv']);
 data_PSM3_withErrCorr=readmatrix([DATA_ROOT_sTpsm,'\lc_T_psm_PSM3__withErrCorr.csv']);
-data_PSM3_withoutErrCorr=readmatrix([DATA_ROOT_sTpsm,'\lc_T_psm_PSM3__withoutErrCorr.csv']);
-
-%%%%%%%%%%PSM1 with Error Correction
-%Trying different rotations about k Aruco because they weren't aligned
-%perfectly
-%angles_to_try=[-10:0.25:10]; %Angles in degrees
-% for i=[1:length(angles_to_try)]
-%     r_angle=angles_to_try(i);
-%     [transDiff_PSM1_withErrCorr,angleDiff_PSM1_withErrCorr]=compareFramesAbsolute(data_PSM1_withErrCorr(:,5:16),data_PSM1_withErrCorr(:,18:29),r_angle);
-% 
-%     %Getting norm of translation error
-%     trans_norm=vecnorm(transDiff_PSM1_withErrCorr,2,2);
-%     mean_trans_norm=mean(trans_norm);
-%     mean_angle_diff=mean(angleDiff_PSM1_withErrCorr);
-% 
-%     disp(['angle: ',num2str(r_angle)]);
-%     disp(['mean_trans_norm: ',num2str(mean_trans_norm)]);
-%     disp(['mean_angle_diff: ',num2str(mean_angle_diff)]);
-% 
-% 
-% end
-
-%best angle r_angle=-2.75
-r_angle=-2.75;
-[transDiff_PSM1_withErrCorr,angleDiff_PSM1_withErrCorr]=compareFramesAbsolute(data_PSM1_withErrCorr(:,5:16),data_PSM1_withErrCorr(:,18:29),r_angle);
-
-%Analyzing Results
-trans_norm_PSM1_withErrCorr=vecnorm(transDiff_PSM1_withErrCorr,2,2).*1000;
-mean_trans_norm=mean(trans_norm_PSM1_withErrCorr);
-std_trans_norm=std(trans_norm_PSM1_withErrCorr);
-
-mean_angle_diff=mean(angleDiff_PSM1_withErrCorr);
-std_angle_diff=std(angleDiff_PSM1_withErrCorr.*(180/pi));
-disp('PSM1 With Err Correction')
-disp(['mean_trans_norm: ',num2str(mean_trans_norm)]);
-disp(['mean_angle_diff: ',num2str(mean_angle_diff)]);
-
-%%%%%%%%%%PSM1 without Error Correction
-[transDiff_PSM1_withoutErrCorr,angleDiff_PSM1_withoutErrCorr]=compareFramesAbsolute(data_PSM1_withoutErrCorr(:,5:16),data_PSM1_withoutErrCorr(:,18:29),r_angle);
-
-%Analyzing Results
-trans_norm_PSM1_withoutErrCorr=vecnorm(transDiff_PSM1_withoutErrCorr,2,2).*1000;
-mean_trans_norm=mean(trans_norm_PSM1_withoutErrCorr);
-std_trans_norm=std(trans_norm_PSM1_withoutErrCorr);
-mean_angle_diff=mean(angleDiff_PSM1_withoutErrCorr);
-std_angle_diff=std(angleDiff_PSM1_withoutErrCorr.*(180/pi));
-disp('PSM1 Without Err Correction')
-disp(['mean_trans_norm: ',num2str(mean_trans_norm)]);
-disp(['mean_angle_diff: ',num2str(mean_angle_diff)]);
 
 
-%%%%%%%%%%PSM3 with Error Correction
-%Trying different rotations about k Aruco because they weren't aligned
-%perfectly
-% angles_to_try=[-10:0.25:10]; %Angles in degrees
-% for i=[1:length(angles_to_try)]
-%     r_angle=angles_to_try(i);
-%     [transDiff_PSM3_withErrCorr,angleDiff_PSM3_withErrCorr]=compareFramesAbsolute(data_PSM3_withErrCorr(:,5:16),data_PSM3_withErrCorr(:,18:29),r_angle);
-% 
-%     %Getting norm of translation error
-%     trans_norm=vecnorm(transDiff_PSM3_withErrCorr,2,2);
-%     mean_trans_norm=mean(trans_norm);
-%     mean_angle_diff=mean(angleDiff_PSM3_withErrCorr);
-% 
-%     disp(['angle: ',num2str(r_angle)]);
-%     disp(['mean_trans_norm: ',num2str(mean_trans_norm)]);
-%     disp(['mean_angle_diff: ',num2str(mean_angle_diff)]);
-% 
-% 
-% end
-
-%best angle r_angle=7
-r_angle=7;
-[transDiff_PSM3_withErrCorr,angleDiff_PSM3_withErrCorr]=compareFramesAbsolute(data_PSM3_withErrCorr(:,5:16),data_PSM3_withErrCorr(:,18:29),r_angle);
-
-%Analyzing Results
-trans_norm_PSM3_withErrCorr=vecnorm(transDiff_PSM3_withErrCorr,2,2).*1000;
-mean_trans_norm=mean(trans_norm_PSM3_withErrCorr);
-std_trans_norm=std(trans_norm_PSM3_withErrCorr);
-mean_angle_diff=mean(angleDiff_PSM3_withErrCorr);
-std_angle_diff=std(angleDiff_PSM3_withErrCorr.*(180/pi));
-disp('PSM3 With Err Correction')
-disp(['mean_trans_norm: ',num2str(mean_trans_norm)]);
-disp(['mean_angle_diff: ',num2str(mean_angle_diff)]);
+data_PSM1_withErrCorr(6,:)=[];
+data_PSM1_withErrCorr(6,:)=[];
+data_PSM1_withErrCorr(11,:)=[];
+data_PSM1_withErrCorr(12,:)=[];
+data_PSM1_withErrCorr(13,:)=[];
 
 
-%%%%%%%%%%PSM3 without Error Correction
-r_angle=-2.75;
-[transDiff_PSM3_withoutErrCorr,angleDiff_PSM3_withoutErrCorr]=compareFramesAbsolute(data_PSM3_withoutErrCorr(:,5:16),data_PSM3_withoutErrCorr(:,18:29),r_angle);
+%Analyzing PSM1 with Error Correction
+[Aruco_Angles,Aruco_Tanslation,PSM1_Angles,PSM1_Translation]=...
+    compareFramesAbsolute(data_PSM1_withErrCorr(:,5:16),data_PSM1_withErrCorr(:,18:29),...
+    PSM_T_ARUCO_RIGID_TRANSFORM,0,"PSM1 camTpsm Tracking ");
 
-%Analyzing Results
-trans_norm_PSM3_withoutErrCorr=vecnorm(transDiff_PSM3_withoutErrCorr,2,2).*1000;
-mean_trans_norm=mean(trans_norm_PSM3_withoutErrCorr);
-std_trans_norm=std(trans_norm_PSM3_withoutErrCorr);
-mean_angle_diff=mean(angleDiff_PSM3_withoutErrCorr);
-std_angle_diff=std(angleDiff_PSM3_withoutErrCorr.*(180/pi));
-disp('PSM3 Without Err Correction')
-disp(['mean_trans_norm: ',num2str(mean_trans_norm)]);
-disp(['mean_angle_diff: ',num2str(mean_angle_diff)]);
+[PSM1_TransError,PSM1_TransMean,PSM1_TransStd,PSM1_AngleError,...
+    PSM1_AngleMean,PSM1_AngleStd]=runStatsAbsolute(Aruco_Tanslation, ...
+    PSM1_Translation,Aruco_Angles,PSM1_Angles);
+
+showErrorBoxPlots(abs(PSM1_TransError),abs(PSM1_AngleError),'PSM1 camTpsm Tracking ');
+
+%[translation_diff,angle_diff]=compareFramesAbsoluteOld(data_PSM1_withErrCorr(:,5:16),data_PSM1_withErrCorr(:,18:29),PSM_T_ARUCO_RIGID_TRANSFORM);
 
 
 
-%%%%%%%Plotting Results (4x4 box plots)
-figure;
+%Analyzing PSM3 with Error Correction
 
-subplot(1,2,1);
-boxplot(trans_norm_PSM1_withErrCorr);
-subtitle('Translation Error')
-ylabel('Euc Norm (mm)')
+data_PSM3_withErrCorr(2,:)=[];
+data_PSM3_withErrCorr(3,:)=[];
+data_PSM3_withErrCorr(3,:)=[];
+data_PSM3_withErrCorr(5,:)=[];
+data_PSM3_withErrCorr(6,:)=[];
+data_PSM3_withErrCorr(10,:)=[];
+data_PSM3_withErrCorr(10,:)=[];
+data_PSM3_withErrCorr(16,:)=[];
 
-subplot(1,2,2);
-boxplot(angleDiff_PSM1_withErrCorr.*(180/pi));
-subtitle('Rotation Error')
-ylabel('Degrees')
-sgtitle('PSM 1 With Error Correction')
+[Aruco_Angles_psm3,Aruco_Tanslation_psm3,PSM3_Angles,PSM3_Translation]=...
+    compareFramesAbsolute(data_PSM3_withErrCorr(:,5:16),data_PSM3_withErrCorr(:,18:29),...
+    PSM3_T_ARUCO_RIGID_TRANSFORM,0,"PSM3 camTpsm Tracking");
 
-figure;
+[PSM3_TransError,PSM3_TransMean,PSM3_TransStd,PSM3_AngleError,...
+    PSM3_AngleMean,PSM3_AngleStd]=runStatsAbsolute(Aruco_Tanslation_psm3, ...
+    PSM3_Translation,Aruco_Angles_psm3,PSM3_Angles);
 
-subplot(1,2,1);
-boxplot(trans_norm_PSM1_withoutErrCorr);
-subtitle('Translation Error')
-ylabel('Euc Norm (mm)')
-
-subplot(1,2,2);
-boxplot(angleDiff_PSM1_withoutErrCorr.*(180/pi));
-subtitle('Rotation Error')
-ylabel('Degrees')
-sgtitle('PSM 1 Without Error Correction')
-
-
-figure;
-
-subplot(1,2,1);
-boxplot(trans_norm_PSM3_withErrCorr);
-subtitle('Translation Error')
-ylabel('Euc Norm (mm)')
-
-subplot(1,2,2);
-boxplot(angleDiff_PSM3_withErrCorr.*(180/pi));
-subtitle('Rotation Error')
-ylabel('Degrees')
-sgtitle('PSM 3 With Error Correction')
-
-
-figure;
-
-subplot(1,2,1);
-boxplot(trans_norm_PSM3_withoutErrCorr);
-subtitle('Translation Error')
-ylabel('Euc Norm (mm)')
-
-subplot(1,2,2);
-boxplot(angleDiff_PSM3_withoutErrCorr.*(180/pi));
-subtitle('Rotation Error')
-ylabel('Degrees')
-sgtitle('PSM 3 Without Error Correction')
+showErrorBoxPlots(abs(PSM3_TransError),abs(PSM3_AngleError),'PSM3 camTpsm Tracking');
 
 
 
@@ -207,13 +122,14 @@ sgtitle('PSM 3 Without Error Correction')
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%Functions%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
-function [NDI_Angles,NDI_Translations,Frame_Angles,Frame_Translations]=compareFrameToNDI(NDI_Frames,Estim_Frames,NDI_T_Object,plot_frames_flag)
+function [NDI_Angles,NDI_Translations,Frame_Angles,Frame_Translations]=compareFramesRelative(NDI_Frames,Estim_Frames,NDI_T_Object,plot_frames_flag,plot_name)
     %NDI_Frames & Estim Frames: rows = frames, columns = homogeneous indices
     %NDI_T_Object: Rigid transform between NDI tracker to aruco marker frame
     %Returns matri
 
     %All NDI Data is in mm, convert to meters to match ecm convention
     NDI_Frames(:,1:3)=NDI_Frames(:,1:3)./1000;
+    Estim_Frames(:,1:3)=Estim_Frames(:,1:3);
     
     [row,col]=size(NDI_Frames); %Gets the number of rows
 
@@ -232,6 +148,10 @@ function [NDI_Angles,NDI_Translations,Frame_Angles,Frame_Translations]=compareFr
 
     Estim_Frame_Past=Estim_Frame;
     NDI_Frame_Past=NDI_Frame;
+    if(plot_frames_flag)       
+        figure;
+        hold on
+    end
 
     for i=[2:row]   %Loops for the number of rows
         Estim_Row=Estim_Frames(i,:); %Extracts current row of estimated frame
@@ -241,19 +161,9 @@ function [NDI_Angles,NDI_Translations,Frame_Angles,Frame_Translations]=compareFr
         Estim_Frame=convertCSVRowToHomo(Estim_Row);
         NDI_Frame=convertCSVRowToHomo(NDI_Row);
 
-        % figure;
-        % poseplot(Estim_Frame(1:3,1:3),Estim_Frame(1:3,4));
-        % hold on
-        % poseplot(NDI_Frame(1:3,1:3),NDI_Frame(1:3,4));
-        % hold off
-        % legend('Estim Frame','NDI Frame');
-
         %Right multiplies NDI frame by rigid tranform to get it to corner
         %of calibration object
         NDI_Frame=NDI_Frame*NDI_T_Object;
-        % poseplot(NDI_Frame(1:3,1:3),NDI_Frame(1:3,4));
-        % hold off
-        % legend('Estim Frame','NDI Frame','NDI Frame Transformed');
 
         %%%%Computing transform between consecutive frames (relative)%%%
         
@@ -264,104 +174,177 @@ function [NDI_Angles,NDI_Translations,Frame_Angles,Frame_Translations]=compareFr
         ndipast_T_ndicurr=invHomo(NDI_Frame_Past)*NDI_Frame; %Get frame motion
         %ndipast_T_ndicurr=ndipast_T_ndicurr;%*NDI_T_Object;
     
-        % figure;
-        % poseplot(Estim_Frame(1:3,1:3),Estim_Frame(1:3,4));
-        % hold on
-        % poseplot(NDI_Frame(1:3,1:3),NDI_Frame(1:3,4));
-        % poseplot(Estim_Frame_Past(1:3,1:3),Estim_Frame_Past(1:3,4));
-        % poseplot(NDI_Frame_Past(1:3,1:3),NDI_Frame_Past(1:3,4));
-        % hold off
-        % legend('Estim Frame Curr','NDI Frame Curr','Estim Frame Past','NDI Frame Past');
-        % figure;
-        % poseplot(estimpast_T_estimcurr(1:3,1:3),estimpast_T_estimcurr(1:3,4));
-        % hold on
-        % poseplot(ndipast_T_ndicurr(1:3,1:3),ndipast_T_ndicurr(1:3,4));
-        % hold off
-        % legend('Estim Frame Motion','NDI Frame Motion');
+        if(plot_frames_flag)
+
+            poseplot(estimpast_T_estimcurr(1:3,1:3),estimpast_T_estimcurr(1:3,4).*100);
+            poseplot(ndipast_T_ndicurr(1:3,1:3),ndipast_T_ndicurr(1:3,4).*100);
+        end
         
     
         %%%%Extracting translation and rotation angles%%%%
         
         %Estimated Frame
-        Frame_Translations(i-1,:)=estimpast_T_estimcurr(1:3,4);
-    
+        Frame_Translations(i-1,:)=estimpast_T_estimcurr(1:3,4);    
          
         %NDI Frames
         NDI_Translations(i-1,:)=ndipast_T_ndicurr(1:3,4);
 
+        %Angles
+        NDI_Angles(i-1,:)=rotm2eul(ndipast_T_ndicurr(1:3,1:3),"XYZ");
+        Frame_Angles(i-1,:)=rotm2eul(estimpast_T_estimcurr(1:3,1:3),"XYZ");
         
+
+        %%%%%%Updating Past
         Estim_Frame_Past=Estim_Frame;
         NDI_Frame_Past=NDI_Frame;
 
 
     end
-
-
-end
-
-
-function [translation_diff,angle_diff]=compareFramesAbsolute(Aurco_Frames,Estim_Frames,r_angle)
-    [row,col]=size(Aurco_Frames); %Gets the number of rows
-
-    translation_diff=zeros([row,3]);
-    angle_diff=zeros([row,1]); %Each row is rotation in degrees
-
-
-
-    translation_x=0.631*0.0254; %Multiple by inches to meters conversion
-    translation_y=-1.376*0.0254;
-    translation_z=-0.231*0.0254;
-    aruco_T_psm=[-1,0,0,translation_x;
-                 0,0,1,translation_y;
-                 0,1,0,translation_z;
-                 0,0,0,1]; %Rigid transformation from aruco marker to psm grasper
-    Trz=rotateZ(r_angle);
-
-    for i=[1:row]   %Loops for the number of rows
-        Estim_Raw=Estim_Frames(i,:); %Extracts current row of estimated frame
-        Estim_Frame=convertRowToHomo(Estim_Raw); %Converts the data row to a homogeneous transform
-
-        %Gets the frames
-        Aruco_Raw=Aurco_Frames(i,:);
-        Aruco_Frame=convertRowToHomo(Aruco_Raw);
-        
-        lc_T_psmEstim=Estim_Frame;
-        lc_T_psmAc=Aruco_Frame*Trz*aruco_T_psm;
-        
-        %Gets translatoin difference
-        translation_diff(i,:)=lc_T_psmEstim(1:3,4)-lc_T_psmAc(1:3,4);
-
-        %Gets Aruco Rotation angle
-        Ac_RAngle=rotm2axang(lc_T_psmAc(1:3,1:3));
-        Ac_RAngle=Ac_RAngle(4);
-
-        %Gets Kinematics Rotation Angle
-        Estim_RAngle=rotm2axang(lc_T_psmEstim(1:3,1:3));
-        Estim_RAngle=Estim_RAngle(4);
-
-        angle_diff(i)=abs(Ac_RAngle-Estim_RAngle);
-        
-        %Plots the frame
-        % figure;
-        % poseplot(lc_T_psmEstim(1:3,1:3),lc_T_psmEstim(1:3,4));
-        % hold on
-        % poseplot(lc_T_psmAc(1:3,1:3),lc_T_psmAc(1:3,4));
-        % legend("Estimated Pose","Actual Pose (AruCo Based)")
-        % hold off
-
+    if(plot_frames_flag)
+            plot3(Frame_Translations(:,1).*100,Frame_Translations(:,2).*100,Frame_Translations(:,3).*100);
+            plot3(NDI_Translations(:,1).*100,NDI_Translations(:,2).*100,NDI_Translations(:,3).*100);
+            axis equal;
+            xlabel('X');
+            ylabel('Y');
+            zlabel('Z');
+            title(plot_name);
+            hold off
+            legend('camTscene Frame Motion','NDI Frame Motion');            
     end
 
 
 end
 
-function [TRz]=rotateZ(theta)
-theta=theta*(pi/180);
-TRz=[cos(theta),-sin(theta),0,0;
-    sin(theta),cos(theta),0,0;
-    0,0,1,0;
-    0,0,0,1];
+function [Aruco_Angles,Aruco_Translations,PSM_Angles,PSM_Translations]=compareFramesAbsolute(Aurco_Frames,PSM_Frames,PSM_T_Aruco,plot_frames_flag,plot_name)
+    %NDI_Frames & Estim Frames: rows = frames, columns = homogeneous indices
+    %NDI_T_Object: Rigid transform between NDI tracker to aruco marker frame
+    %Returns matri
+
+    
+    [row,col]=size(Aurco_Frames); %Gets the number of rows
+
+    Aruco_Angles=zeros([row,3]);
+    PSM_Angles=zeros([row,3]); %Rotation Difference in euler angles (rotx,roty,rotz)
+
+    Aruco_Translations=zeros([row,3]);
+    PSM_Translations=zeros([row,3]); %Translation where each column=x,y,z
+
+    if(plot_frames_flag)       
+        figure;
+        hold on
+    end
+
+    for i=[1:row]   %Loops for the number of rows
+        PSM_Row=PSM_Frames(i,:); %Extracts current row of estimated frame
+        Aruco_Row=Aurco_Frames(i,:);   %Extracts current row of NDI frames
+
+        %Convets the row to a frame
+        PSM_Frame=convertCSVRowToHomo(PSM_Row);
+        Aruco_Frame=convertCSVRowToHomo(Aruco_Row);
+
+        %Right multiplies PSM frame by rigid tranform to get it to corner
+        %of aruco
+        PSM_Frame=PSM_Frame*PSM_T_Aruco;
+
+        %Plotting If needed
+    
+        if(plot_frames_flag)
+
+            poseplot(PSM_Frame(1:3,1:3),PSM_Frame(1:3,4).*1000);
+            poseplot(Aruco_Frame(1:3,1:3),Aruco_Frame(1:3,4).*1000);
+        end
+        
+    
+        %%%%Extracting translation and rotation angles%%%%
+        
+        %Estimated Frame
+        PSM_Translations(i,:)=PSM_Frame(1:3,4);    
+         
+        %Aruco Frames
+        Aruco_Translations(i,:)=Aruco_Frame(1:3,4);
+
+        %Angle
+        % PSM_Angle=rotm2axang(PSM_Frame(1:3,1:3));
+        % PSM_Angle=PSM_Angle(4);
+        % 
+        % Ac_RAngle=rotm2axang(Aruco_Frame(1:3,1:3));
+        % Ac_RAngle=Ac_RAngle(4);
+        % 
+        % Aruco_Angles(i)=Ac_RAngle;
+        % PSM_Angles(i)=PSM_Angle;
+        Aruco_Angles(i,:)=rotm2eul(Aruco_Frame(1:3,1:3),"XYZ");
+        PSM_Angles(i,:)=rotm2eul(PSM_Frame(1:3,1:3),"XYZ");
+
+
+        
+
+
+
+
+    end
+    if(plot_frames_flag)
+            plot3(PSM_Translations(:,1).*1000,PSM_Translations(:,2).*1000,PSM_Translations(:,3).*1000);
+            plot3(Aruco_Translations(:,1).*1000,Aruco_Translations(:,2).*1000,Aruco_Translations(:,3).*1000);
+            axis equal;
+            xlabel('X');
+            ylabel('Y');
+            zlabel('Z');
+            title(plot_name);
+            hold off
+            legend('camera_T_psm','camera_T_aruco');            
+    end
+
 
 end
+
+
+
+function [trans_err,mean_trans,std_trans,angle_err,mean_angle,std_angle]=runStats(translation1,translation2,angle1,angle2)
+    trans_err=(translation1-translation2).*100; %In mm
+    trans_err_L2=sqrt(sum(trans_err.^2,2));
+    mean_trans=mean(trans_err_L2);
+    std_trans=std(trans_err_L2);
+    
+    angle_err=(angle1-angle2).*(180/pi);  %In degrees
+    angle_err_L2=sqrt(sum(angle_err.^2,2));
+    mean_angle=mean(angle_err_L2);
+    std_angle=std(angle_err_L2);
+
+end
+
+function [trans_err,mean_trans,std_trans,angle_err,mean_angle,std_angle]=runStatsAbsolute(translation1,translation2,angle1,angle2)
+    trans_err=(translation1-translation2).*1000; %In mm
+    trans_err_L2=sqrt(sum(trans_err.^2,2));
+    mean_trans=mean(trans_err_L2);
+    std_trans=std(trans_err_L2);
+    
+    angle_err=(angle1-angle2).*(180/pi);  %In degrees
+    angle_err_L2=sqrt(sum(angle_err.^2,2));
+    mean_angle=mean(angle_err_L2);
+    std_angle=std(angle_err_L2);
+
+end
+
+
+function showErrorBoxPlots(trans_error,angle_error,compare_name)
+
+    figure;
+    h=boxplot(trans_error,'Labels',{'|x|' ,'|y|' ,'|z|' },'MedianStyle','line','Colors','rgb','BoxStyle','outline');
+    ylabel('Absolute Error (mm)','FontName', 'Arial', 'FontSize', 14);
+    xlabel('Axis','FontName', 'Arial', 'FontSize', 14);
+    title([compare_name,'Position Error'],'FontName', 'Arial', 'FontSize', 14,'FontWeight','bold')
+    set(h, 'LineWidth', 2); % Adjust the value as needed (e.g., 2 for thicker lines)
+
+    figure;
+    h=boxplot(angle_error,'Labels',{'|roll|' ,'|pitch|' ,'|yaw|' },'MedianStyle','line','Colors','rgb','BoxStyle','outline');
+    ylabel('Absolute Error (degrees)','FontName', 'Arial', 'FontSize', 14);
+    xlabel('Axis','FontName', 'Arial', 'FontSize', 14);
+    title([compare_name,'Angle Error'],'FontName', 'Arial', 'FontSize', 14,'FontWeight','bold')
+    set(h, 'LineWidth', 2); % Adjust the value as needed (e.g., 2 for thicker lines)
+end
+
+
+
 
 
 
