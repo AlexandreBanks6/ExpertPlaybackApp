@@ -22,6 +22,7 @@ from include import utils
 from include import DataLogger
 from include import Playback
 from include import FilterPose
+from sensors import footpedal
 import glm
 import pyglet
 
@@ -55,6 +56,7 @@ from tkinter import ttk
 
 #################File Names#####################
 MOTIONS_ROOT='../resources/Motions/'
+RECORD_MOTIONS_ROOT='../resources/Motions/Pilot_02/'    #Change this each recording
 
 
 ##################ROS Topics####################
@@ -218,7 +220,7 @@ class Renderer:
 
         #Object to push if we are recording or not (1 = recording) (0 = not recording)
         self.recordingToggle_msg=Int32()
-        self.recordingToggle_pub=rospy.Publisher(name=recordingToggle_Topic,data_class=Int32,queue_size=10,latch=True)
+        self.recordingToggle_pub=rospy.Publisher(name=recordingToggle_Topic,data_class=Int32,queue_size=10,latch=False)
         rospy.sleep(1)
         self.recordingToggle_pub.publish(0) #Not recording yet
 
@@ -687,11 +689,17 @@ class Renderer:
         self.psm1=dvrk.psm("PSM1") #Mapped to left hand
         self.psm3=dvrk.psm("PSM3") #Mapped to right hand
         self.ecm=dvrk.ecm("ECM")
+        self.mtmL=dvrk.mtm("MTML")
+        self.mtmR=dvrk.mtm("MTMR")
 
         #Enabling and Homing the arms
         utils.setting_arm_state(self.psm1)
         utils.setting_arm_state(self.psm3)
         utils.setting_arm_state(self.ecm)
+        utils.setting_arm_state(self.mtmL)
+        utils.setting_arm_state(self.mtmR)
+
+        self.sensors=footpedal()
 
 
         rospy.sleep(1)
@@ -734,11 +742,13 @@ class Renderer:
             self.record_time=0
             self.pc2_time=None
             #Initializes the csv file
-            self.dataLogger_pc1.initRecording_PC1(MOTIONS_ROOT)
-            print(self.dataLogger_pc1.file_count)
+            self.dataLogger_pc1.initRecording_PC1(RECORD_MOTIONS_ROOT)
+            print("File Number: "+str(self.dataLogger_pc1.file_count))
             #self.filecount_msg.data=self.dataLogger_pc1.file_count
             self.filecount_pub.publish(self.dataLogger_pc1.file_count)
+            time.sleep(0.1)
             self.recordingToggle_pub.publish(1)    #Starting the recording
+            #print("Recording Toggle Published")
         elif not self.record_motions_on:
             print("Done Recording")
             self.dataLogger_pc1.stopRecording_PC1()
@@ -1679,9 +1689,16 @@ class Renderer:
                     if try_true:
                         ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
                         ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
-
-                        joint_vars_psm1=self.psm1.measured_js()[0]
-                        jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                        try:
+                            joint_vars_psm1=self.psm1.measured_js()[0]
+                        except:
+                            print("Unable to read psm1 joints")
+                            return
+                        try:
+                            jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                        except:
+                            print("Unable to read psm1 jaw")
+                            return
                         joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
 
                         
@@ -1699,9 +1716,16 @@ class Renderer:
                     if try_true:
                         ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
                         ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
-
-                        joint_vars_psm3=self.psm3.measured_js()[0]
-                        jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                        try:
+                            joint_vars_psm3=self.psm3.measured_js()[0]
+                        except:
+                            print("Unable to read psm3 joints")
+                            return
+                        try:
+                            jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                        except:
+                            print("Unable to read psm3 jaw")
+                            return
                         joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]   
 
                         s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
@@ -1719,7 +1743,11 @@ class Renderer:
 
             ####Transforms to Record
             if self.virtual_overlay_on: #Already computed some transforms
-                ecm_joints=self.ecm.measured_js()[0]
+                try:
+                    ecm_joints=self.ecm.measured_js()[0]
+                except:
+                    print("Unable to read ecm joints")
+                    return
 
                 if self.PSM1_on:
                     psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
@@ -1751,8 +1779,11 @@ class Renderer:
                     cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
                     ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
                     inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
-
-                    ecm_joints=self.ecm.measured_js()[0]
+                    try:
+                        ecm_joints=self.ecm.measured_js()[0]
+                    except:
+                            print("Unable to read ecm joints")
+                            return
                     ecm_joints=ecm_joints.tolist()
 
                     if self.PSM1_on:
@@ -1766,8 +1797,16 @@ class Renderer:
                         if try_true:
                             ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
                             ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
-                            joint_vars_psm1=self.psm1.measured_js()[0]
-                            jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                            try:
+                                joint_vars_psm1=self.psm1.measured_js()[0]
+                            except:
+                                print("Unable to read psm1 joints")
+                                return
+                            try:
+                                jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                            except:
+                                print("Unable to read psm1 jaw")
+                                return
                             psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
                             psm1_joints=psm1_joints.tolist()
 
@@ -1790,8 +1829,16 @@ class Renderer:
                         if try_true:
                             ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
                             ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
-                            joint_vars_psm3=self.psm3.measured_js()[0]
-                            jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                            try:
+                                joint_vars_psm3=self.psm3.measured_js()[0]
+                            except:
+                                print("Unable to read psm3 joints")
+                                return
+                            try:
+                                jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                            except:
+                                print("Unable to read psm3 jaw")
+                                return
                             psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
                             psm3_joints=psm3_joints.tolist()
 
@@ -1809,10 +1856,26 @@ class Renderer:
             else:
                 gaze_calib_show=0
 
+            #Gets the MTM's gripper values
+            try:
+                mtml_gripper=self.mtmL.gripper.measured_js()[0]
+            except:
+                print("Unable to get MTML gripper")
+
+            try:
+                mtmr_gripper=self.mtmR.gripper.measured_js()[0]
+            except:
+                print("Unable to get MTMR gripper")
+
+            try:
+                clutch_pressed=self.sensors.clutch_pressed
+            except:
+                print("Unabel to get clutch event")
 
             #Writing the row to the csv file
             self.dataLogger_pc1.writeRow_PC1(self.record_time,pc1_time,self.pc2_time,gaze_calib_show,s_T_psm1,s_T_psm3,\
-                                             cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints,ecmi_T_ecm)
+                                             cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints,ecmi_T_ecm,\
+                                                clutch_pressed,mtmr_gripper[0],mtml_gripper[0])
             
             #update task time
             self.record_time+=self.delta_time

@@ -21,7 +21,8 @@ MOTION_HEADER_PC1=["Task Time","PC1 Time","PC2 Time","Gaze Calib","s_T_psm1"]+re
     ["cart_T_ecm"]+repeat_string+["ecm_T_psm1"]+repeat_string+["ecm_T_psm3"]+repeat_string+\
             ["psm1_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+["psm3_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+\
             ["ecm_joints"]+["q1","q2","q3","q4"]+["ecmi_T_ecm"]+repeat_string+\
-                ["Sample #","Task Duration (s)","Collisions (binary)","Collisions (increments)","Cumulative Collision Time (s)"]
+                ["Sample #","Task Duration (s)","Collisions (binary)","Collisions (increments)","Cumulative Collision Time (s)"]+\
+                ["Clutch Press","MTMR Angle","MTML Angle"]
 
 MOTION_HEADER_PC2=["PC2 Time","Left ECM Frame #","Right ECM Frame #","Gaze Frame #","lc_T_s"]+repeat_string+["rc_T_s"]+repeat_string
 
@@ -159,7 +160,7 @@ class DataLogger:
         
         return string_list
     
-    def writeRow_PC1(self,task_time,pc1_time,pc2_time,gaze_calib,s_T_psm1,s_T_psm3,cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints,ecmi_T_ecm):
+    def writeRow_PC1(self,task_time,pc1_time,pc2_time,gaze_calib,s_T_psm1,s_T_psm3,cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints,ecmi_T_ecm,clutch_press,MTMR_Angle,MTML_Angle):
         #PC2 time is published as a ROS topic from PC2
 
         #s_T_psm1 & s_T_psm3
@@ -225,19 +226,36 @@ class DataLogger:
             ecmi_T_ecm_list=self.convertHomogeneousToCSVROW(ecmi_T_ecm_numpy)
         else:
             ecmi_T_ecm_list=["NaN"]*12
-
-        if(self.ser_port.in_waiting()>0):
+        #print("in waiting: "+str(self.ser_port.in_waiting))
+        if(self.ser_port.in_waiting>0):
             #New data received from arduino
-            ser_bytes=self.ser_port.readline()
-            decoded_bytes=ser_bytes.decode("utf-8").strip()
-            arduino_list=decoded_bytes.split(",")
-            arduino_list=[int(item) for item in arduino_list]
-            arduino_list[1]=arduino_list[1]/1000
-            arduino_list[4]=arduino_list[4]/1000
-            arduino_list=[str(item) for item in arduino_list]
-            self.arduino_list=arduino_list  #Updates the arduino list
+            try:
+                while self.ser_port.in_waiting>0:
+                    ser_bytes=self.ser_port.readline()
+                
+                decoded_bytes=ser_bytes.decode("utf-8").strip()
+                if decoded_bytes:
+                    arduino_list=decoded_bytes.split(",")
+                    arduino_list=[int(item) for item in arduino_list]
+                    arduino_list[1]=arduino_list[1]/1000
+                    arduino_list[4]=arduino_list[4]/1000
+                    arduino_list=[str(item) for item in arduino_list]
+                    self.arduino_list=arduino_list  #Updates the arduino list
+                else:
+                    print("Empty Arduino Row Received")
+            except ValueError as e:
+                print(f"Error processing arduino data: {e}")
+            except Exception as e:
+                print(f"Unexpected arduino error: {e}")
 
+        if clutch_press is None:
+            clutch_press="NaN"
 
+        if MTMR_Angle is None:
+            MTMR_Angle="NaN"
+            
+        if MTML_Angle is None:
+            MTML_Angle="NaN"
 
 
 
@@ -246,7 +264,7 @@ class DataLogger:
         #Write the row
         row_to_write=[str(task_time),str(pc1_time),pc2_time,str(gaze_calib),""]+s_T_psm1_list+[""]+s_T_psm3_list+[""]+\
         cart_T_ecm_list+[""]+ecm_T_psm1_list+[""]+ecm_T_psm3_list+[""]+joint_list_psm1+[""]+joint_list_psm3+[""]+\
-        joint_list_ecm+[""]+ecmi_T_ecm_list+self.arduino_list
+        joint_list_ecm+[""]+ecmi_T_ecm_list+self.arduino_list+[str(clutch_press),str(MTMR_Angle),str(MTML_Angle)]
 
         with open(self.record_filename_pc1,'a',newline='') as file_object:
             writer_object=csv.writer(file_object)

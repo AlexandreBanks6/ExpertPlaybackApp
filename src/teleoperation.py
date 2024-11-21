@@ -9,7 +9,7 @@ import sys
 from include import utils
 
 
-TELEOPERATION_SCALE=0.4
+TELEOPERATION_SCALE=0.25
 START_ANGLE=20.0 #We start teleoperation when user grips both smaller than this
 
 
@@ -20,7 +20,7 @@ class teleoperation:
         # self.ignore_operator=True #True if we ignore headset
         self.teleop_scale=TELEOPERATION_SCALE
         self.start_teleop=False
-        self.interval=0.01 #Run interval for rospy
+        self.interval=0.005 #Run interval for rospy
 
         #Initializes the PSM's and MTMs
         self.psm1=dvrk.psm("PSM1") #Mapped to left hand
@@ -62,16 +62,27 @@ class teleoperation:
 
 
     def align_MTM(self,MTM,PSM):
-        hrsv_T_mtm=MTM.measured_cp()    #Gets current MTM pose
-        ecm_T_psm=PSM.setpoint_cp()
+        try:
+            hrsv_T_mtm=MTM.measured_cp()    #Gets current MTM pose
+        except:
+            print("Unable to get mtm")
+        try:
+            ecm_T_psm=PSM.setpoint_cp()
+        except:
+            print("Unable to get PSM")
 
         hrsv_T_mtm.M=ecm_T_psm.M    #Enforce that MTM matches PSM orientation
 
         MTM.move_cp(hrsv_T_mtm).wait() #Moves the orientation to match
 
         rospy.sleep(2) #Sleeps
+        
+        try:
+            hrsv_T_mtm=MTM.measured_cp()    #Gets current MTM pose
+        except:
+            print("Unable to get mtm")
 
-        align_offset_transform=MTM.measured_cp().M.Inverse()*ecm_T_psm.M
+        align_offset_transform=hrsv_T_mtm.M.Inverse()*ecm_T_psm.M
         align_offset_angle_initial=self.axis_angle_offset(align_offset_transform)
 
         return align_offset_transform,align_offset_angle_initial
@@ -82,10 +93,19 @@ class teleoperation:
         mtml_gripped=False
         mtmr_gripped=False
         while self.start_teleop == False:            
+            try:
+                MTMR_gripper=self.mtmR.gripper.measured_js()[0]
+            except:
+                print("Unable to get MTMR gripper")
 
-            if self.mtmR.gripper.measured_js()[0] * (180/np.pi) < 30.0:
+            try:
+                MTML_gripper=self.mtmL.gripper.measured_js()[0]
+            except:
+                print("Unable to get MTMR gripper")
+            
+            if  MTMR_gripper * (180/np.pi) < 30.0:
                 mtmr_gripped=True
-            if self.mtmL.gripper.measured_js()[0] * (180/np.pi) < 30.0:
+            if  MTML_gripper * (180/np.pi) < 30.0:
                 mtml_gripped=True
 
             if mtmr_gripped and mtml_gripped:
@@ -108,38 +128,46 @@ class teleoperation:
     
     def follow_mode(self):
         #Gets initial teleoperation vals
-        hrsv_T_mtml_ini=self.mtmL.measured_cp()
-        ecm_T_psm3_ini=self.psm3.measured_cp()
+        try:
+            hrsv_T_mtml_ini=self.mtmL.measured_cp()
+        except:
+            print("Unable to read MTML")
 
-        hrsv_T_mtmr_ini=self.mtmR.measured_cp()        
-        ecm_T_psm1_ini=self.psm1.measured_cp()
+        try:
+            ecm_T_psm3_ini=self.psm3.measured_cp()
+        except:
+            print("Unable to read PSM3")
+
+        try:
+            hrsv_T_mtmr_ini=self.mtmR.measured_cp()
+        except:
+            print("Unable to Read MTMR")
+            return       
+        try:
+            ecm_T_psm1_ini=self.psm1.measured_cp()
+        except:
+            print("Unable to Read PSM1")
+            return
 
         clutch_pressed_prev=False
 
         while self.start_teleop==True:
             #Runs continously
-            hrsv_T_mtml_curr=self.mtmL.setpoint_cp()
-            hrsv_T_mtmr_curr=self.mtmR.setpoint_cp()
+            try:
+                hrsv_T_mtml_curr=self.mtmL.setpoint_cp()
+            except:
+                print("Unable to read MTML")
+
+            try:
+                hrsv_T_mtmr_curr=self.mtmR.setpoint_cp()
+            except:
+                print("Unable to read MTMR")
 
             # ecm_T_psm3_curr=self.psm3.measured_cp()
             # ecm_T_psm1_curr=self.psm1.measured_cp()
 
 
-            #Inits objects 
-            ecm_T_psm3_next=ecm_T_psm3_ini
-            ecm_T_psm1_next=ecm_T_psm1_ini
-
-            #Sets the ecm_T_psm orientation
-            ecm_T_psm3_next.M=hrsv_T_mtml_curr.M*self.MTML_offset_rotation
-            ecm_T_psm1_next.M=hrsv_T_mtmr_curr.M*self.MTMR_offset_rotation
-
-            #Gets the translation terms
-            mtml_trans=hrsv_T_mtml_curr.p-hrsv_T_mtml_ini.p
-            ecm_T_psm3_next.p=self.teleop_scale*mtml_trans+ecm_T_psm3_ini
-
-            mtmr_trans=hrsv_T_mtmr_curr.p-hrsv_T_mtmr_ini.p
-            ecm_T_psm1_next.p=self.teleop_scale*mtmr_trans+ecm_T_psm1_ini
-
+            
             #Checks the clutch
             if self.sensors.clutch_pressed == True:                
                 if clutch_pressed_prev == False:
@@ -152,15 +180,43 @@ class teleoperation:
                     self.mtmL.unlock_orientation()
                     clutch_pressed_prev = False
 
+                #Inits objects
+                ecm_T_psm3_next=ecm_T_psm3_ini
+                ecm_T_psm1_next=ecm_T_psm1_ini
+
+                #Sets the ecm_T_psm orientation
+                ecm_T_psm3_next.M=hrsv_T_mtml_curr.M*self.MTML_offset_rotation
+                ecm_T_psm1_next.M=hrsv_T_mtmr_curr.M*self.MTMR_offset_rotation
+
+                #Gets the translation terms
+                mtml_trans=hrsv_T_mtml_curr.p-hrsv_T_mtml_ini.p
+                ecm_T_psm3_next.p=self.teleop_scale*mtml_trans+ecm_T_psm3_ini.p
+
+                mtmr_trans=hrsv_T_mtmr_curr.p-hrsv_T_mtmr_ini.p
+                ecm_T_psm1_next.p=self.teleop_scale*mtmr_trans+ecm_T_psm1_ini.p
+
+
                 #Moves the arms
                 self.psm3.move_cp(ecm_T_psm3_next)
-                mtml_gripper=self.mtmL.gripper.measured_js()[0] #Gets the joint angle
-                self.mtmL.jaw.move_jp(np.array(mtml_gripper))
+                try:
+                    mtml_gripper=self.mtmL.gripper.measured_js()[0] #Gets the joint angle
+                    mtml_gripper[0]=mtml_gripper[0]-(10*(np.pi/180))
+                    self.psm3.jaw.move_jp(mtml_gripper)
+                except:
+                    print("Unable to get MTML Gripper")
+                
 
                 self.psm1.move_cp(ecm_T_psm1_next)
-                mtmr_gripper=self.mtmR.gripper.measured_js()[0] #Gets the joint angle
-                self.mtmR.jaw.move_jp(np.array(mtmr_gripper))
+                try:
+                    mtmr_gripper=self.mtmR.gripper.measured_js()[0] #Gets the joint angle
+                    mtmr_gripper=mtmr_gripper[0]-(10*(np.pi/180))   #Offset is to make sure it is squeezing
+                    self.psm1.jaw.move_jp(mtmr_gripper)
+                except:
+                    print("Unable to get MTMR gripper")
             
+            hrsv_T_mtmr_ini=hrsv_T_mtmr_curr
+            hrsv_T_mtml_ini=hrsv_T_mtml_curr
+
             rospy.sleep(self.interval)
 
 
