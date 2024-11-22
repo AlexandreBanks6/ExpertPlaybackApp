@@ -1667,96 +1667,99 @@ class Renderer:
             try_true=False
             try:
                 cart_T_ecm=self.ecm.setpoint_cp()
-                try_true=True
-            except Exception as e:
-                print("Unable to read psm1: "+str(e))
-                return
-            if try_true:
                 cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                 cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
                 ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
                 inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
+            except Exception as e:
+                print("Unable to read psm1: "+str(e))
+                cart_T_ecm=None
+                ecmi_T_ecm=None
+                inv_ecmi_T_ecm=None               
 
 
-                if self.PSM1_on:
-                    try_true=False
-                    try:
-                        ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
-                        try_true=True
-                    except Exception as e:
-                        print("Unable to read psm1: "+str(e))
-                        return
-                    if try_true:
-                        ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
-                        ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
-                        try_true1=False
-                        try_true2=False
-                        try:
-                            joint_vars_psm1=self.psm1.measured_js()[0]
-                            try_true1=True
-                        except:
-                            print("Unable to read psm1 joints")
-                            return
-                        try:
-                            jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
-                            try_true2=True
-                        except:
-                            print("Unable to read psm1 jaw")
-                            return
-                        if try_true1 and try_true2:
-                            joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
-
-                        
-                            s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
-                            self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
-                
-                if self.PSM3_on:
-                    try_true=False
-                    try:
-                        ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
-                        try_true=True
-                    except Exception as e:
-                        print("Unable to read psm1: "+str(e))
-                        return
-                        
-                    if try_true:
-                        try_true1=False
-                        try_true2=False
-                        ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
-                        ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
-                        try:
-                            joint_vars_psm3=self.psm3.measured_js()[0]
-                            try_true1=True
-                        except:
-                            print("Unable to read psm3 joints")
-                            return
-                        try:
-                            jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
-                            try_true2=True
-                        except:
-                            print("Unable to read psm3 jaw")
-                            return
-                            
-                        if try_true1 and try_true2:
-                            joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]   
-
-                            s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
-                            self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
+            if self.PSM1_on:
+                try:
+                    ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                    ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
+                    ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
                     
-                self.move_objects()
+                except Exception as e:
+                    print("Unable to read psm1: "+str(e))
+                    ecm_T_psm1=None
+                    
+                try_true1=False
+                try_true2=False
+                try:
+                    joint_vars_psm1=self.psm1.measured_js()[0]
+                    try_true1=True
+                except:
+                    print("Unable to read psm1 joints")
+
+                try:
+                    jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                    try_true2=True
+                except:
+                    print("Unable to read psm1 jaw")
+                    jaw_angle_psm1=None
+
+                if try_true1 and try_true2:
+                    joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
+                else:
+                    joint_vars_psm1_new=None
+
+                if (ecmi_T_ecm is not None) and (joint_vars_psm1_new is not None) and (ecm_T_psm1 is not None):
+                        s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
+                        self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
+                else:
+                    s_T_psm1=None
+
+                    
+                
+            
+            if self.PSM3_on:
+
+                try:
+                    ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm3 from API
+                    ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
+                    ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
+                except Exception as e:
+                    print("Unable to read psm3: "+str(e))
+                    ecm_T_psm3=None                    
+
+                try_true1=False
+                try_true2=False
+                
+                try:
+                    joint_vars_psm3=self.psm3.measured_js()[0]
+                    try_true1=True
+                except:
+                    print("Unable to read psm3 joints")
+                    joint_vars_psm3=None
+
+                try:
+                    jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                    try_true2=True
+                except:
+                    print("Unable to read psm3 jaw")
+                    jaw_angle_psm3=None
+                    
+                if try_true1 and try_true2:
+                    joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]   
+                else:
+                    joint_vars_psm3_new=None
+                
+                if (ecmi_T_ecm is not None) and (joint_vars_psm3_new is not None) and (ecm_T_psm3 is not None):
+                    s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
+                    self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
+                else:
+                    s_T_psm3=None
+                    
+            self.move_objects()
 
         ################Record Motions & Data###################
         if self.record_motions_on and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
-            s_T_psm1=None
-            s_T_psm3=None
-            ecm_T_psm3=None
-            psm3_joints=None
-            ecm_T_psm1=None
-            psm1_joints=None
-            cart_T_ecm=None
-            ecm_joints=None
-            ecmi_T_ecm=None
-
+            
             ####Time and Indexes to record
             
             #PC1 Time
@@ -1767,130 +1770,162 @@ class Renderer:
             if self.virtual_overlay_on: #Already computed some transforms
                 try:
                     ecm_joints=self.ecm.measured_js()[0]
+                    ecm_joints=ecm_joints.tolist()
                 except:
                     print("Unable to read ecm joints")
-                    return
+                    ecm_joints=None
 
                 if self.PSM1_on:
-                    psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
-                    psm1_joints=psm1_joints.tolist()
+                    if (joint_vars_psm1 is not None) and (jaw_angle_psm1 is not None):
+                        psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
+                        psm1_joints=psm1_joints.tolist()
+                    else:
+                        psm1_joints=None
                 else:
                     ecm_T_psm1=None
                     psm1_joints=None
                     s_T_psm1=None
 
                 if self.PSM3_on:
-                    psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
-                    psm3_joints=psm3_joints.tolist()
+                    if (joint_vars_psm3 is not None) and (jaw_angle_psm3 is not None):
+                        psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
+                        psm3_joints=psm3_joints.tolist()
+                    else:
+                        psm3_joints=None
                 else:
                     ecm_T_psm3=None
                     psm3_joints=None
                     s_T_psm3=None
                 
-            else: #Did not computed needed transforms above in virtual overlay
-                try_true=False
+            else: #Did not compute needed transforms above in virtual overlay
+                
                 try:
                     cart_T_ecm=self.ecm.setpoint_cp()
-                    try_true=True
-                except Exception as e:
-                    print("Unable to read psm1: "+str(e))
-                    return
-                
-                if try_true:
                     cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                     cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
                     ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
                     inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
-                    try_true_ecm=False
-                    try:
-                        ecm_joints=self.ecm.measured_js()[0]
-                        try_true_ecm=True
-                    except:
-                        print("Unable to read ecm joints")
-                        return
+
+                except Exception as e:
+                    print("Unable to read psm1: "+str(e))
+                    cart_T_ecm=None
+                    inv_ecmi_T_ecm=None
+                    ecmi_T_ecm=None             
+
+                try:
+                    ecm_joints=self.ecm.measured_js()[0]
                     ecm_joints=ecm_joints.tolist()
+                except:
+                    print("Unable to read ecm joints")
+                    ecm_joints=None
+                
 
-                    if self.PSM1_on and try_true_ecm:
-                        try_true=False
-                        try:
-                            ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
-                            try_true=True
-                        except Exception as e:
-                            print("Unable to read psm1: "+str(e))
-                            return
-                        if try_true:
-                            ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
-                            ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
-                            try_true1=False
-                            try_true2=False
-                            try:
-                                joint_vars_psm1=self.psm1.measured_js()[0]
-                                try_true1=True
-                            except:
-                                print("Unable to read psm1 joints")
-                                return
-                                
-                            try:
-                                jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
-                                try_true2=True
-                            except:
-                                print("Unable to read psm1 jaw")
-                                return
-                            if try_true1 and try_true2:
-                                psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
-                                psm1_joints=psm1_joints.tolist()
-
-                                s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #uncomment for visual based camera motion
-                            else:
-                                ecm_T_psm1=None
-                                psm1_joints=None
-                                s_T_psm1=None
-                    else:
+                if self.PSM1_on:
+                    try:
+                        ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
+                        ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
+                        ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)   
+                        if ecmi_T_ecm is not None:
+                            s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #uncomment for visual based camera motion                     
+                        else:
+                            s_T_psm1=None
+                    except Exception as e:
+                        print("Unable to read psm1: "+str(e))
                         ecm_T_psm1=None
-                        psm1_joints=None
                         s_T_psm1=None
 
-
-                    if self.PSM3_on and try_true_ecm:
-                        try_true=False
-                        try:
-                            ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm1 from API
-                            try_true=True
-                        except Exception as e:
-                            print("Unable to read psm1: "+str(e))
-                            return
-                            
+                    try_true1=False
+                    try_true2=False
+                    try:
+                        joint_vars_psm1=self.psm1.measured_js()[0]
+                        try_true1=True
+                    except:
+                        print("Unable to read psm1 joints")
                         
-                        if try_true:
-                            ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
-                            ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
-                            try_true1=False
-                            try_true2=False
-                            try:
-                                joint_vars_psm3=self.psm3.measured_js()[0]
-                                try_true1=True
-                            except:
-                                print("Unable to read psm3 joints")
-                                return
-                            try:
-                                jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
-                                try_true2=True
-                            except:
-                                print("Unable to read psm3 jaw")
-                                return
-                            if try_true1 and try_true2:
-                                psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
-                                psm3_joints=psm3_joints.tolist()
+                        
+                    try:
+                        jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                        try_true2=True
+                    except:
+                        print("Unable to read psm1 jaw")
+                        
 
-                                s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #uncomment for visual based camera motion
-                        else:
-                            ecm_T_psm3=None
-                            psm3_joints=None
-                            s_T_psm3=None
+                    if try_true1 and try_true2:
+                        psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
+                        psm1_joints=psm1_joints.tolist()
                     else:
+                        psm1_joints=None
+
+                else:
+                    ecm_T_psm1=None
+                    psm1_joints=None
+                    s_T_psm1=None
+
+
+
+                if self.PSM3_on:
+                    
+                    try:
+                        ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm1 from API
+                        ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
+                        ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
+                        if ecmi_T_ecm is not None:
+                            s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #uncomment for visual based camera motion
+                        else:
+                            s_T_psm3=None
+
+                    except Exception as e:
+                        print("Unable to read psm1: "+str(e))
                         ecm_T_psm3=None
-                        psm3_joints=None
                         s_T_psm3=None
+                                           
+                    try_true1=False
+                    try_true2=False
+                    try:
+                        joint_vars_psm3=self.psm3.measured_js()[0]
+                        try_true1=True
+                    except:
+                        print("Unable to read psm3 joints")
+                        
+                    try:
+                        jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                        try_true2=True
+                    except:
+                        print("Unable to read psm3 jaw")
+                        
+                    if try_true1 and try_true2:
+                        psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
+                        psm3_joints=psm3_joints.tolist()
+                    else:
+                        psm3_joints=None
+                                            
+                else:
+                    ecm_T_psm3=None
+                    psm3_joints=None
+                    s_T_psm3=None
+            
+            
+            #Gets the MTM's gripper values
+            try:
+                mtml_gripper=self.mtmL.gripper.measured_js()[0]
+            except:
+                print("Unable to get MTML gripper")
+                mtml_gripper=["NaN"]
+                
+
+            try:
+                mtmr_gripper=self.mtmR.gripper.measured_js()[0]
+            except:
+                print("Unable to get MTMR gripper")
+                mtmr_gripper=["NaN"]
+                
+
+            try:
+                clutch_pressed=self.sensors.clutch_pressed
+            except:
+                print("Unabel to get clutch event")
+                clutch_pressed="NaN"
+                
             
             #Gets the time since gaze calib has started
             curr_time=time.time()
@@ -1899,28 +1934,6 @@ class Renderer:
                 gaze_calib_show=self.gaze_calib_show
             else:
                 gaze_calib_show=0
-
-            #Gets the MTM's gripper values
-            try:
-                mtml_gripper=self.mtmL.gripper.measured_js()[0]
-            except:
-                print("Unable to get MTML gripper")
-                mtml_gripper=["NaN"]
-                return
-
-            try:
-                mtmr_gripper=self.mtmR.gripper.measured_js()[0]
-            except:
-                print("Unable to get MTMR gripper")
-                mtmr_gripper=["NaN"]
-                return
-
-            try:
-                clutch_pressed=self.sensors.clutch_pressed
-            except:
-                print("Unabel to get clutch event")
-                clutch_pressed="NaN"
-                return
 
             #Writing the row to the csv file
             self.dataLogger_pc1.writeRow_PC1(self.record_time,pc1_time,self.pc2_time,gaze_calib_show,s_T_psm1,s_T_psm3,\
@@ -1933,19 +1946,18 @@ class Renderer:
 
         ############Playing Back Recorded Motions##############
         if self.playback_on and not self.virtual_overlay_on:
-            try_true=False
+
             try:
                 cart_T_ecm=self.ecm.setpoint_cp()
-                try_true=True
-            except Exception as e:
-                print("Unable to read psm1: "+str(e))
-                return
-
-            if try_true:
                 cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                 cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
                 ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
                 inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
+            except Exception as e:
+                print("Unable to read psm1: "+str(e))
+                cart_T_ecm=None
+                ecmi_T_ecm=None
+                inv_ecmi_T_ecm=None                
 
             if self.is_segmentedPlayback and self.is_two_handed_ringwire: #Only shows segment if two-handed (beta)
                 if self.segmentIndexCount==self.maxSegmentIndexCount:
@@ -2055,8 +2067,17 @@ class Renderer:
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
+                    ecm_T_psm1=None
+                try:
+                    cart_T_ecm=self.ecm.setpoint_cp()
+                    cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+                    cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+                    ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
+                except:
+                    print("Unable to read ECM")
+                    ecmi_T_ecm=None
                     
-                if try_true:
+                if try_true and (ecmi_T_ecm is not None):
                     ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
                     ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
                     test_pose_camera=self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1*input_pose
@@ -2072,8 +2093,9 @@ class Renderer:
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
+                    ecm_T_psm3=None
                     
-                if try_true:
+                if try_true and (ecmi_T_ecm is not None):
                     ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
                     ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
                     test_pose_camera=self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3*input_pose
@@ -2088,26 +2110,27 @@ class Renderer:
                 #We want to show a dot on first joint of PSM1 (translation from s_T_psm1) to calibrate gaze w.r.t. scene, only works if recording is on
                 
                 #Gets the tool-tip point in the left camera coordinate system                
+                if s_T_psm1 is not None:
+                    if self.is_kinematics_cam:
+                        gaze_point_scene=self.lci_T_si*s_T_psm1*test_point_psm #Use for kinematics approach
 
-                if self.is_kinematics_cam:
-                    gaze_point_scene=self.lci_T_si*s_T_psm1*test_point_psm #Use for kinematics approach
-                else:
-                    gaze_point_scene=self.lc_T_s*s_T_psm1*test_point_psm # use for visual-based approach 
+                    else:
+                        gaze_point_scene=self.lc_T_s*s_T_psm1*test_point_psm # use for visual-based approach 
 
-                #Project point on image frame
-                proj_point=mul_mat*gaze_point_scene
-                proj_point=self.cam_mat_left*proj_point
-                # print("proj_point: "+str(proj_point))
-                u,v=utils.projectPointsWithDistortion(proj_point[0],proj_point[1],proj_point[2],self.aruco_tracker_left.dist,self.aruco_tracker_left.mtx)
-                point_2d=tuple((int(u),int(v)))
-                #print("point_2d: "+str(point_2d))
-                
-                
-                if (delta_time_gaze)>GAZE_DELAY: #We have given them enough time to start looking at the gaze dot
-                    self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
-                else:   #We shrink the dot by a value proportional to deltatime
-                    radius=int(20-10*(delta_time_gaze/GAZE_DELAY))
-                    self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=radius,color=(0,0,255),thickness=3)
+                    #Project point on image frame
+                    proj_point=mul_mat*gaze_point_scene
+                    proj_point=self.cam_mat_left*proj_point
+                    # print("proj_point: "+str(proj_point))
+                    u,v=utils.projectPointsWithDistortion(proj_point[0],proj_point[1],proj_point[2],self.aruco_tracker_left.dist,self.aruco_tracker_left.mtx)
+                    point_2d=tuple((int(u),int(v)))
+                    #print("point_2d: "+str(point_2d))
+                    
+                    
+                    if (delta_time_gaze)>GAZE_DELAY: #We have given them enough time to start looking at the gaze dot
+                        self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
+                    else:   #We shrink the dot by a value proportional to deltatime
+                        radius=int(20-10*(delta_time_gaze/GAZE_DELAY))
+                        self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=radius,color=(0,0,255),thickness=3)
                     
                 
                 
@@ -2143,16 +2166,19 @@ class Renderer:
         ######Render Left Screen Instruments and Camera#######
         if (self.virtual_overlay_on or self.playback_on): #and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             
-            if self.is_kinematics_cam:
+            if self.is_kinematics_cam and (inv_ecmi_T_ecm is not None):
                 lc_T_s=opengl_T_opencv*self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si #Uncomment for Kinematics-Based ECM Motion
+                #Update the camera
+                lc_T_s=utils.scaleGLMTranform(lc_T_s,METERS_TO_RENDER_SCALE)
+                self.camera_left.update(lc_T_s)
                 #print("Kinematics Based lc_T_s: "+str(self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si))
                 #print("Visual Based lc_T_s: "+str(self.lc_T_s))
             elif self.lc_T_s is not None:
                 lc_T_s=opengl_T_opencv*self.lc_T_s #Uncomment for visual-based ECM Motion
 
-            #Update the camera
-            lc_T_s=utils.scaleGLMTranform(lc_T_s,METERS_TO_RENDER_SCALE)
-            self.camera_left.update(lc_T_s)
+                #Update the camera
+                lc_T_s=utils.scaleGLMTranform(lc_T_s,METERS_TO_RENDER_SCALE)
+                self.camera_left.update(lc_T_s)
 
             #Render the instruments:
             if self.PSM1_on:
@@ -2204,19 +2230,20 @@ class Renderer:
 
             elif self.validate_error_correction_on: #We want to validate API error corr.
                 self.frame_right_converted=frame_right
-                                
-                test_pose_camera=self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*input_pose
+                
+                if ecm_T_psm1 is not None and (ecmi_T_ecm is not None):
+                    test_pose_camera=self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*input_pose
 
-                rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
-                cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
-                                    self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
+                    rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
+                    cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
+                                        self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
 
-
-                test_pose_camera=self.inv_ecmac_T_ecmrep_psm3_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm3*input_pose
-                    
-                rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
-                cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
-                                    self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
+                if ecm_T_psm3 is not None and (ecmi_T_ecm is not None):
+                    test_pose_camera=self.inv_ecmac_T_ecmrep_psm3_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm3*input_pose
+                        
+                    rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
+                    cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
+                                        self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
                 
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
 
@@ -2224,22 +2251,23 @@ class Renderer:
                 self.frame_right_converted=frame_right
                 #We want to show a dot on first joint of PSM1 (translation from s_T_psm1) to calibrate gaze w.r.t. scene, only works if recording is on
                 #Gets the tool-tip point in the left camera coordinate system
-                if self.is_kinematics_cam:
-                    gaze_point_scene=self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*test_point_psm #Use for kinematics approach
-                else:
-                    gaze_point_scene=self.rc_T_s*self.inv_rci_T_si*self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*test_point_psm # use for visual-based approach 
+                if ecm_T_psm1 and ecmi_T_ecm:
+                    if self.is_kinematics_cam:
+                        gaze_point_scene=self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*test_point_psm #Use for kinematics approach
+                    else:
+                        gaze_point_scene=self.rc_T_s*self.inv_rci_T_si*self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*test_point_psm # use for visual-based approach 
 
-                #Project point on image frame
-                proj_point=mul_mat*gaze_point_scene
-                proj_point=self.cam_mat_right*proj_point
-                u,v=utils.projectPointsWithDistortion(proj_point[0],proj_point[1],proj_point[2],self.aruco_tracker_right.dist,self.aruco_tracker_right.mtx)
-                point_2d=tuple((int(u),int(v)))
+                    #Project point on image frame
+                    proj_point=mul_mat*gaze_point_scene
+                    proj_point=self.cam_mat_right*proj_point
+                    u,v=utils.projectPointsWithDistortion(proj_point[0],proj_point[1],proj_point[2],self.aruco_tracker_right.dist,self.aruco_tracker_right.mtx)
+                    point_2d=tuple((int(u),int(v)))
 
-                if (delta_time_gaze)>GAZE_DELAY: #We have given them enough time to start looking at the gaze dot
-                    self.frame_right_converted=cv2.circle(self.frame_right_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
-                else:   #We shrink the dot by a value proportional to deltatime
-                    radius=int(20-10*(delta_time_gaze/GAZE_DELAY))
-                    self.frame_right_converted=cv2.circle(self.frame_right_converted,point_2d,radius=radius,color=(0,0,255),thickness=3)
+                    if (delta_time_gaze)>GAZE_DELAY: #We have given them enough time to start looking at the gaze dot
+                        self.frame_right_converted=cv2.circle(self.frame_right_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
+                    else:   #We shrink the dot by a value proportional to deltatime
+                        radius=int(20-10*(delta_time_gaze/GAZE_DELAY))
+                        self.frame_right_converted=cv2.circle(self.frame_right_converted,point_2d,radius=radius,color=(0,0,255),thickness=3)
                 
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
 
@@ -2273,14 +2301,18 @@ class Renderer:
 
         ######Render Right Screen Instruments and Camera#######
         if (self.virtual_overlay_on or self.playback_on): #and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
-            if self.is_kinematics_cam:
+            if self.is_kinematics_cam and (inv_ecmi_T_ecm is not None):
                 rc_T_s=opengl_T_opencv*self.inv_ecm_T_rc*inv_ecmi_T_ecm*self.ecm_T_rc*self.rci_T_si #Uncomment for Kinematics-Based ECM Motion
+                #Update the camera
+                rc_T_s=utils.scaleGLMTranform(rc_T_s,METERS_TO_RENDER_SCALE)
+                self.camera_right.update(rc_T_s)
             elif self.rc_T_s is not None:
                 rc_T_s=opengl_T_opencv*self.rc_T_s #Uncomment for Visual-Based ECM Motion
 
-            rc_T_s=utils.scaleGLMTranform(rc_T_s,METERS_TO_RENDER_SCALE)
-            #Update the camera
-            self.camera_right.update(rc_T_s)
+                
+                #Update the camera
+                rc_T_s=utils.scaleGLMTranform(rc_T_s,METERS_TO_RENDER_SCALE)
+                self.camera_right.update(rc_T_s)
 
             #Render the instruments:
             if self.PSM1_on:

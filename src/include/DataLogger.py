@@ -46,7 +46,13 @@ class DataLogger:
         self.app=app
 
         #Initializng Arduino Reader Things
-        self.ser_port=serial.Serial('/dev/ttyACM0',57600) #Use 'COM5' or similar if windows
+        try:
+            self.ser_port=serial.Serial('/dev/ttyACM0',57600) #Use 'COM5' or similar if windows
+            print("Connected to arduino")
+            self.arduino_connected=True
+        except:
+            print("Failed to connect to arduino")
+            self.arduino_connected=False
         self.arduino_list=["NaN"]*5 #Inits this value
         
     def initRecording_PC1(self,root_path):
@@ -114,11 +120,13 @@ class DataLogger:
 
         
         #Starts Arduino Recording
-        self.ser_port.write(b'\n')  #Sends enter to start 
+        if self.arduino_connected:
+            self.ser_port.write(b'\n')  #Sends enter to start 
 
 
     def stopRecording_PC1(self):
-        self.ser_port.write(b'\n') #Sends Enter to stop command
+        if self.arduino_connected:
+            self.ser_port.write(b'\n') #Sends Enter to stop command
 
     
     def initRecording_PC2(self,root_path,file_count):
@@ -227,26 +235,29 @@ class DataLogger:
         else:
             ecmi_T_ecm_list=["NaN"]*12
         #print("in waiting: "+str(self.ser_port.in_waiting))
-        if(self.ser_port.in_waiting>0):
-            #New data received from arduino
-            try:
-                while self.ser_port.in_waiting>0:
-                    ser_bytes=self.ser_port.readline()
-                
-                decoded_bytes=ser_bytes.decode("utf-8").strip()
-                if decoded_bytes:
-                    arduino_list=decoded_bytes.split(",")
-                    arduino_list=[int(item) for item in arduino_list]
-                    arduino_list[1]=arduino_list[1]/1000
-                    arduino_list[4]=arduino_list[4]/1000
-                    arduino_list=[str(item) for item in arduino_list]
-                    self.arduino_list=arduino_list  #Updates the arduino list
-                else:
-                    print("Empty Arduino Row Received")
-            except ValueError as e:
-                print(f"Error processing arduino data: {e}")
-            except Exception as e:
-                print(f"Unexpected arduino error: {e}")
+        if self.arduino_connected:
+            if(self.ser_port.in_waiting>0):
+                #New data received from arduino
+                try:
+                    while self.ser_port.in_waiting>0:
+                        ser_bytes=self.ser_port.readline()
+                    
+                    decoded_bytes=ser_bytes.decode("utf-8").strip()
+                    if decoded_bytes:
+                        arduino_list=decoded_bytes.split(",")
+                        arduino_list=[int(item) for item in arduino_list]
+                        arduino_list[1]=arduino_list[1]/1000
+                        arduino_list[4]=arduino_list[4]/1000
+                        arduino_list=[str(item) for item in arduino_list]
+                        self.arduino_list=arduino_list  #Updates the arduino list
+                    else:
+                        print("Empty Arduino Row Received")
+                except ValueError as e:
+                    print(f"Error processing arduino data: {e}")
+                except Exception as e:
+                    print(f"Unexpected arduino error: {e}")
+        else:
+            self.arduino_list=["NaN"]*5
 
         if clutch_press is None:
             clutch_press="NaN"
