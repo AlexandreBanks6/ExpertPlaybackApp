@@ -132,11 +132,13 @@ class teleoperation:
             hrsv_T_mtml_ini=self.mtmL.measured_cp()
         except:
             print("Unable to read MTML")
+            return
 
         try:
             ecm_T_psm3_ini=self.psm3.measured_cp()
         except:
             print("Unable to read PSM3")
+            return
 
         try:
             hrsv_T_mtmr_ini=self.mtmR.measured_cp()
@@ -157,11 +159,13 @@ class teleoperation:
                 hrsv_T_mtml_curr=self.mtmL.setpoint_cp()
             except:
                 print("Unable to read MTML")
+                continue
 
             try:
                 hrsv_T_mtmr_curr=self.mtmR.setpoint_cp()
             except:
                 print("Unable to read MTMR")
+                continue
 
             # ecm_T_psm3_curr=self.psm3.measured_cp()
             # ecm_T_psm1_curr=self.psm1.measured_cp()
@@ -204,6 +208,10 @@ class teleoperation:
                     self.psm3.jaw.move_jp(mtml_gripper)
                 except:
                     print("Unable to get MTML Gripper")
+                    hrsv_T_mtmr_ini=hrsv_T_mtmr_curr
+                    hrsv_T_mtml_ini=hrsv_T_mtml_curr
+                    #self.psm3.jaw.move_jp(np.array([0.0]))
+                    continue
                 
 
                 self.psm1.move_cp(ecm_T_psm1_next)
@@ -213,6 +221,10 @@ class teleoperation:
                     self.psm1.jaw.move_jp(mtmr_gripper)
                 except:
                     print("Unable to get MTMR gripper")
+                    hrsv_T_mtmr_ini=hrsv_T_mtmr_curr
+                    hrsv_T_mtml_ini=hrsv_T_mtml_curr
+                    #self.psm3.jaw.move_jp(np.array([0.0]))
+                    continue
             
             hrsv_T_mtmr_ini=hrsv_T_mtmr_curr
             hrsv_T_mtml_ini=hrsv_T_mtml_curr

@@ -56,7 +56,7 @@ from tkinter import ttk
 
 #################File Names#####################
 MOTIONS_ROOT='../resources/Motions/'
-RECORD_MOTIONS_ROOT='../resources/Motions/Pilot_02/'    #Change this each recording
+RECORD_MOTIONS_ROOT='../resources/Motions/Pilot_05/'    #Change this each recording
 
 
 ##################ROS Topics####################
@@ -1689,21 +1689,26 @@ class Renderer:
                     if try_true:
                         ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
                         ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
+                        try_true1=False
+                        try_true2=False
                         try:
                             joint_vars_psm1=self.psm1.measured_js()[0]
+                            try_true1=True
                         except:
                             print("Unable to read psm1 joints")
                             return
                         try:
                             jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                            try_true2=True
                         except:
                             print("Unable to read psm1 jaw")
                             return
-                        joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
+                        if try_true1 and try_true2:
+                            joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
 
                         
-                        s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
-                        self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
+                            s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
+                            self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
                 
                 if self.PSM3_on:
                     try_true=False
@@ -1713,28 +1718,45 @@ class Renderer:
                     except Exception as e:
                         print("Unable to read psm1: "+str(e))
                         return
+                        
                     if try_true:
+                        try_true1=False
+                        try_true2=False
                         ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
                         ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
                         try:
                             joint_vars_psm3=self.psm3.measured_js()[0]
+                            try_true1=True
                         except:
                             print("Unable to read psm3 joints")
                             return
                         try:
                             jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                            try_true2=True
                         except:
                             print("Unable to read psm3 jaw")
                             return
-                        joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]   
+                            
+                        if try_true1 and try_true2:
+                            joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]   
 
-                        s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
-                        self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
-                
+                            s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
+                            self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
+                    
                 self.move_objects()
 
         ################Record Motions & Data###################
         if self.record_motions_on and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+            s_T_psm1=None
+            s_T_psm3=None
+            ecm_T_psm3=None
+            psm3_joints=None
+            ecm_T_psm1=None
+            psm1_joints=None
+            cart_T_ecm=None
+            ecm_joints=None
+            ecmi_T_ecm=None
+
             ####Time and Indexes to record
             
             #PC1 Time
@@ -1779,14 +1801,16 @@ class Renderer:
                     cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
                     ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
                     inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
+                    try_true_ecm=False
                     try:
                         ecm_joints=self.ecm.measured_js()[0]
+                        try_true_ecm=True
                     except:
-                            print("Unable to read ecm joints")
-                            return
+                        print("Unable to read ecm joints")
+                        return
                     ecm_joints=ecm_joints.tolist()
 
-                    if self.PSM1_on:
+                    if self.PSM1_on and try_true_ecm:
                         try_true=False
                         try:
                             ecm_T_psm1=self.psm1.measured_cp() #Gets ecm_T_psm1 from API
@@ -1797,27 +1821,37 @@ class Renderer:
                         if try_true:
                             ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
                             ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
+                            try_true1=False
+                            try_true2=False
                             try:
                                 joint_vars_psm1=self.psm1.measured_js()[0]
+                                try_true1=True
                             except:
                                 print("Unable to read psm1 joints")
                                 return
+                                
                             try:
                                 jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
+                                try_true2=True
                             except:
                                 print("Unable to read psm1 jaw")
                                 return
-                            psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
-                            psm1_joints=psm1_joints.tolist()
+                            if try_true1 and try_true2:
+                                psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
+                                psm1_joints=psm1_joints.tolist()
 
-                            s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #uncomment for visual based camera motion
+                                s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #uncomment for visual based camera motion
+                            else:
+                                ecm_T_psm1=None
+                                psm1_joints=None
+                                s_T_psm1=None
                     else:
                         ecm_T_psm1=None
                         psm1_joints=None
                         s_T_psm1=None
 
 
-                    if self.PSM3_on:
+                    if self.PSM3_on and try_true_ecm:
                         try_true=False
                         try:
                             ecm_T_psm3=self.psm3.measured_cp() #Gets ecm_T_psm1 from API
@@ -1825,24 +1859,34 @@ class Renderer:
                         except Exception as e:
                             print("Unable to read psm1: "+str(e))
                             return
+                            
                         
                         if try_true:
                             ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
                             ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
+                            try_true1=False
+                            try_true2=False
                             try:
                                 joint_vars_psm3=self.psm3.measured_js()[0]
+                                try_true1=True
                             except:
                                 print("Unable to read psm3 joints")
                                 return
                             try:
                                 jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
+                                try_true2=True
                             except:
                                 print("Unable to read psm3 jaw")
                                 return
-                            psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
-                            psm3_joints=psm3_joints.tolist()
+                            if try_true1 and try_true2:
+                                psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
+                                psm3_joints=psm3_joints.tolist()
 
-                            s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #uncomment for visual based camera motion
+                                s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #uncomment for visual based camera motion
+                        else:
+                            ecm_T_psm3=None
+                            psm3_joints=None
+                            s_T_psm3=None
                     else:
                         ecm_T_psm3=None
                         psm3_joints=None
@@ -1861,16 +1905,22 @@ class Renderer:
                 mtml_gripper=self.mtmL.gripper.measured_js()[0]
             except:
                 print("Unable to get MTML gripper")
+                mtml_gripper=["NaN"]
+                return
 
             try:
                 mtmr_gripper=self.mtmR.gripper.measured_js()[0]
             except:
                 print("Unable to get MTMR gripper")
+                mtmr_gripper=["NaN"]
+                return
 
             try:
                 clutch_pressed=self.sensors.clutch_pressed
             except:
                 print("Unabel to get clutch event")
+                clutch_pressed="NaN"
+                return
 
             #Writing the row to the csv file
             self.dataLogger_pc1.writeRow_PC1(self.record_time,pc1_time,self.pc2_time,gaze_calib_show,s_T_psm1,s_T_psm3,\
@@ -1890,6 +1940,7 @@ class Renderer:
             except Exception as e:
                 print("Unable to read psm1: "+str(e))
                 return
+
             if try_true:
                 cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                 cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
@@ -2004,7 +2055,7 @@ class Renderer:
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
-                    return
+                    
                 if try_true:
                     ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
                     ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
@@ -2021,7 +2072,7 @@ class Renderer:
                     try_true=True
                 except Exception as e:
                     print("Unable to read psm1: "+str(e))
-                    return
+                    
                 if try_true:
                     ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
                     ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
