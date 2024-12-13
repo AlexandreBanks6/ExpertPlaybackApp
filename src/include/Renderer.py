@@ -56,7 +56,7 @@ from tkinter import ttk
 
 #################File Names#####################
 MOTIONS_ROOT='../resources/Motions/'
-RECORD_MOTIONS_ROOT='../resources/Motions/Pilot_05/'    #Change this each recording
+RECORD_MOTIONS_ROOT='../resources/Motions/P_15/'    #Change this each recording
 
 
 ##################ROS Topics####################
@@ -1875,7 +1875,7 @@ class Renderer:
                             s_T_psm3=None
 
                     except Exception as e:
-                        print("Unable to read psm1: "+str(e))
+                        print("Unable to read psm3: "+str(e))
                         ecm_T_psm3=None
                         s_T_psm3=None
                                            

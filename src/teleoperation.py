@@ -64,12 +64,12 @@ class teleoperation:
     def align_MTM(self,MTM,PSM):
         try:
             hrsv_T_mtm=MTM.measured_cp()    #Gets current MTM pose
-        except:
-            print("Unable to get mtm")
+        except Exception as e:
+            print("Unable to get mtm"+e)
         try:
             ecm_T_psm=PSM.setpoint_cp()
-        except:
-            print("Unable to get PSM")
+        except Exception as e:
+            print("Unable to get PSM"+e)
 
         hrsv_T_mtm.M=ecm_T_psm.M    #Enforce that MTM matches PSM orientation
 
