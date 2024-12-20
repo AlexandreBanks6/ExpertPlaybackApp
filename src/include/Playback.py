@@ -8,6 +8,12 @@ import numpy as np
 import pandas as pd
 import glm
 
+test_point_psm=glm.vec4(0.0,0.0,0.0102,1.0)
+mul_mat=glm.mat4x3()  #Selection matrix to take [Xc,Yc,Zc]
+
+
+
+
 
 class Playback:
     def __init__(self,app):
@@ -19,8 +25,8 @@ class Playback:
         path=rootpath+'PC1/'
 
         #Check if we have pre-defined playback file, if not take highest-numbered file
-        if os.path.isfile(path+'Data_PC1_Playback.csv'):
-            self.playback_filename_pc1=path+'Data_PC1_Playback.csv'
+        if os.path.isfile(path+self.app.playback_filename):
+            self.playback_filename_pc1=path+self.app.playback_filename
         else: #Take highest numbered file
             file_count=1
             file_name=path+'Data_PC1_'+str(file_count)+'.csv'
@@ -47,8 +53,13 @@ class Playback:
             self.playback_time_array=np.array(render_times_list,dtype='float32')
             file_object.close()
 
+        #Initializes the Pandas Frame
+        self.csv_obj=pd.read_csv(self.playback_filename_pc1)
+
     def getDataRow(self):
         index=np.argmin(np.abs(self.playback_time_array-self.app.playback_time)) #Index where current playback time is closest to recorded task time
+        
+        #print("Playback Time: "+str(self.playback_time_array[index]))
         #Reset the playback_time in the main app to zero if we reached the end of the data
         #We trim 4 positions off the bottom
         if index>=(len(self.playback_time_array)-5):
@@ -56,9 +67,9 @@ class Playback:
             index=0
 
         index=index+10 #Must increment by 10, because playback_time_array ignores first 10 lines
-        data_row=pd.read_csv(self.playback_filename_pc1,skiprows=index,nrows=1)
-        data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
-
+        # data_row=pd.read_csv(self.playback_filename_pc1,skiprows=index,nrows=1)
+        # data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
+        data_list=self.csv_obj.iloc[index].to_list()
         return data_list
     
     def getPSM1State(self,data_list):
@@ -86,6 +97,59 @@ class Playback:
                            glm.vec4(data_list[5],data_list[8],data_list[11],0),
                            glm.vec4(data_list[0],data_list[1],data_list[2],1))
         return transform
+    
+
+    def isSegmentStart(self,seg_index):
+        #Function returns true if it is the start of a segment, else it returns false
+        start_seg=False
+        index=np.argmin(np.abs(self.playback_time_array-self.app.playback_time))
+        if index>=seg_index:
+            start_seg=True
+
+        return start_seg
+    
+    def startSegment(self,start_index,end_index,psm_type,c_T_s,cam_mat,dist,mtx):
+        #Output: Trajectory pixels (traj_pix) to draw a line of the segment, start_point which defines the start point for the arrow, and end_point which defines end point for arrow
+        #Repeat this for left and right cameras
+        #Input whether it is PSM1 (right hand) or PSM3 (left hand)
+
+        traj_points_list=[]
+        for i in range(start_index,end_index,20):
+            index=i+10 #Must increment by 10, because playback_time_array ignores first 10 lines
+            data_row=pd.read_csv(self.playback_filename_pc1,skiprows=index,nrows=1)
+            data_list=data_row.iloc[0].to_list() #Converts the pd row to a list
+
+            if psm_type=='RIGHT':
+                s_T_psm=data_list[5:17]
+            else:
+                s_T_psm=data_list[18:30]
+
+            s_T_psm=self.ConvertDataRow_ToGLMPose(s_T_psm) #Gets the scene-to-cam transform
+            cam_point=c_T_s*s_T_psm*test_point_psm
+
+            proj_point=mul_mat*cam_point
+            proj_point=cam_mat*proj_point
+
+            u,v=utils.projectPointsWithDistortion(proj_point[0],proj_point[1],proj_point[2],dist,mtx)
+            traj_points_list.append([int(round(u)),int(round(v))])
+
+        
+        traj_points=np.array(traj_points_list,dtype=np.int32)
+        traj_points=traj_points.reshape((-1,1,2))
+
+        mid_index=len(traj_points)//4
+        start_point=tuple(traj_points[mid_index-1][0])
+        end_point=tuple(traj_points[mid_index][0])
+
+        return traj_points, start_point, end_point
+
+
+
+
+
+
+
+
         
         
 

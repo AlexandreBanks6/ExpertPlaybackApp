@@ -36,11 +36,15 @@ LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 #PC 2 Time Subscription
 PC2_Time_Topic='ExpertPlayback/pc2Time' #Published from PC2 (subscribed to by PC1)
 filecount_Topic='ExpertPlayback/fileCount' #Published from PC1 (subscribed to by PC2)
+recordingToggle_Topic='ExpertPlayback/recordingToggle' #Published from PC1 (subscribed to by PC2)
 lc_T_s_Topic='ExpertPlayback/lc_T_s' #Published from PC2 (subscribed to by PC1)
 rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
 Gaze_Number_Topic='ExpertPlayback/GazeFrameNumber'
 
-MOTIONS_ROOT='../resources/Motions/'
+#MOTIONS_ROOT='../resources/Motions/Pilot_01/'
+MOTIONS_ROOT='/media/dvrk-pc2/Seagate Portable Drive/ThreeD_POG_Data_Fall2024/P_13/'
+ECM_FRAME_WIDTH_DESIRED=1024
+ECM_FRAME_HEIGHT_DESIRED=722
 
 class PC2RecordAndPublish:
     def __init__(self):
@@ -93,6 +97,7 @@ class PC2RecordAndPublish:
         self.ranOnce=0
         self.is_Record=False
         self.file_count=1
+        self.is_recording_PC1=False
         self.is_showPoseTracking=False
 
         self.new_time=time.time()
@@ -222,6 +227,22 @@ class PC2RecordAndPublish:
             cv2.destroyAllWindows()
             exit()
 
+        #Record Toggle Subscriber (tells us when PC1 is recording)
+        try:
+            rospy.Subscriber(name = recordingToggle_Topic, data_class=Int32, callback=self.recordToggleCallback,queue_size=1,buff_size=2**8)
+        except rospy.ROSInterruptException:
+            print("ROS Node Interrupted")
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+        except Exception as e:
+            print("Unexpected Error: "+str(e))
+            self.pc2_datalogger.left_video_writer.release()
+            self.pc2_datalogger.right_video_writer.release()
+            cv2.destroyAllWindows()
+            exit()
+
         #Gaze Number Topic
         try:
             rospy.Subscriber(name = Gaze_Number_Topic, data_class=Int32, callback=self.gazeCountCallback,queue_size=1,buff_size=2**6)
@@ -245,14 +266,19 @@ class PC2RecordAndPublish:
     def frameCallbackRight(self,data):
         self.right_frame_number_check+=1
         self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        self.frame_right=cv2.resize(self.frame_right,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+                   
         if self.is_Record:
             self.pc2_datalogger.right_video_writer.write(self.frame_right)
             self.right_ecm_frame_number+=1
+            #print("Right Frame Record")
         
 
     def frameCallbackLeft(self,data):
         self.left_frame_number_check+=1
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        self.frame_left=cv2.resize(self.frame_left,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+ 
         if self.is_Record:
             #init_time=time.time()
             self.pc2_datalogger.left_video_writer.write(self.frame_left)
@@ -260,6 +286,7 @@ class PC2RecordAndPublish:
             #print("Time Diff="+str(after_time-init_time))
 
             self.left_ecm_frame_number+=1
+            #print("Left Frame Record")
         
 
     def publishCamToSceneTransformCallback(self):
@@ -268,16 +295,32 @@ class PC2RecordAndPublish:
     
     def filecountCallback(self,data):
         self.file_count=data.data
+    
+    def recordToggleCallback(self,data):
+        print("Record Toggle")
+        PC1_data=data.data #0 means not recording, 1 means recording
+        if PC1_data==1 and (self.is_recording_PC1 is False):
+            #Start the recording
+            self.is_Record=False #The recordPC2DataCallback not's this, so it actually starts recording
+            self.is_recording_PC1=True  #We are currently recording
+            self.recordPC2DataCallback()
+        elif PC1_data==0 and (self.is_recording_PC1 is True):
+            self.is_Record=True
+            self.is_recording_PC1=False  #We are not currently recording
+            self.recordPC2DataCallback()
 
     def recordPC2DataCallback(self):
         self.is_Record=not self.is_Record
         
         if self.is_Record: #We are starting recording
+            print("Starting Recording File: "+str(self.file_count))
             #Init the csv
             self.pc2_datalogger.initRecording_PC2(MOTIONS_ROOT,self.file_count)
             #init frame numbers
             self.left_ecm_frame_number=0
             self.right_ecm_frame_number=0
+        else:
+            print("Stopped Recording")
 
     def showPoseTrackingCallback(self):
         self.is_showPoseTracking=not self.is_showPoseTracking
@@ -287,11 +330,13 @@ class PC2RecordAndPublish:
     def gazeCountCallback(self,data):
         self.gaze_frame_number=data.data
 
+
     def mainCallback(self):
         if not rospy.is_shutdown():
             if self.left_frame_number_check>0 and self.right_frame_number_check>0:
                 if self.is_publish: #Publish the lc_T_s and rc_T_s transforms
-
+                    self.frame_left=cv2.resize(self.frame_left,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+                    self.frame_right=cv2.resize(self.frame_right,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
                     lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
                     rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
 
@@ -341,7 +386,8 @@ class PC2RecordAndPublish:
                         cv2.destroyAllWindows()
                         exit()
                     #Gets the pc2 time
-                    pc2_time=datetime.now().time()
+                    pc2_time_raw=datetime.now()
+                    pc2_time=pc2_time_raw.strftime('%H:%M:%S.%f')
 
                     #Publishes the pc2 time
                     self.PC2_time_message.data=str(pc2_time)
@@ -363,12 +409,16 @@ class PC2RecordAndPublish:
 
                 if self.is_Record: #Record data
                     if not self.is_publish: #Publish is not on, we must compute the cam-to-scene transform
+                        self.frame_left=cv2.resize(self.frame_left,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+                        self.frame_right=cv2.resize(self.frame_right,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+
                         lc_T_s=self.aruco_tracker_left.calibrateSceneDirectNumpy(self.frame_left.copy(),self.is_showPoseTracking,'left pose')
                         #init_time=time.time()
                         rc_T_s=self.aruco_tracker_right.calibrateSceneDirectNumpy(self.frame_right.copy(),self.is_showPoseTracking,'right pose')
                         #after_time=time.time()
                         #print("Time Diff="+str(after_time-init_time))
-                        pc2_time=datetime.now().time()
+                        pc2_time_raw=datetime.now()
+                        pc2_time=pc2_time_raw.strftime('%H:%M:%S.%f')
                     
 
                     # self.new_time=time.time()

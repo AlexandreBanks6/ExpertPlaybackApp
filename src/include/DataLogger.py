@@ -7,9 +7,12 @@ import cv2
 from datetime import datetime
 import csv
 import os
+import serial
+import time
+import sys
 
-CONSOLE_VIEWPORT_WIDTH=1400
-CONSOLE_VIEWPORT_HEIGHT=986
+CONSOLE_VIEWPORT_WIDTH=1024
+CONSOLE_VIEWPORT_HEIGHT=722
 
 
 #File Column Titles:
@@ -17,11 +20,17 @@ repeat_string=["Tx","Ty","Tz","R00","R01","R02","R10","R11","R12","R20","R21","R
 MOTION_HEADER_PC1=["Task Time","PC1 Time","PC2 Time","Gaze Calib","s_T_psm1"]+repeat_string+["s_T_psm3"]+repeat_string+\
     ["cart_T_ecm"]+repeat_string+["ecm_T_psm1"]+repeat_string+["ecm_T_psm3"]+repeat_string+\
             ["psm1_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+["psm3_joints"]+["q1","q2","q3","q4","q5","q6","jaw"]+\
-            ["ecm_joints"]+["q1","q2","q3","q4"]
+            ["ecm_joints"]+["q1","q2","q3","q4"]+["ecmi_T_ecm"]+repeat_string+\
+                ["Sample #","Task Duration (s)","Collisions (binary)","Collisions (increments)","Cumulative Collision Time (s)"]
 
 MOTION_HEADER_PC2=["PC2 Time","Left ECM Frame #","Right ECM Frame #","Gaze Frame #","lc_T_s"]+repeat_string+["rc_T_s"]+repeat_string
 
 FRAME_FPS=27
+
+
+##Syncrhonizing this with Arduino for collision detection
+##Arduino states are:
+##Enter toggles state: If on, sends data, if off sends "Task Stopped"
 
 class DataLogger:
     def __init__(self,app):
@@ -35,6 +44,10 @@ class DataLogger:
         self.file_count=1
         self.app=app
 
+        #Initializng Arduino Reader Things
+        #self.ser_port=serial.Serial('/dev/ttyACM0',57600) #Use 'COM5' or similar if windows
+        self.arduino_list=["NaN"]*5 #Inits this value
+        
     def initRecording_PC1(self,root_path):
         #Check if path exists
         if not os.path.exists(root_path+'PC1'):
@@ -51,6 +64,8 @@ class DataLogger:
                 break
         
         self.record_filename_pc1=file_name  #Creates a new motion csv
+
+
 
         #Store all transforms that do not change
         with open(self.record_filename_pc1,'w',newline='') as file_object:
@@ -95,6 +110,15 @@ class DataLogger:
             writer_object.writerow([""]) #Blank Space
 
             file_object.close()
+
+        
+        #Starts Arduino Recording
+        #self.ser_port.write(b'\n')  #Sends enter to start 
+
+
+    def stopRecording_PC1(self):
+        self.ser_port.write(b'\n') #Sends Enter to stop command
+
     
     def initRecording_PC2(self,root_path,file_count):
 
@@ -113,11 +137,10 @@ class DataLogger:
             file_object.close()
 
         #Sets the filename (and path) for the left/right ECM video
-        self.left_ecm_filename_pc2=root_path+'PC2/LeftECM_PC2_'+str(file_count)+'.mp4'
-        self.right_ecm_filename_pc2=root_path+'PC2/RightECM_PC2_'+str(file_count)+'.mp4'
-
+        self.left_ecm_filename_pc2=root_path+'PC2/LeftECM_PC2_'+str(file_count)+'.avi'
+        self.right_ecm_filename_pc2=root_path+'PC2/RightECM_PC2_'+str(file_count)+'.avi'
         #initializes the video writer objects
-        fourcc=cv2.VideoWriter_fourcc(*'avc1')
+        fourcc=cv2.VideoWriter_fourcc(*'MJPG')
         self.left_video_writer=cv2.VideoWriter(self.left_ecm_filename_pc2,fourcc,FRAME_FPS,(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT))
         self.right_video_writer=cv2.VideoWriter(self.right_ecm_filename_pc2,fourcc,FRAME_FPS,(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT))
 
@@ -135,7 +158,7 @@ class DataLogger:
         
         return string_list
     
-    def writeRow_PC1(self,task_time,pc1_time,pc2_time,gaze_calib,s_T_psm1,s_T_psm3,cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints):
+    def writeRow_PC1(self,task_time,pc1_time,pc2_time,gaze_calib,s_T_psm1,s_T_psm3,cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints,ecmi_T_ecm):
         #PC2 time is published as a ROS topic from PC2
 
         #s_T_psm1 & s_T_psm3
@@ -196,11 +219,33 @@ class DataLogger:
         if pc2_time is None:
             pc2_time="NaN"
 
+        if ecmi_T_ecm is not None:
+            ecmi_T_ecm_numpy=np.array(glm.transpose(ecmi_T_ecm).to_list(),dtype='float32')
+            ecmi_T_ecm_list=self.convertHomogeneousToCSVROW(ecmi_T_ecm_numpy)
+        else:
+            ecmi_T_ecm_list=["NaN"]*12
+
+        if(self.ser_port.in_waiting()>0):
+            #New data received from arduino
+            ser_bytes=self.ser_port.readline()
+            decoded_bytes=ser_bytes.decode("utf-8").strip()
+            arduino_list=decoded_bytes.split(",")
+            arduino_list=[int(item) for item in arduino_list]
+            arduino_list[1]=arduino_list[1]/1000
+            arduino_list[4]=arduino_list[4]/1000
+            arduino_list=[str(item) for item in arduino_list]
+            self.arduino_list=arduino_list  #Updates the arduino list
+
+
+
+
+
+
         #pc2_time is already a string
         #Write the row
         row_to_write=[str(task_time),str(pc1_time),pc2_time,str(gaze_calib),""]+s_T_psm1_list+[""]+s_T_psm3_list+[""]+\
         cart_T_ecm_list+[""]+ecm_T_psm1_list+[""]+ecm_T_psm3_list+[""]+joint_list_psm1+[""]+joint_list_psm3+[""]+\
-        joint_list_ecm
+        joint_list_ecm+[""]+ecmi_T_ecm_list+self.arduino_list
 
         with open(self.record_filename_pc1,'a',newline='') as file_object:
             writer_object=csv.writer(file_object)

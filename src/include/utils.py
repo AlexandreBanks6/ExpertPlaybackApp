@@ -47,8 +47,9 @@ def EnforceOrthogonalityNumpy_FullTransform(transform):
     return transform
 
 def EnforceOrthogonalityNumpy(R):
+    
     #Function which enforces a rotation matrix to be orthogonal
-    #Input: R is a 4x numpy rotation
+    #Input: R is a 3x3 numpy rotation
     #return R
     #Extracting columns of rotation matrix
     x=R[:,0] 
@@ -313,3 +314,10 @@ def projectPointsWithDistortion(X,Y,Z,dist_coeffs,intrinsics):
 
 
     return u_dis,v_dis
+
+def setting_arm_state(arm):
+    #Funcion that enables the arms on the dVRK
+    #Checks to see if they have not already been enabled
+    if arm.operating_state() == "DISABLED":
+        arm.enable()
+        arm.home()

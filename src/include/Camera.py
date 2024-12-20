@@ -12,7 +12,7 @@ SENSITIVITY=0.05 #Mouse sensitivity for orientation changes
 
 
 class Camera:
-    def __init__(self,app,camera_intrinsics,view_width=1400,view_height=986,position=(0,0,4),yaw=-90,pitch=0):
+    def __init__(self,app,camera_intrinsics,view_width=1024,view_height=722,position=(0,0,4),yaw=-90,pitch=0):
         self.app=app
         self.aspect_ratio=app.WIN_SIZE[0]/app.WIN_SIZE[1]
         #Setting up Camera position

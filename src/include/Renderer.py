@@ -50,6 +50,8 @@ import tf_conversions
 import yaml
 import pandas as pd
 
+from tkinter import ttk
+
 
 #################File Names#####################
 MOTIONS_ROOT='../resources/Motions/'
@@ -63,14 +65,39 @@ LeftFrame_Topic='ubc_dVRK_ECM/left/decklink/camera/image_raw/compressed'
 #PC 2 Time Subscription
 PC2_Time_Topic='ExpertPlayback/pc2Time' #Published from PC2 (subscribed to by PC1)
 filecount_Topic='ExpertPlayback/fileCount' #Published from PC1 (subscribed to by PC2)
+recordingToggle_Topic='ExpertPlayback/recordingToggle' #Published from PC1 (subscribed to by PC2) => If we are starting a new recording
 lc_T_s_Topic='ExpertPlayback/lc_T_s' #Published from PC2 (subscribed to by PC1)
 rc_T_s_Topic='ExpertPlayback/rc_T_s' #Published from PC2 (subscribed to by PC1)
 
 
 ##################Constants#####################
+
+#Segment indices
+TWO_HANDED_SEGMENT_INDICES=[0,399,742,1036,1312,1609,1907,2309,2860,3358,3613] #Start of each segment trajectory, and end of trajectory is final index
+TWO_HANDED_SEGMENT_PSMs=['RIGHT','LEFT','RIGHT','LEFT','RIGHT','RIGHT','LEFT','RIGHT','LEFT','RIGHT']
+
+ONE_HANDED_SEGMENT_INDICES=[0,417,825,937,1077,1165,1246,1468,1523,1777,1867,1944,2053,2145,2560]
+ONE_HANDED_SEGMENT_PSMs=['','UNDERHAND','OVERHAND','UNDERHAND','OVERHAND','UNDERHAND','OVERHAND','','UNDERHAND','OVERHAND','UNDERHAND','OVERHAND','UNDERHAND','OVERHAND']
+
+
+PICK_AND_PLACE_INDICES=[0,490,560,1508,1582,2461,2519,2585,2634,10568]
+PICK_AND_PLACE_SEGMENT_PSMs=['','CLUTCH','','CLUTCH','','CLUTCH','','CLUTCH','']
+
 #Tool and Console Constants
-CONSOLE_VIEWPORT_WIDTH=1400
-CONSOLE_VIEWPORT_HEIGHT=986
+
+#ECM Frame Size
+#ECM_FRAME_WIDTH=1400   
+#ECM_FRAME_HEIGHT=986
+
+ECM_FRAME_WIDTH_DESIRED=1024
+ECM_FRAME_HEIGHT_DESIRED=722
+
+
+
+#Console Viewport Size
+CONSOLE_VIEWPORT_WIDTH=1024
+CONSOLE_VIEWPORT_HEIGHT=722
+
 
 tool_tip_offset=0.0102  #PSM1 tooltip offset (large needle driver)
 tool_tip_offset_psm3=0.0102 #PSM3 tooltip offset
@@ -154,9 +181,8 @@ class Renderer:
     def __init__(self,win_size=(CONSOLE_VIEWPORT_WIDTH,CONSOLE_VIEWPORT_HEIGHT)):
 
         self.WIN_SIZE=win_size
-
-        #Creates the pyglet window
         config=Config(major_version=3,minor_version=3,depth_size=3,double_buffer=True)
+        #Creates the pyglet windowONE_HANDED_SEGMENT_PSMs
         self.window_left = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Left Eye')
         self.window_right = pyglet.window.Window(width=win_size[0], height=win_size[1], config=config,caption='Right Eye')
 
@@ -164,9 +190,12 @@ class Renderer:
 
         #ArUco tracking objects
         self.aruco_tracker_left=ArucoTracker.ArucoTracker(self,'left')
-        self.cam_mat_left=glm.mat3(*self.aruco_tracker_left.mtx.T.flatten())
+        cam_mat=self.aruco_tracker_left.mtx
+        self.cam_mat_left=glm.mat3(*cam_mat.T.flatten())
+        
         self.aruco_tracker_right=ArucoTracker.ArucoTracker(self,'right')
-        self.cam_mat_right=glm.mat3(*self.aruco_tracker_right.mtx.T.flatten())
+        cam_mat=self.aruco_tracker_right.mtx 
+        self.cam_mat_right=glm.mat3(*cam_mat.T.flatten())
 
         #Data logger object
         self.dataLogger_pc1=DataLogger.DataLogger(self)
@@ -186,6 +215,12 @@ class Renderer:
         rospy.sleep(1)
         #self.filecount_msg.data=self.dataLogger_pc1.file_count
         self.filecount_pub.publish(self.dataLogger_pc1.file_count)
+
+        #Object to push if we are recording or not (1 = recording) (0 = not recording)
+        self.recordingToggle_msg=Int32()
+        self.recordingToggle_pub=rospy.Publisher(name=recordingToggle_Topic,data_class=Int32,queue_size=10,latch=True)
+        rospy.sleep(1)
+        self.recordingToggle_pub.publish(0) #Not recording yet
 
         ############Left Window Initialization
         self.window_left.switch_to()
@@ -271,71 +306,122 @@ class Renderer:
 
         ##############GUI SETUP################
         self.gui_window=tk.Tk()
-        self.gui_window.title("dVRK Playback App PC1")
+        style=ttk.Style()
+        style.theme_use('alt')
+        #style.configure('TButton',padding=6,relief="flat")
 
-        self.gui_window.rowconfigure([0,1,2,3,4,5],weight=1)
-        self.gui_window.columnconfigure([0,1,2,3],weight=1)
-        self.gui_window.minsize(300,100)
+        self.gui_window.title("dv-FlexAR")
+        self.gui_window.rowconfigure(list(range(0,13)),weight=1)
+        self.gui_window.columnconfigure(list(range(0,3)),weight=1)
+        self.gui_window.columnconfigure(0, minsize=75)  # Set minimum width for column 0
+        self.gui_window.columnconfigure(1, minsize=75)  # Set minimum width for column 1
+        self.gui_window.columnconfigure(2, minsize=75)  # Set minimum width for column 2
+
+        #self.gui_window.minsize(300,100)
 
         #Title at top
-        self.welcome_text=tk.Label(self.gui_window,text="Welcome to the dVRK Playback App PC1")
-        self.welcome_text.grid(row=0,column=1,sticky='n')
+        self.welcome_text=tk.Label(self.gui_window,text="Welcome to the dv-FlexAR", font=("Arial", 16, "bold"))
+        self.welcome_text.grid(row=0,column=0,columnspan=3,sticky='n')
 
+
+        #Cluster Description (camera scene calib)
+        self.calib_scene_calib=tk.Label(self.gui_window,text="--------------------Camera-Scene Calibration--------------------", font=("Arial", 14))
+        self.calib_scene_calib.grid(row=1,column=0,columnspan=2,sticky='n')
         #Show ArUco Button
         self.aruco_button=tk.Button(self.gui_window,text="Show ArUco",command=self.arucoToggleCallback)
-        self.aruco_button.grid(row=1,column=0,sticky="nsew")
+        self.aruco_button.grid(row=2,column=0,sticky="nsew")
         #Button to calibrate the scene (register camera to rigid object)
         self.calibrate_scene_button=tk.Button(self.gui_window,text="Calibrate Scene",command=self.calibrateToggleCallback)
-        self.calibrate_scene_button.grid(row=1,column=1,sticky="nsew")       
+        self.calibrate_scene_button.grid(row=2,column=1,sticky="nsew")       
 
 
-        #Buttons to calibrate PSM API error
-        self.start_psmerror_calibration=tk.Button(self.gui_window,text="Start PSM Error Calib",command=self.startPSMErrorCalib)
-        self.start_psmerror_calibration.grid(row=2,column=0,sticky="nsew")
+        #Cluster Description (camera scene calib)
+        self.calib_APIerr=tk.Label(self.gui_window,text="--------------------API Error Calibration--------------------", font=("Arial", 14))
+        self.calib_APIerr.grid(row=3,column=0,columnspan=2,sticky='n')
+        
+        #Buttons to calibrate PSM API error 
+        self.start_psmerror_calibration=tk.Button(self.gui_window,text="Start API Error Calib",command=self.startPSMErrorCalib)
+        self.start_psmerror_calibration.grid(row=4,column=0,sticky="nsew")
 
         self.grab_psm1_pointbutton=tk.Button(self.gui_window,text="Grab PSM1 Point",command=self.grabPSM1PointCallback)
-        self.grab_psm1_pointbutton.grid(row=2,column=1,sticky="nsew")
+        self.grab_psm1_pointbutton.grid(row=4,column=1,sticky="nsew")
 
         self.grab_psm3_pointbutton=tk.Button(self.gui_window,text="Grab PSM3 Point",command=self.grabPSM3PointCallback)
-        self.grab_psm3_pointbutton.grid(row=2,column=2,sticky="nsew")
+        self.grab_psm3_pointbutton.grid(row=5,column=1,sticky="nsew")
 
         self.calibrate_psmerror_button=tk.Button(self.gui_window,text="Calibrate PSM Error",command=self.calibratePSMErrorCallback)
-        self.calibrate_psmerror_button.grid(row=2,column=3,sticky="nsew")
+        self.calibrate_psmerror_button.grid(row=5,column=0,sticky="nsew")
+
+        ############Buttons for validating PSM1/PSM3, virtual overlay, recording motions, and playing back motions##########
+        # self.recordValid=tk.Label(self.gui_window,text="-----------------Select PSMs for Record/Playback-----------------", font=("Arial", 14))
+        # self.recordValid.grid(row=5,column=0,columnspan=4,sticky='n')
+
+        
+        
+        self.recordValid=tk.Label(self.gui_window,text="--------------------Record And Validate--------------------", font=("Arial", 14))
+        self.recordValid.grid(row=6,column=0,columnspan=3,sticky='n')
 
         #Select PSM (to record/playback/overlay) Checkboxes
         self.checkbox_PSM1=tk.Checkbutton(self.gui_window,text="PSM1",onvalue=1,offvalue=0,command=self.psm1Checkbox)
-        self.checkbox_PSM1.grid(row=3,column=0,sticky='nsew')
+        self.checkbox_PSM1.grid(row=7,column=0,sticky="w")
 
         self.checkbox_PSM3=tk.Checkbutton(self.gui_window,text="PSM3",onvalue=1,offvalue=0,command=self.psm3Checkbox)
-        self.checkbox_PSM3.grid(row=3,column=1,sticky='nsew')
-        
-        ############Buttons for validating PSM1/PSM3, virtual overlay, recording motions, and playing back motions##########
+        self.checkbox_PSM3.grid(row=8,column=0,sticky="w")
 
-        self.validate_error_correction_button=tk.Button(self.gui_window,text="Validate API Err Correction",command=self.validateErrorCorrectionCallback)
-        self.validate_error_correction_button.grid(row=3,column=2,sticky="nsew")
+        #Toggle kinematics/visual camera motion
+        self.cam_motion=tk.Button(self.gui_window,text="Kinematics-(def)/Visual-based ECM motion",command=self.kinematicsCamCallback)
+        self.cam_motion.grid(row=9,column=0,sticky="nsew")
+
 
         #Virtual Overlay Button
         self.virtual_overlay_button=tk.Button(self.gui_window,text="Virtual Overlay",command=self.virtualOverlayCallback)
-        self.virtual_overlay_button.grid(row=4,column=0,sticky="nsew")
+        self.virtual_overlay_button.grid(row=7,column=1,sticky="nsew")
+
+        self.validate_error_correction_button=tk.Button(self.gui_window,text="Validate API Err Correction",command=self.validateErrorCorrectionCallback)
+        self.validate_error_correction_button.grid(row=8,column=1,sticky="nsew")        
         
         #Record Expert Motions Button
         self.record_motions_button=tk.Button(self.gui_window,text="Record Motions (Start on PC1 before PC2)",command=self.rocordMotionsCallback)
-        self.record_motions_button.grid(row=4,column=1,sticky="nsew")
+        self.record_motions_button.grid(row=7,column=2,sticky="nsew")
 
         #Playback Tools Button
         self.calibrate_gaze_button=tk.Button(self.gui_window,text="Calibrate Gaze (Record Motions is Pressed First)",command=self.calibrateGazeCallback)
-        self.calibrate_gaze_button.grid(row=4,column=2,sticky="nsew")
+        self.calibrate_gaze_button.grid(row=8,column=2,sticky="nsew")
+
+
+        self.playbackLabel=tk.Label(self.gui_window,text="--------------------Playback--------------------", font=("Arial", 14))
+        self.playbackLabel.grid(row=10,column=0,columnspan=3,sticky='n',pady=(10,20))
+
+        self.checkbox_simpleplayback=tk.Checkbutton(self.gui_window,text="Basic Playback",onvalue=1,offvalue=0,command=self.basicPlaybackCallback)
+        self.checkbox_simpleplayback.grid(row=11,column=0,sticky='w')
+
+        self.checkbox_textplayback=tk.Checkbutton(self.gui_window,text="Playback with Text Overlay",onvalue=1,offvalue=0,command=self.textOverlayPlaybackCallback)
+        self.checkbox_textplayback.grid(row=11,column=1,sticky='w')
+
+        self.checkbox_segmentedplayback=tk.Checkbutton(self.gui_window,text="Playback with Segments (2-handed only)",onvalue=1,offvalue=0,command=self.segmentedPlaybackCallback)
+        self.checkbox_segmentedplayback.grid(row=11,column=2,sticky='w')
+
+
+        #Check Boxes to Select Which Task we are Using
+        self.checkbox_twoHandedRingWire=tk.Checkbutton(self.gui_window,text="2-Handed Ring Wire",onvalue=1,offvalue=0,command=self.twoHandedRingWireCallback)
+        self.checkbox_twoHandedRingWire.grid(row=12,column=0,sticky='w')
+
+        self.checkbox_oneHandedRingWire=tk.Checkbutton(self.gui_window,text="1-Handed Ring Wire",onvalue=1,offvalue=0,command=self.oneHandedRingWireCallback)
+        self.checkbox_oneHandedRingWire.grid(row=12,column=1,sticky='w')
+
+        self.checkbox_pickPlace=tk.Checkbutton(self.gui_window,text="Pick & Place",onvalue=1,offvalue=0,command=self.pickAndPlaceCallback)
+        self.checkbox_pickPlace.grid(row=12,column=2,sticky='w')
 
         #Playback Tools Button
         self.render_button=tk.Button(self.gui_window,text="Playback Tools",command=self.playbackMotionsCallback)
-        self.render_button.grid(row=4,column=3,sticky="nsew")
+        self.render_button.grid(row=13,column=0,sticky="nsew")
 
-        #Toggle kinematics/visual camera motion
-        self.cam_motion=tk.Button(self.gui_window,text="Toggle visual- or kinematics-based ECM motion (default=visual)",command=self.kinematicsCamCallback)
-        self.cam_motion.grid(row=5,column=0,sticky="nsew")
+        self.slider_label = tk.Label(self.gui_window, text="Playback Speed:")
+        self.slider_label.grid(row=13, column=1, sticky="e")  # Align to the right for spacing
 
-
-
+        self.slider_playbackSpeed=tk.Scale(self.gui_window,from_=0.25,to=2.00,resolution=0.25,orient=tk.HORIZONTAL, command=self.playbackSpeedCallback)
+        self.slider_playbackSpeed.grid(row=13,column=2,sticky='w')
+        self.slider_playbackSpeed.set(float(1.00))
 
         ####################Initializing Variables##################
 
@@ -352,6 +438,7 @@ class Renderer:
         self.psm3_points_count=0
         self.is_psmerror_started=False
         self.is_psmerror_calib=False
+
         self.project_point_psm1_left=None #Point to touch with psm
         self.project_point_psm1_right=None #Point to touch with psm
 
@@ -365,8 +452,17 @@ class Renderer:
         self.p_ecm_ac_list_psm3=None
         self.p_ecm_rep_list_psm3=None
 
+        self.p_ecm_ac_list_psm1_right=None   #True points locations in ecm coord 
+        self.p_ecm_rep_list_psm1_right=None  #Reported point locations in ecm coord
+
+        self.p_ecm_ac_list_psm3_right=None
+        self.p_ecm_rep_list_psm3_right=None
+
         self.is_new_psm1_points=False
         self.is_new_psm3_points=False
+
+        self.is_new_psm1_points_right=False
+        self.is_new_psm3_points_right=False
 
         #Selecting which PSM to render
         self.PSM1_on=False
@@ -397,8 +493,56 @@ class Renderer:
         self.playback_time=0 #For playback (playback is a continuous loop)
         self.pc2_time=None
 
-        ##Boolean to use video-based camera motion updates, or kinematics based, default is video based
-        self.is_kinematics_cam=False 
+        ##Boolean to use video-based camera motion updates, or kinematics based, default is kinematics based
+        self.is_kinematics_cam=True 
+
+
+        ##############Variables for Playback
+
+        #Boolean to select which task we are doing
+        self.is_one_handed_ringwire=False
+        self.is_two_handed_ringwire=False
+        self.is_pick_and_place=False
+
+        #Keeps file name that we are running playback from
+        self.playback_filename='PC1_TwoHanded.csv' #Defaults to two handed
+
+        #Playback speed variable
+        self.playback_speed=1
+
+        #Are we doing segmented playback?
+        self.is_segmentedPlayback=False
+
+        #Are we adding text to the screen during playback?
+        self.is_textPlayback=False
+
+        self.segmentIndexCount=0 #Which segment are we on?
+        self.maxSegmentIndexCount=10    #Max number of segments (includes 0 and final segment)
+
+        self.segment_trajectory_left=None
+        self.start_segment_left=None
+        self.end_segment_left=None
+
+        self.segment_trajectory_right=None
+        self.start_segment_right=None
+        self.end_segment_right=None
+
+        self.segment_indices=ONE_HANDED_SEGMENT_INDICES #defaults to one handed segments
+        self.segment_PSMs=ONE_HANDED_SEGMENT_PSMs
+
+        self.segment_trajectories_right=[] #List containing all the segment trajectories for the right
+        self.segment_trajectories_left=[] #List containing all the segment trajectories for the right
+
+        self.starts_segment_left=[]
+        self.ends_segment_left=[]
+        self.starts_segment_right=[]
+        self.ends_segment_right=[]
+        self.handText=None
+ 
+
+
+
+
 
         ###########Converts the dictionary of model (scene) points to a list of list of points
         ARUCO_IDs=[6,4,5,7]
@@ -416,6 +560,8 @@ class Renderer:
         #Camera to scene registration Initial
         self.lci_T_si=None
         self.rci_T_si=None
+        self.lc_T_s=None
+        self.rc_T_s=None
 
         self.inv_lci_T_si=None
         self.inv_rci_T_si=None
@@ -430,6 +576,7 @@ class Renderer:
         #Initial ECM Pose
         self.cart_T_ecmi=None
         self.inv_cart_T_ecmi=None
+        ecmi_T_ecm=None
 
 
         ###Getting hand-eye calibration matrices
@@ -462,7 +609,7 @@ class Renderer:
 
         ###API Error Correction:
 
-        #PSM1 Error Correction
+        #PSM1 Left Error Correction
         self.ecmac_T_ecmrep_psm1=None #The API error correction factor for psm1
         self.ecmac_T_ecmrep_psm1_np=None
 
@@ -480,7 +627,7 @@ class Renderer:
                 self.is_psmerror_calib=True 
                 file.close()
 
-        #PSM3 Error Correction
+        #PSM3 Left Error Correction
         self.ecmac_T_ecmrep_psm3=None #The API error correction factor for psm1
         self.ecmac_T_ecmrep_psm3_np=None
 
@@ -498,6 +645,41 @@ class Renderer:
                 file.close()
 
 
+        #PSM1 Right Error Correction
+        self.ecmac_T_ecmrep_psm1_right=None #The API error correction factor for psm1
+        self.ecmac_T_ecmrep_psm1_right_np=None
+
+        if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm1_right.yaml'): 
+            with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm1_right.yaml','r') as file:
+                self.ecmac_T_ecmrep_psm1_right_np=yaml.load(file) 
+
+                self.ecmac_T_ecmrep_psm1_right_np=self.ecmac_T_ecmrep_psm1_right_np['ecmac_T_ecmrep_psm1_right']
+                self.ecmac_T_ecmrep_psm1_right_np=np.array(self.ecmac_T_ecmrep_psm1_right_np,dtype=np.float32)
+
+                self.ecmac_T_ecmrep_psm1_right=glm.mat4(*self.ecmac_T_ecmrep_psm1_right_np.T.flatten())    
+                print('ecmac_T_ecmrep_psm1_right: '+str(self.ecmac_T_ecmrep_psm1_right)) 
+
+                self.inv_ecmac_T_ecmrep_psm1_right=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1_right)    
+                self.is_psmerror_calib=True 
+                file.close()
+
+        #PSM3 Right Error Correction
+        self.ecmac_T_ecmrep_psm3_right=None #The API error correction factor for psm1
+        self.ecmac_T_ecmrep_psm3_right_np=None
+
+        if os.path.isfile(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm3_right.yaml'): 
+            with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm3_right.yaml','r') as file:
+                self.ecmac_T_ecmrep_psm3_right_np=yaml.load(file) 
+
+                self.ecmac_T_ecmrep_psm3_right_np=self.ecmac_T_ecmrep_psm3_right_np['ecmac_T_ecmrep_psm3_right']
+                self.ecmac_T_ecmrep_psm3_right_np=np.array(self.ecmac_T_ecmrep_psm3_right_np,dtype=np.float32)
+
+                self.ecmac_T_ecmrep_psm3_right=glm.mat4(*self.ecmac_T_ecmrep_psm3_right_np.T.flatten())    
+                print('ecmac_T_ecmrep_psm3_right: '+str(self.ecmac_T_ecmrep_psm3_right))     
+                self.inv_ecmac_T_ecmrep_psm3_right=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3_right)
+                self.is_psmerror_calib=True 
+                file.close()
+
 
         
         #################dVRK API Config###################
@@ -506,15 +688,10 @@ class Renderer:
         self.psm3=dvrk.psm("PSM3") #Mapped to right hand
         self.ecm=dvrk.ecm("ECM")
 
-        #Enabling and Homing
-        self.psm1.enable()
-        self.psm1.home()
-
-        self.psm3.enable()
-        self.psm3.home()
-
-        self.ecm.enable()
-        self.ecm.home()
+        #Enabling and Homing the arms
+        utils.setting_arm_state(self.psm1)
+        utils.setting_arm_state(self.psm3)
+        utils.setting_arm_state(self.ecm)
 
 
         rospy.sleep(1)
@@ -552,6 +729,7 @@ class Renderer:
     def rocordMotionsCallback(self):
         self.record_motions_on=not self.record_motions_on
         if self.record_motions_on:
+            print("Recording Task")
             #sets record time to zero:
             self.record_time=0
             self.pc2_time=None
@@ -560,6 +738,11 @@ class Renderer:
             print(self.dataLogger_pc1.file_count)
             #self.filecount_msg.data=self.dataLogger_pc1.file_count
             self.filecount_pub.publish(self.dataLogger_pc1.file_count)
+            self.recordingToggle_pub.publish(1)    #Starting the recording
+        elif not self.record_motions_on:
+            print("Done Recording")
+            self.dataLogger_pc1.stopRecording_PC1()
+            self.recordingToggle_pub.publish(0)     #Ending the recording
 
     
     def calibrateGazeCallback(self):
@@ -578,13 +761,134 @@ class Renderer:
         if self.playback_on:
             self.playback_time=0
             self.playback_object.initPlayback(MOTIONS_ROOT) #Initializes the playback file and parameters
+            self.segmentIndexCount=0 #Used also for the text display
+
+            #We get the segment trajectories at the start:
+            if self.is_segmentedPlayback and self.is_two_handed_ringwire: #Onlye get segmented if two-handed
+
+                try_true=False
+                try:
+                    cart_T_ecm=self.ecm.setpoint_cp()
+                    try_true=True
+                except Exception as e:
+                    print("Unable to read psm1: "+str(e))
+                    return
+                if try_true:
+                    cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+                    cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+                    ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
+                    inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
+
+                    for i in range(0,self.maxSegmentIndexCount):
+                        print('Entered Once')
+                        
+                        c_T_s=self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si
+                        self.segment_trajectory_left,self.start_segment_left,self.end_segment_left=self.playback_object.startSegment(self.segment_indices[i],\
+                                                                                                                    self.segment_indices[i+1],\
+                                                                                                                    self.segment_PSMs[i],c_T_s,self.cam_mat_left,self.aruco_tracker_left.dist,self.aruco_tracker_left.mtx)
+                        self.segment_trajectories_left.append(self.segment_trajectory_left)
+                        # self.starts_segment_left.append(self.start_segment_left)
+                        # self.ends_segment_left.append(self.end_segment_left)
+
+                        c_T_s=self.inv_ecm_T_rc*inv_ecmi_T_ecm*self.ecm_T_rc*self.rci_T_si
+                        self.segment_trajectory_right,self.start_segment_right,self.end_segment_right=self.playback_object.startSegment(self.segment_indices[i],\
+                                                                                                                    self.segment_indices[i+1],\
+                                                                                                                        self.segment_PSMs[i],c_T_s,self.cam_mat_right,self.aruco_tracker_right.dist,self.aruco_tracker_right.mtx)
+                        self.segment_trajectories_right.append(self.segment_trajectory_right)
+                        # self.starts_segment_right.append(self.start_segment_right)
+                        # self.ends_segment_right.append(self.end_segment_right)
+                        #print("Segment Index: "+str(TWO_HANDED_SEGMENT_INDICES[i]))
+                        print("Completed Trajectory: "+str(i))
+            
+            self.playback_time=0
+            self.delta_time=0.001
+
+    def oneHandedRingWireCallback(self):
+        self.is_one_handed_ringwire=not self.is_one_handed_ringwire
+        if self.is_one_handed_ringwire:
+            self.playback_filename='PC1_OneHanded.csv'  
+            self.segment_indices=ONE_HANDED_SEGMENT_INDICES
+            self.segment_PSMs=ONE_HANDED_SEGMENT_PSMs 
+            self.maxSegmentIndexCount=14
+
+            #Deselecting other checkboxes
+            self.checkbox_twoHandedRingWire.deselect()
+            self.checkbox_pickPlace.deselect()
+
+            self.is_two_handed_ringwire=False
+            self.is_pick_and_place=False
+
+    def twoHandedRingWireCallback(self):
+        self.is_two_handed_ringwire=not self.is_two_handed_ringwire
+        if self.is_two_handed_ringwire:
+            self.playback_filename='PC1_TwoHanded.csv'
+            self.maxSegmentIndexCount=10
+            self.segment_indices=TWO_HANDED_SEGMENT_INDICES
+            self.segment_PSMs=TWO_HANDED_SEGMENT_PSMs
+
+            #Deselecting other checkboxes
+            self.checkbox_oneHandedRingWire.deselect()
+            self.checkbox_pickPlace.deselect()
+
+            self.is_one_handed_ringwire=False
+            self.is_pick_and_place=False
+
+
+    def pickAndPlaceCallback(self):
+        self.is_pick_and_place=not self.is_pick_and_place
+        #print("Pick and Place Callback")
+        if self.is_pick_and_place:
+            self.playback_filename='PC1_PickAndPlace.csv'
+            self.maxSegmentIndexCount=9
+            self.segment_indices=PICK_AND_PLACE_INDICES
+            self.segment_PSMs=PICK_AND_PLACE_SEGMENT_PSMs
+
+            #Deselecting other checkboxes
+            self.checkbox_oneHandedRingWire.deselect()
+            self.checkbox_twoHandedRingWire.deselect()
+
+            self.is_one_handed_ringwire=False
+            self.is_two_handed_ringwire=False
+
+            #print("Pick and Place Names"+str(self.segment_PSMs))
+
+    def playbackSpeedCallback(self,sliderVal):
+        #print("Slider Val: "+str(sliderVal))
+        self.playback_speed=float(sliderVal)
+        #self.slider_playbackSpeed.config(label=f"{self.playback_speed:.2f}")
+
+    def basicPlaybackCallback(self):
+        self.is_segmentedPlayback=False
+        self.is_textPlayback=False
+        self.checkbox_segmentedplayback.deselect()
+        self.checkbox_textplayback.deselect()
+
+    def segmentedPlaybackCallback(self):
+        self.is_segmentedPlayback=not self.is_segmentedPlayback
+        if self.is_segmentedPlayback:
+            self.is_textPlayback=False
+            self.checkbox_simpleplayback.deselect()
+            self.checkbox_textplayback.deselect()
+
+    def textOverlayPlaybackCallback(self):
+        self.is_segmentedPlayback=False
+        self.is_textPlayback=not self.is_textPlayback
+        if self.is_textPlayback:
+            self.is_segmentedPlayback=False
+            self.checkbox_simpleplayback.deselect()
+            self.checkbox_segmentedplayback.deselect()
+
+    
+
 
 
     def frameCallbackRight(self,data):
         self.frame_right=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        #self.frame_right=cv2.resize(self.frame_right,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
 
     def frameCallbackLeft(self,data):        
         self.frame_left=self.bridge.compressed_imgmsg_to_cv2(data,'passthrough')
+        #self.frame_left=cv2.resize(self.frame_left,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
 
     def pc2TimeCallback(self,data):
         self.pc2_time=data.data
@@ -602,7 +906,8 @@ class Renderer:
         self.lc_T_s=self.lc_T_s_filter.findFilterMean()
 
         self.inv_lc_T_s=utils.invHomogeneousGLM(self.lc_T_s)
-        #print("lc_T_s: "+str(self.lc_T_s))
+
+        # print("lc_T_s: "+str(self.lc_T_s))
 
     def rcTs_Callback(self,data):
         rc_T_s_list=data.data
@@ -624,6 +929,11 @@ class Renderer:
      #########API Error Correction Methods
 
     def startPSMErrorCalib(self):
+        self.is_new_psm1_points=False
+        self.is_new_psm3_points=False
+
+        self.is_new_psm1_points_right=False
+        self.is_new_psm3_points_right=False
         
         #PSM1
         self.psm1_points_count=0
@@ -663,14 +973,15 @@ class Renderer:
     def grabPSM1PointCallback(self):
         if self.is_psmerror_started:
             self.is_new_psm1_points=True
-
+            #############Left Camera
             #############Gets actual point location
             point_si=self.model_scene_points[self.psm1_points_count]
             point_si_list=point_si.tolist()        
             point_si_list.append(1)
             point_si=glm.vec4(point_si_list)
 
-            point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+            #point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+            point_ecm_ac=self.lci_T_si*point_si
 
             point_ecm_ac_list=[point_ecm_ac[0],point_ecm_ac[1],point_ecm_ac[2]]
 
@@ -699,7 +1010,8 @@ class Renderer:
 
                 
 
-                point_ecm_rep=ecm_T_psm_rep@tool_tip_point
+                point_ecm_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
+                #point_ecm_rep=ecm_T_psm_rep@tool_tip_point
                 #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
                 point_ecm_rep=point_ecm_rep[0:3]
 
@@ -707,6 +1019,35 @@ class Renderer:
                     self.p_ecm_rep_list_psm1=point_ecm_rep
                 else:
                     self.p_ecm_rep_list_psm1=np.vstack((self.p_ecm_rep_list_psm1,point_ecm_rep))
+
+                print("point_lc_ac: "+str(point_ecm_rep))
+                print("point_lc_rep: "+str(point_ecm_rep))
+
+
+
+
+                ###########Right Camera Next
+                point_ecm_ac=self.rci_T_si*point_si
+
+                point_ecm_ac_list=[point_ecm_ac[0],point_ecm_ac[1],point_ecm_ac[2]]
+
+                point_ecm_ac=np.array(point_ecm_ac_list,dtype=np.float32)
+
+                if self.p_ecm_ac_list_psm1_right is None:
+                    self.p_ecm_ac_list_psm1_right=point_ecm_ac
+                else:
+                    self.p_ecm_ac_list_psm1_right=np.vstack((self.p_ecm_ac_list_psm1_right,point_ecm_ac))
+
+
+                point_ecm_rep=utils.invHomogeneousNumpy(self.ecm_T_rc_np)@ecm_T_psm_rep@tool_tip_point
+                #point_ecm_rep=ecm_T_psm_rep@tool_tip_point
+                #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
+                point_ecm_rep=point_ecm_rep[0:3]
+
+                if self.p_ecm_rep_list_psm1_right is None:
+                    self.p_ecm_rep_list_psm1_right=point_ecm_rep
+                else:
+                    self.p_ecm_rep_list_psm1_right=np.vstack((self.p_ecm_rep_list_psm1_right,point_ecm_rep))
 
                 print("point_lc_ac: "+str(point_ecm_rep))
                 print("point_lc_rep: "+str(point_ecm_rep))
@@ -734,8 +1075,11 @@ class Renderer:
             point_si_list=point_si.tolist()        
             point_si_list.append(1)
             point_si=glm.vec4(point_si_list)
+            
 
-            point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+            ##############Left Camera First############
+            #point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+            point_ecm_ac=self.lci_T_si*point_si
 
             point_ecm_ac_list=[point_ecm_ac[0],point_ecm_ac[1],point_ecm_ac[2]]
 
@@ -750,23 +1094,65 @@ class Renderer:
 
             #############Gets Reported Point for left camera
             #rospy.sleep(0.5)
-            ecm_T_psm_rep=self.psm3.measured_cp()
-            ecm_T_psm_rep=utils.enforceOrthogonalPyKDL(ecm_T_psm_rep)
-            ecm_T_psm_rep=pm.toMatrix(ecm_T_psm_rep) #Numpy array
+            try_true=False
+            try:
+                ecm_T_psm_rep=self.psm3.measured_cp()
+                try_true=True
+            except Exception as e:
+                print("Unable to read psm1: "+str(e))
+                return
+            
+            if try_true:
+                ecm_T_psm_rep=utils.enforceOrthogonalPyKDL(ecm_T_psm_rep)
+                ecm_T_psm_rep=pm.toMatrix(ecm_T_psm_rep) #Numpy array
 
 
-            # point_lc_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
-            point_ecm_rep=ecm_T_psm_rep@tool_tip_point
-            #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
-            point_ecm_rep=point_ecm_rep[0:3]
+                # point_lc_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
+                point_ecm_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
+                #point_ecm_rep=ecm_T_psm_rep@tool_tip_point
+                #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
+                point_ecm_rep=point_ecm_rep[0:3]
 
-            if self.p_ecm_rep_list_psm3 is None:
-                self.p_ecm_rep_list_psm3=point_ecm_rep
-            else:
-                self.p_ecm_rep_list_psm3=np.vstack((self.p_ecm_rep_list_psm3,point_ecm_rep))
+                if self.p_ecm_rep_list_psm3 is None:
+                    self.p_ecm_rep_list_psm3=point_ecm_rep
+                else:
+                    self.p_ecm_rep_list_psm3=np.vstack((self.p_ecm_rep_list_psm3,point_ecm_rep))
 
-            print("point_lc_ac: "+str(point_ecm_rep))
-            print("point_lc_rep: "+str(point_ecm_rep))
+                print("point_lc_ac: "+str(point_ecm_rep))
+                print("point_lc_rep: "+str(point_ecm_rep))
+
+
+                ##############Right Camera Next
+                #point_ecm_ac=self.ecm_T_lc*self.lci_T_si*point_si
+                point_ecm_ac=self.rci_T_si*point_si
+
+                point_ecm_ac_list=[point_ecm_ac[0],point_ecm_ac[1],point_ecm_ac[2]]
+
+                point_ecm_ac=np.array(point_ecm_ac_list,dtype=np.float32)
+
+                if self.p_ecm_ac_list_psm3_right is None:
+                    self.p_ecm_ac_list_psm3_right=point_ecm_ac
+                else:
+                    self.p_ecm_ac_list_psm3_right=np.vstack((self.p_ecm_ac_list_psm3_right,point_ecm_ac))
+
+                
+
+                #############Gets Reported Point for right camera
+                #rospy.sleep(0.5)
+
+                # point_lc_rep=utils.invHomogeneousNumpy(self.ecm_T_lc_np)@ecm_T_psm_rep@tool_tip_point
+                point_ecm_rep=utils.invHomogeneousNumpy(self.ecm_T_rc_np)@ecm_T_psm_rep@tool_tip_point
+                #point_ecm_rep=ecm_T_psm_rep@tool_tip_point
+                #point_ecm_rep=np.matmul(ecm_T_psm_rep,tool_tip_point)
+                point_ecm_rep=point_ecm_rep[0:3]
+
+                if self.p_ecm_rep_list_psm3_right is None:
+                    self.p_ecm_rep_list_psm3_right=point_ecm_rep
+                else:
+                    self.p_ecm_rep_list_psm3_right=np.vstack((self.p_ecm_rep_list_psm3_right,point_ecm_rep))
+
+                print("point_rc_ac: "+str(point_ecm_rep))
+                print("point_rc_rep: "+str(point_ecm_rep))
 
 
             ###########Updates Visual Point for next iteration 
@@ -782,11 +1168,81 @@ class Renderer:
             proj_point=self.projectPointOnImagePlane(self.rci_T_si,point_si,self.aruco_tracker_right.mtx)
             self.project_point_psm3_right=proj_point
 
+    def calibratePSMErrorIndividual(self,p_ecm_ac_list,p_ecm_rep_list,testing_data=False):
+        points_shape=p_ecm_rep_list.shape
+        if testing_data:
+            train_indices=list(range(0,points_shape[0],2))
+            #Training lists
+            #p_ecm_ac_list=[p_ecm_ac_list[i] for i in train_indices]
+            p_ecm_ac_list=p_ecm_ac_list[train_indices]
+            p_ecm_rep_list=p_ecm_rep_list[train_indices]
+            points_shape=p_ecm_rep_list.shape #Updates point shape
+
+
+            #Testing lists
+            test_indices=list(range(1,points_shape[0],2))
+            #Training lists
+            p_ecm_ac_list_test=p_ecm_ac_list[test_indices]
+            p_ecm_rep_list_test=p_ecm_rep_list[test_indices]
+            points_shape_test=p_ecm_rep_list_test.shape
+
+
+
+        ecmac_T_ecmrep_np,_=utils.ransacRigidRransformation(p_ecm_ac_list,p_ecm_rep_list)
+        #Saving Results
+        ecmac_T_ecmrep_list=ecmac_T_ecmrep_np.tolist()
+
+        ecmac_T_ecmrep_glm=glm.mat4(*ecmac_T_ecmrep_np.T.flatten())
+        inv_ecmac_T_ecmrep_glm=utils.invHomogeneousGLM(ecmac_T_ecmrep_glm)
+
+        #Finding translation error on training data:
+        translation_diff_list=[]
+        for i in range(points_shape[0]): #Loops for the number of training points captured
+            p_lc_rep_point=p_ecm_rep_list[i].tolist()
+            p_lc_rep_point.append(1)
+            p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
+            p_lc_rep_point=glm.vec4(p_lc_rep_point)
+
+            est_point=inv_ecmac_T_ecmrep_glm*p_lc_rep_point
+            est_point=np.array([est_point.x,est_point.y,est_point.z],dtype=np.float32)
+
+            trans_diff=est_point-p_ecm_ac_list[i]
+            trans_diff=np.linalg.norm(trans_diff)
+            translation_diff_list.append(trans_diff)
+
+        translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
+        trans_diff_mean=np.mean(translation_diff_list)
+        trans_diff_std=np.std(translation_diff_list)
+
+        trans_diff_test_mean=None
+        trans_diff_test_std=None
+        if testing_data:    #Run test
+            translation_diff_list=[]
+            for i in range(points_shape_test[0]): #Loops for the number of training points captured
+                p_lc_rep_point=p_ecm_rep_list_test[i].tolist()
+                p_lc_rep_point.append(1)
+                p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
+                p_lc_rep_point=glm.vec4(p_lc_rep_point)
+
+                est_point=inv_ecmac_T_ecmrep_glm*p_lc_rep_point
+                est_point=np.array([est_point.x,est_point.y,est_point.z],dtype=np.float32)              
+
+                trans_diff=est_point-p_ecm_ac_list_test[i]
+                trans_diff=np.linalg.norm(trans_diff)
+                translation_diff_list.append(trans_diff)
+
+            translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
+            trans_diff_test_mean=np.mean(translation_diff_list)
+            trans_diff_test_std=np.std(translation_diff_list)
+
+
+        return ecmac_T_ecmrep_np,ecmac_T_ecmrep_list,ecmac_T_ecmrep_glm,inv_ecmac_T_ecmrep_glm,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std
+
     def calibratePSMErrorCallback(self):
         if not os.path.isdir(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/'): #Creates store directory
             os.mkdir(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/')
 
-        #PSM1:
+        #PSM1 Left:
         #Store the psm1 points first (both lc and rc)
         if self.is_new_psm1_points:
             np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm1.npy',self.p_ecm_ac_list_psm1)
@@ -796,54 +1252,63 @@ class Renderer:
             self.p_ecm_rep_list_psm1=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm1.npy')
 
 
-        #Finding the error compensation transform, psm1 lc (psm1 left camera)
-
+        #Finding the error compensation transform
         psm1_lc_points_shape=self.p_ecm_rep_list_psm1.shape
-
-
         if psm1_lc_points_shape is not None:
             if psm1_lc_points_shape[0]>3:
-                
-
-
                 print("p_ecm_ac_list_psm1: "+str(self.p_ecm_ac_list_psm1))
                 print("p_ecm_rep_list_psm1: "+str(self.p_ecm_rep_list_psm1))
-                self.ecmac_T_ecmrep_psm1_np,_=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1)
-
-
-                #Saving Results
-                ecmac_T_ecmrep_psm1_list=self.ecmac_T_ecmrep_psm1_np.tolist()
+                self.ecmac_T_ecmrep_psm1_np,ecmac_T_ecmrep_psm1_list,self.ecmac_T_ecmrep_psm1,self.inv_ecmac_T_ecmrep_psm1,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm1,self.p_ecm_rep_list_psm1,False)
+                
+                print('mean registration error psm1 lc: '+str(trans_diff_mean))
+                print('std registration error psm1 lc: '+str(trans_diff_std))
+                print('test mean registration error psm1 lc: '+str(trans_diff_test_mean))
+                print('test std registration error psm1 lc: '+str(trans_diff_test_std))
+                
                 data_psm1={'ecmac_T_ecmrep_psm1':ecmac_T_ecmrep_psm1_list}
                 with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm1.yaml','w') as f:
-                    yaml.dump(data_psm1,f)
-                    f.close()
+                            yaml.dump(data_psm1,f)
+                            f.close()
 
-                self.ecmac_T_ecmrep_psm1=glm.mat4(*self.ecmac_T_ecmrep_psm1_np.T.flatten())
-                self.inv_ecmac_T_ecmrep_psm1=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm1)
-
-                #Finding translation error:
-                translation_diff_list=[]
-                for i in range(psm1_lc_points_shape[0]): #Loops for the number of points captured
-                    p_lc_rep_point=self.p_ecm_rep_list_psm1[i].tolist()
-                    p_lc_rep_point.append(1)
-                    p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
-
-                    est_point=self.ecmac_T_ecmrep_psm1_np@p_lc_rep_point
-                    #est_point=np.matmul(self.ecmac_T_ecmrep_psm1_np,p_lc_rep_point)
-                    est_point=est_point[0:3]
-
-
-                    trans_diff=est_point-self.p_ecm_ac_list_psm1[i]
-                    trans_diff=np.linalg.norm(trans_diff)
-                    translation_diff_list.append(trans_diff)
-                translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
-                trans_diff=np.mean(translation_diff_list)
-                print('registration error psm1 lc: '+str(trans_diff))
 
                 self.is_psmerror_calib=True
 
 
-        #PSM3:
+        #PSM1 Right:
+        #Store the psm1 points first (both lc and rc)
+        if self.is_new_psm1_points:
+            np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm1_right.npy',self.p_ecm_ac_list_psm1_right)
+            np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm1_right.npy',self.p_ecm_rep_list_psm1_right)
+        else:
+            self.p_ecm_ac_list_psm1_right=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm1_right.npy')
+            self.p_ecm_rep_list_psm1_right=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm1_right.npy')
+
+
+        #Finding the error compensation transform, psm1 rc (psm1 right camera)
+        psm1_rc_points_shape=self.p_ecm_rep_list_psm1_right.shape
+        if psm1_rc_points_shape is not None:
+            if psm1_rc_points_shape[0]>3:
+                print("p_ecm_ac_list_psm1_right: "+str(self.p_ecm_ac_list_psm1_right))
+                print("p_ecm_rep_list_psm1_right: "+str(self.p_ecm_rep_list_psm1_right))
+                self.ecmac_T_ecmrep_psm1_right_np,ecmac_T_ecmrep_psm1_right_list,self.ecmac_T_ecmrep_psm1_right,self.inv_ecmac_T_ecmrep_psm1_right,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm1_right,self.p_ecm_rep_list_psm1_right,False)
+                
+                print('mean registration error psm1 rc: '+str(trans_diff_mean))
+                print('std registration error psm1 rc: '+str(trans_diff_std))
+                print('test mean registration error psm1 rc: '+str(trans_diff_test_mean))
+                print('test std registration error psm1 rc: '+str(trans_diff_test_std))
+                
+                data_psm1={'ecmac_T_ecmrep_psm1_right':ecmac_T_ecmrep_psm1_right_list}
+                with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm1_right.yaml','w') as f:
+                    yaml.dump(data_psm1,f)
+                    f.close()
+
+
+                self.is_psmerror_calib=True
+
+
+        #PSM3 Left:
         #Store the psm1 points first (both lc and rc)
         if self.is_new_psm3_points:
             np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm3.npy',self.p_ecm_ac_list_psm3)
@@ -853,52 +1318,62 @@ class Renderer:
             self.p_ecm_rep_list_psm3=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm3.npy')
 
 
-        #Finding the error compensation transform, psm1 lc (psm1 left camera)
+        #Finding the error compensation transform, psm3 lc (psm3 left camera)
 
         psm3_lc_points_shape=self.p_ecm_rep_list_psm3.shape
 
-
         if psm3_lc_points_shape is not None:
             if psm3_lc_points_shape[0]>3:
-                
-
-
                 print("p_ecm_ac_list_psm3: "+str(self.p_ecm_ac_list_psm3))
                 print("p_ecm_rep_list_psm3: "+str(self.p_ecm_rep_list_psm3))
-                self.ecmac_T_ecmrep_psm3_np,_=utils.ransacRigidRransformation(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3)
-
-                #Saving Results
-                ecmac_T_ecmrep_psm3_list=self.ecmac_T_ecmrep_psm3_np.tolist()
+                self.ecmac_T_ecmrep_psm3_np,ecmac_T_ecmrep_psm3_list,self.ecmac_T_ecmrep_psm3,self.inv_ecmac_T_ecmrep_psm3,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm3,self.p_ecm_rep_list_psm3,False)
+                
+                print('mean registration error psm3 lc: '+str(trans_diff_mean))
+                print('std registration error psm3 lc: '+str(trans_diff_std))
+                print('test mean registration error psm3 lc: '+str(trans_diff_test_mean))
+                print('test std registration error psm3 lc: '+str(trans_diff_test_std))
+                
                 data_psm3={'ecmac_T_ecmrep_psm3':ecmac_T_ecmrep_psm3_list}
                 with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm3.yaml','w') as f:
                     yaml.dump(data_psm3,f)
                     f.close()
 
-                self.ecmac_T_ecmrep_psm3=glm.mat4(*self.ecmac_T_ecmrep_psm3_np.T.flatten())
-                self.inv_ecmac_T_ecmrep_psm3=utils.invHomogeneousGLM(self.ecmac_T_ecmrep_psm3)
-
-                #Finding translation error:
-                translation_diff_list=[]
-                for i in range(psm3_lc_points_shape[0]): #Loops for the number of points captured
-                    p_lc_rep_point=self.p_ecm_rep_list_psm3[i].tolist()
-                    p_lc_rep_point.append(1)
-                    p_lc_rep_point=np.array(p_lc_rep_point,dtype=np.float32)
-
-                    est_point=self.ecmac_T_ecmrep_psm3_np@p_lc_rep_point
-                    #est_point=np.matmul(self.ecmac_T_ecmrep_psm3_np,p_lc_rep_point)
-                    est_point=est_point[0:3]
+                self.is_psmerror_calib=True
+  
+        #PSM3 Right:
+        #Store the psm3 points first (both lc and rc)
+        if self.is_new_psm3_points:
+            np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm3_right.npy',self.p_ecm_ac_list_psm3_right)
+            np.save(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm3_right.npy',self.p_ecm_rep_list_psm3_right)
+        else:
+            self.p_ecm_ac_list_psm3_right=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_ac_list_psm3_right.npy')
+            self.p_ecm_rep_list_psm3_right=np.load(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/p_ecm_rep_list_psm3_right.npy')
 
 
-                    trans_diff=est_point-self.p_ecm_ac_list_psm3[i]
-                    trans_diff=np.linalg.norm(trans_diff)
-                    translation_diff_list.append(trans_diff)
-                translation_diff_list=np.array(translation_diff_list,dtype=np.float32)
-                trans_diff=np.mean(translation_diff_list)
-                print('registration error psm3 lc: '+str(trans_diff))
+        #Finding the error compensation transform, psm1 lc (psm1 left camera)
+
+        psm3_rc_points_shape=self.p_ecm_rep_list_psm3_right.shape
+
+        if psm3_rc_points_shape is not None:
+            if psm3_rc_points_shape[0]>3:
+                print("p_ecm_ac_list_psm3_right: "+str(self.p_ecm_ac_list_psm3_right))
+                print("p_ecm_rep_list_psm3_right: "+str(self.p_ecm_rep_list_psm3_right))
+                self.ecmac_T_ecmrep_psm3_right_np,ecmac_T_ecmrep_psm3_right_list,self.ecmac_T_ecmrep_psm3_right,self.inv_ecmac_T_ecmrep_psm3_right,trans_diff_mean,trans_diff_std,trans_diff_test_mean,trans_diff_test_std=\
+                    self.calibratePSMErrorIndividual(self.p_ecm_ac_list_psm3_right,self.p_ecm_rep_list_psm3_right,False)
+                
+                print('mean registration error psm3 rc: '+str(trans_diff_mean))
+                print('std registration error psm3 rc: '+str(trans_diff_std))
+                print('test mean registration error psm3 rc: '+str(trans_diff_test_mean))
+                print('test std registration error psm3 rc: '+str(trans_diff_test_std))
+                
+                data_psm3={'ecmac_T_ecmrep_psm3_right':ecmac_T_ecmrep_psm3_right_list}
+                with open(ArucoTracker.DEFAULT_CAMCALIB_DIR+'API_Error_Offset/ecmac_T_ecmrep_psm3_right.yaml','w') as f:
+                    yaml.dump(data_psm3,f)
+                    f.close()
+
                 self.is_psmerror_calib=True
 
-    
-    
     
     ######################Support Methods#####################
     
@@ -1030,6 +1505,19 @@ class Renderer:
         frame_new=cv2.flip(frame,0)
         #Converts the frame to RGB
         frame_new=cv2.cvtColor(frame_new,cv2.COLOR_BGR2RGB)
+
+        if frame_new.shape!=(ECM_FRAME_HEIGHT_DESIRED,ECM_FRAME_WIDTH_DESIRED,3):
+            print("Entered Check")
+            frame_new=cv2.resize(frame_new,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+
+        #Create frame of correct size:
+        # frame_new=cv2.resize(frame_new,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
+
+        # frame_sized=np.zeros((CONSOLE_VIEWPORT_HEIGHT,CONSOLE_VIEWPORT_WIDTH,3),np.uint8)
+        # frame_sized[int(round((CONSOLE_VIEWPORT_HEIGHT-ECM_FRAME_HEIGHT_DESIRED)/2)):int(round((CONSOLE_VIEWPORT_HEIGHT-ECM_FRAME_HEIGHT_DESIRED)/2))+ECM_FRAME_HEIGHT_DESIRED,:]=frame_new
+
+
+
         return frame_new
     
 
@@ -1053,11 +1541,11 @@ class Renderer:
         w_T_7=w_T_psm*psm_T_7
 
         #Left jaw
-        w_T_jl_local=w_T_7*self.Rotz(-joint_angles[2]/2)*jl_T_jl_local    #Finds world to jaw left in object coords (local)
+        w_T_jl_local=w_T_7*self.Rotz(joint_angles[2]/2)*jl_T_jl_local    #Finds world to jaw left in object coords (local)
         w_T_jl_local=utils.scaleGLMTranform(w_T_jl_local,METERS_TO_RENDER_SCALE)
 
         #Right jaw
-        w_T_jr_local=w_T_7*self.Rotz(joint_angles[2]/2)*jr_T_jr_local   #Finds world to right jaw in object coords
+        w_T_jr_local=w_T_7*self.Rotz(-joint_angles[2]/2)*jr_T_jr_local   #Finds world to right jaw in object coords
         w_T_jr_local=utils.scaleGLMTranform(w_T_jr_local,METERS_TO_RENDER_SCALE)
 
 
@@ -1131,6 +1619,14 @@ class Renderer:
     def move_objects(self):
         #This is the method where we pass the matrix to move_obj to move the object and also 
         #select which object to move: "shaft", "body","jaw_right","jaw_left"
+        if self.PSM3_on:
+            for obj_name in obj_names:
+                #if obj_name=='jaw_right' or obj_name=='jaw_left':
+                #   continue
+                #print(obj_name)
+                move_mat=self.instrument_dict_PSM3[obj_name]
+                self.scene_PSM3.move_obj(obj_name,move_mat)
+
         if self.PSM1_on:
             for obj_name in obj_names:
                 #if obj_name=='jaw_right' or obj_name=='jaw_left':
@@ -1139,13 +1635,7 @@ class Renderer:
                 move_mat=self.instrument_dict_PSM1[obj_name]
                 self.scene_PSM1.move_obj(obj_name,move_mat)
 
-        if self.PSM3_on:
-            for obj_name in obj_names:
-                #if obj_name=='jaw_right' or obj_name=='jaw_left':
-                #   continue
-                #print(obj_name)
-                move_mat=self.instrument_dict_PSM3[obj_name]
-                self.scene_PSM3.move_obj(obj_name,move_mat)
+        
     
 
 
@@ -1163,7 +1653,7 @@ class Renderer:
 
         ############Real-Time Virtual Overlay##############
         #Get PSM Poses for virtual overlay and run instrument kinematics
-        if self.virtual_overlay_on and (not self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+        if self.virtual_overlay_on and (not self.playback_on) and self.is_psmerror_calib: #self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             try_true=False
             try:
                 cart_T_ecm=self.ecm.setpoint_cp()
@@ -1174,9 +1664,8 @@ class Renderer:
             if try_true:
                 cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                 cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
-                if self.is_kinematics_cam:
-                    ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
-                    #print("ecmi_T_ecm: "+str(ecmi_T_ecm))
+                ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
+                inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
 
 
                 if self.PSM1_on:
@@ -1195,10 +1684,8 @@ class Renderer:
                         jaw_angle_psm1=self.psm1.jaw.measured_js()[0]
                         joint_vars_psm1_new=[joint_vars_psm1[4],joint_vars_psm1[5],jaw_angle_psm1[0]]
 
-                        if self.is_kinematics_cam:
-                            s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
-                        else:
-                            s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #for visual based camera motion
+                        
+                        s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #if using kinematics based ecm motion (do not need this anymore)
                         self.instrument_kinematics(joint_vars_psm1_new,s_T_psm1,'PSM1')
                 
                 if self.PSM3_on:
@@ -1215,11 +1702,9 @@ class Renderer:
 
                         joint_vars_psm3=self.psm3.measured_js()[0]
                         jaw_angle_psm3=self.psm3.jaw.measured_js()[0]
-                        joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]
-                        if self.is_kinematics_cam:
-                            s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
-                        else:
-                            s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #for visual based camera motion
+                        joint_vars_psm3_new=[joint_vars_psm3[4],joint_vars_psm3[5],jaw_angle_psm3[0]]   
+
+                        s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #if using kinematics based ecm motion (do not need this anymore)
                         self.instrument_kinematics(joint_vars_psm3_new,s_T_psm3,'PSM3')
                 
                 self.move_objects()
@@ -1229,10 +1714,11 @@ class Renderer:
             ####Time and Indexes to record
             
             #PC1 Time
-            pc1_time=datetime.now().time()
+            pc1_time_raw=datetime.now()
+            pc1_time=pc1_time_raw.strftime('%H:%M:%S.%f')
 
             ####Transforms to Record
-            if self.virtual_overlay_on: #Already computed some transforms transforms
+            if self.virtual_overlay_on: #Already computed some transforms
                 ecm_joints=self.ecm.measured_js()[0]
 
                 if self.PSM1_on:
@@ -1263,8 +1749,8 @@ class Renderer:
                 if try_true:
                     cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
                     cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
-                    if self.is_kinematics_cam:
-                        ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
+                    ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm #Uncomment if using kinematics based ecm motion
+                    inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
 
                     ecm_joints=self.ecm.measured_js()[0]
                     ecm_joints=ecm_joints.tolist()
@@ -1285,10 +1771,7 @@ class Renderer:
                             psm1_joints=np.concatenate((joint_vars_psm1,jaw_angle_psm1))
                             psm1_joints=psm1_joints.tolist()
 
-                            if self.is_kinematics_cam:
-                                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #Uncomment if using kinematics based ecm motion
-                            else:
-                                s_T_psm1=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1 #uncomment for visual based camera motion
+                            s_T_psm1=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1 #uncomment for visual based camera motion
                     else:
                         ecm_T_psm1=None
                         psm1_joints=None
@@ -1312,10 +1795,7 @@ class Renderer:
                             psm3_joints=np.concatenate((joint_vars_psm3,jaw_angle_psm3))
                             psm3_joints=psm3_joints.tolist()
 
-                            if self.is_kinematics_cam:
-                                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #Uncomment if using kinematics based ecm motion
-                            else:
-                                s_T_psm3=self.inv_lci_T_si*self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3 #uncomment for visual based camera motion
+                            s_T_psm3=self.inv_lci_T_si*self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3 #uncomment for visual based camera motion
                     else:
                         ecm_T_psm3=None
                         psm3_joints=None
@@ -1332,7 +1812,7 @@ class Renderer:
 
             #Writing the row to the csv file
             self.dataLogger_pc1.writeRow_PC1(self.record_time,pc1_time,self.pc2_time,gaze_calib_show,s_T_psm1,s_T_psm3,\
-                                             cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints)
+                                             cart_T_ecm,ecm_T_psm1,ecm_T_psm3,psm1_joints,psm3_joints,ecm_joints,ecmi_T_ecm)
             
             #update task time
             self.record_time+=self.delta_time
@@ -1340,19 +1820,79 @@ class Renderer:
 
         ############Playing Back Recorded Motions##############
         if self.playback_on and not self.virtual_overlay_on:
-            
-            data_list=self.playback_object.getDataRow() #Gets a list with the recorded motions (s_T_psm1, s_T_psm3, psm1_joints, psm3_joints)
-            if self.PSM1_on:
-                s_T_psm1,psm1_joints=self.playback_object.getPSM1State(data_list)
-                self.instrument_kinematics(psm1_joints,s_T_psm1,'PSM1')
+            try_true=False
+            try:
+                cart_T_ecm=self.ecm.setpoint_cp()
+                try_true=True
+            except Exception as e:
+                print("Unable to read psm1: "+str(e))
+                return
+            if try_true:
+                cart_T_ecm=utils.enforceOrthogonalPyKDL(cart_T_ecm)
+                cart_T_ecm=utils.convertPyDK_To_GLM(cart_T_ecm)
+                ecmi_T_ecm=self.inv_cart_T_ecmi*cart_T_ecm
+                inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm)
 
-            if self.PSM3_on:
-                s_T_psm3,psm3_joints=self.playback_object.getPSM3State(data_list)
-                self.instrument_kinematics(psm3_joints,s_T_psm3,'PSM3')
+            if self.is_segmentedPlayback and self.is_two_handed_ringwire: #Only shows segment if two-handed (beta)
+                if self.segmentIndexCount==self.maxSegmentIndexCount:
+                    if self.playback_time<3:
+                        self.segmentIndexCount=0
+
+                if self.segmentIndexCount<self.maxSegmentIndexCount:
+
+                    is_segmentStart=self.playback_object.isSegmentStart(self.segment_indices[self.segmentIndexCount]) #Are we starting the segment
+                    
+                    #print("is_segmentStart: "+str(is_segmentStart))
+                    if is_segmentStart: #We are starting the segment so we draw upcoming segment
+                        self.handText=self.segment_PSMs[self.segmentIndexCount]
+                        #print("segmentIndexCount: "+str(self.segmentIndexCount))
+                        self.segment_trajectory_left=self.segment_trajectories_left[self.segmentIndexCount]
+                        # self.start_segment_left=self.starts_segment_left[self.segmentIndexCount]
+                        # self.end_segment_left=self.ends_segment_left[self.segmentIndexCount]
+
+                        self.segment_trajectory_right=self.segment_trajectories_right[self.segmentIndexCount]
+                        # self.start_segment_right=self.starts_segment_right[self.segmentIndexCount]
+                        # self.end_segment_right=self.ends_segment_right[self.segmentIndexCount]
+                        self.segmentIndexCount+=1
+                
+
+                data_list=self.playback_object.getDataRow() #Gets a list with the recorded motions (s_T_psm1, s_T_psm3, psm1_joints, psm3_joints)
+                if self.PSM1_on:
+                    s_T_psm1,psm1_joints=self.playback_object.getPSM1State(data_list)
+                    self.instrument_kinematics(psm1_joints,s_T_psm1,'PSM1')
+
+                if self.PSM3_on:
+                    s_T_psm3,psm3_joints=self.playback_object.getPSM3State(data_list)
+                    self.instrument_kinematics(psm3_joints,s_T_psm3,'PSM3')
+
+            else:
+                #Simple Playback
+                data_list=self.playback_object.getDataRow() #Gets a list with the recorded motions (s_T_psm1, s_T_psm3, psm1_joints, psm3_joints)
+                if self.PSM1_on:
+                    s_T_psm1,psm1_joints=self.playback_object.getPSM1State(data_list)
+                    self.instrument_kinematics(psm1_joints,s_T_psm1,'PSM1')
+
+                if self.PSM3_on:
+                    s_T_psm3,psm3_joints=self.playback_object.getPSM3State(data_list)
+                    self.instrument_kinematics(psm3_joints,s_T_psm3,'PSM3')
+
+                #We are showing text as well
+                if self.is_textPlayback:
+
+                    if self.segmentIndexCount==self.maxSegmentIndexCount:
+                        if self.playback_time<3:
+                            self.segmentIndexCount=0
+                    if self.segmentIndexCount<self.maxSegmentIndexCount:
+                        is_segmentStart=self.playback_object.isSegmentStart(self.segment_indices[self.segmentIndexCount]) #Are we starting the segment
+                    
+                        #print("is_segmentStart: "+str(is_segmentStart))
+                        if is_segmentStart: #We are starting the segment so we draw upcoming segment
+                            self.handText=self.segment_PSMs[self.segmentIndexCount]
+                            self.segmentIndexCount+=1
             
             self.move_objects()
             
-            self.playback_time+=self.delta_time
+            self.playback_time+=(self.delta_time*self.playback_speed)
 
 
         ################Render to left window###################
@@ -1360,10 +1900,11 @@ class Renderer:
         self.ctx_left.clear()              #Switch to left context
 
         if self.frame_left is not None:     #We have a left frame from the ECM
+            frame_left=cv2.resize(self.frame_left,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
             self.ctx_left.disable(mgl.DEPTH_TEST)
 
             if self.aruco_on:   #User button press, we show aruco and maybe calibrate the scene
-                self.frame_left_converted=self.aruco_tracker_left.arucoTrackingScene(self.frame_left) #Show ArUco
+                self.frame_left_converted=self.aruco_tracker_left.arucoTrackingScene(frame_left) #Show ArUco
 
                 if self.calibrate_on and (not self.aruco_tracker_left.calibrate_done): #Sets Scene Base Frame 
                     self.lci_T_si=None
@@ -1378,7 +1919,7 @@ class Renderer:
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
 
             elif self.is_psmerror_started: #We are calibrating the PSM error
-                self.frame_left_converted=self.frame_left
+                self.frame_left_converted=frame_left
 
                 if self.project_point_psm1_left is not None: 
                         #We are doing error correction and need to project the point to guide person
@@ -1392,7 +1933,7 @@ class Renderer:
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
 
             elif self.validate_error_correction_on: #We want to validate API error corr.
-                self.frame_left_converted=self.frame_left
+                self.frame_left_converted=frame_left
                 ####PSM1
                 try_true=False
                 try:
@@ -1404,8 +1945,7 @@ class Renderer:
                 if try_true:
                     ecm_T_psm1=utils.enforceOrthogonalPyKDL(ecm_T_psm1)
                     ecm_T_psm1=utils.convertPyDK_To_GLM(ecm_T_psm1)
-
-                    test_pose_camera=self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1*input_pose
+                    test_pose_camera=self.inv_ecmac_T_ecmrep_psm1*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm1*input_pose
 
                     rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
@@ -1422,8 +1962,7 @@ class Renderer:
                 if try_true:
                     ecm_T_psm3=utils.enforceOrthogonalPyKDL(ecm_T_psm3)
                     ecm_T_psm3=utils.convertPyDK_To_GLM(ecm_T_psm3)
-
-                    test_pose_camera=self.inv_ecm_T_lc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3*input_pose
+                    test_pose_camera=self.inv_ecmac_T_ecmrep_psm3*self.inv_ecm_T_lc*ecmi_T_ecm*ecm_T_psm3*input_pose
                         
                     rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
                     cv2.drawFrameAxes(self.frame_left_converted,self.aruco_tracker_left.mtx,\
@@ -1431,18 +1970,24 @@ class Renderer:
                 
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
             elif self.is_gaze_calib and self.record_motions_on:
-                self.frame_left_converted=self.frame_left
+                self.frame_left_converted=frame_left
                 #We want to show a dot on first joint of PSM1 (translation from s_T_psm1) to calibrate gaze w.r.t. scene, only works if recording is on
                 
-                #Gets the tool-tip point in the left camera coordinate system
-                #gaze_point_scene=self.lci_T_si*s_T_psm1*test_point_psm #Use for kinematics approach
-                gaze_point_scene=self.lc_T_s*s_T_psm1*test_point_psm # use for visual-based approach 
+                #Gets the tool-tip point in the left camera coordinate system                
+
+                if self.is_kinematics_cam:
+                    gaze_point_scene=self.lci_T_si*s_T_psm1*test_point_psm #Use for kinematics approach
+                else:
+                    gaze_point_scene=self.lc_T_s*s_T_psm1*test_point_psm # use for visual-based approach 
 
                 #Project point on image frame
                 proj_point=mul_mat*gaze_point_scene
                 proj_point=self.cam_mat_left*proj_point
+                # print("proj_point: "+str(proj_point))
                 u,v=utils.projectPointsWithDistortion(proj_point[0],proj_point[1],proj_point[2],self.aruco_tracker_left.dist,self.aruco_tracker_left.mtx)
                 point_2d=tuple((int(u),int(v)))
+                #print("point_2d: "+str(point_2d))
+                
                 
                 if (delta_time_gaze)>GAZE_DELAY: #We have given them enough time to start looking at the gaze dot
                     self.frame_left_converted=cv2.circle(self.frame_left_converted,point_2d,radius=10,color=(0,255,0),thickness=3)
@@ -1455,11 +2000,24 @@ class Renderer:
                 
                 self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
 
+            elif self.is_segmentedPlayback and self.is_two_handed_ringwire:
+                self.frame_left_converted=frame_left
+                cv2.polylines(self.frame_left_converted,[self.segment_trajectory_left],isClosed=False,color=(0,255,0),thickness=3)
+                #cv2.arrowedLine(self.frame_left_converted,self.start_segment_left,self.end_segment_left,color=(0,0,255),thickness=8,tipLength=0.5)
+                if self.handText is not None:
+                    cv2.putText(self.frame_left_converted,self.handText,(int(round(ECM_FRAME_WIDTH_DESIRED/2)),100),cv2.FONT_HERSHEY_SIMPLEX,
+                                fontScale=1.5,color=(0,255,0),thickness=4,lineType=cv2.LINE_AA)
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
+            elif self.is_textPlayback: #We show text along with the regular playback (for all three modes)
+                self.frame_left_converted=frame_left
+                
+                if self.handText is not None:
+                    cv2.putText(self.frame_left_converted,self.handText,(int(round(ECM_FRAME_WIDTH_DESIRED/2)),100),cv2.FONT_HERSHEY_SIMPLEX,
+                                fontScale=1.5,color=(0,255,0),thickness=4,lineType=cv2.LINE_AA)
+                self.frame_left_converted=self.cvFrame2Gl(self.frame_left_converted)
 
-
-            
             else:
-                self.frame_left_converted=self.cvFrame2Gl(self.frame_left)
+                self.frame_left_converted=self.cvFrame2Gl(frame_left)
 
 
 
@@ -1469,14 +2027,13 @@ class Renderer:
             self.ctx_left.enable(mgl.DEPTH_TEST)
 
         ######Render Left Screen Instruments and Camera#######
-        if (self.virtual_overlay_on or self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
+        if (self.virtual_overlay_on or self.playback_on): #and self.aruco_tracker_left.calibrate_done and self.is_psmerror_calib:
             
             if self.is_kinematics_cam:
-                inv_ecmi_T_ecm=utils.invHomogeneousGLM(ecmi_T_ecm) #Uncomment for kinematics-based ECM motion
                 lc_T_s=opengl_T_opencv*self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si #Uncomment for Kinematics-Based ECM Motion
                 #print("Kinematics Based lc_T_s: "+str(self.inv_ecm_T_lc*inv_ecmi_T_ecm*self.ecm_T_lc*self.lci_T_si))
                 #print("Visual Based lc_T_s: "+str(self.lc_T_s))
-            else:
+            elif self.lc_T_s is not None:
                 lc_T_s=opengl_T_opencv*self.lc_T_s #Uncomment for visual-based ECM Motion
 
             #Update the camera
@@ -1484,10 +2041,11 @@ class Renderer:
             self.camera_left.update(lc_T_s)
 
             #Render the instruments:
-            if self.PSM3_on:
-                self.scene_PSM3.render(self.ctx_left)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_left)
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_left)
+            
 
 
 
@@ -1498,10 +2056,11 @@ class Renderer:
         self.ctx_right.clear()              #Switch to right context
 
         if self.frame_right is not None:     #We have a right frame from the ECM
+            frame_right=cv2.resize(self.frame_right,(ECM_FRAME_WIDTH_DESIRED,ECM_FRAME_HEIGHT_DESIRED),interpolation=cv2.INTER_LINEAR)
             self.ctx_right.disable(mgl.DEPTH_TEST)
 
-            if self.aruco_on:   #User button press, we show aruco and maybe calibrate the scene
-                self.frame_right_converted=self.aruco_tracker_right.arucoTrackingScene(self.frame_right) #Show ArUco
+            if self.aruco_on:   #User button press, we show aruco and maybe calibrate the scene             
+                self.frame_right_converted=self.aruco_tracker_right.arucoTrackingScene(frame_right) #Show ArUco
 
                 if self.calibrate_on and (not self.aruco_tracker_right.calibrate_done): #Sets Scene Base Frame 
                     self.rci_T_si=None
@@ -1516,7 +2075,7 @@ class Renderer:
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
 
             elif self.is_psmerror_started: #We are calibrating the PSM error
-                self.frame_right_converted=self.frame_right
+                self.frame_right_converted=frame_right
 
                 if self.project_point_psm1_right is not None: 
                         #We are doing error correction and need to project the point to guide person
@@ -1530,16 +2089,16 @@ class Renderer:
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
 
             elif self.validate_error_correction_on: #We want to validate API error corr.
-                self.frame_right_converted=self.frame_right
-                
-                test_pose_camera=self.inv_ecm_T_rc*self.inv_ecmac_T_ecmrep_psm1*ecm_T_psm1*input_pose
+                self.frame_right_converted=frame_right
+                                
+                test_pose_camera=self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*input_pose
 
                 rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
                 cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
                                     self.aruco_tracker_right.dist,rvec,tvec,0.008,thickness=2)
 
 
-                test_pose_camera=self.inv_ecm_T_rc*self.inv_ecmac_T_ecmrep_psm3*ecm_T_psm3*input_pose
+                test_pose_camera=self.inv_ecmac_T_ecmrep_psm3_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm3*input_pose
                     
                 rvec,tvec=utils.convertHomoToRvecTvec_GLM(test_pose_camera)
                 cv2.drawFrameAxes(self.frame_right_converted,self.aruco_tracker_right.mtx,\
@@ -1548,11 +2107,13 @@ class Renderer:
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
 
             elif self.is_gaze_calib and self.record_motions_on:
-                self.frame_right_converted=self.frame_right
+                self.frame_right_converted=frame_right
                 #We want to show a dot on first joint of PSM1 (translation from s_T_psm1) to calibrate gaze w.r.t. scene, only works if recording is on
                 #Gets the tool-tip point in the left camera coordinate system
-                #gaze_point_scene=self.rci_T_si*s_T_psm1*test_point_psm #Use for kinematics approach
-                gaze_point_scene=self.rc_T_s*s_T_psm1*test_point_psm # use for visual-based approach 
+                if self.is_kinematics_cam:
+                    gaze_point_scene=self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*test_point_psm #Use for kinematics approach
+                else:
+                    gaze_point_scene=self.rc_T_s*self.inv_rci_T_si*self.inv_ecmac_T_ecmrep_psm1_right*self.inv_ecm_T_rc*ecmi_T_ecm*ecm_T_psm1*test_point_psm # use for visual-based approach 
 
                 #Project point on image frame
                 proj_point=mul_mat*gaze_point_scene
@@ -1569,8 +2130,24 @@ class Renderer:
                 self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
 
             
+            elif self.is_segmentedPlayback:
+                self.frame_right_converted=frame_right
+                cv2.polylines(self.frame_right_converted,[self.segment_trajectory_right],isClosed=False,color=(0,255,0),thickness=3)
+                if self.handText is not None:
+                    cv2.putText(self.frame_right_converted,self.handText,(int(round(ECM_FRAME_WIDTH_DESIRED/2)),100),cv2.FONT_HERSHEY_SIMPLEX,
+                                fontScale=1.5,color=(0,255,0),thickness=4,lineType=cv2.LINE_AA)
+                #cv2.arrowedLine(self.frame_right_converted,self.start_segment_right,self.end_segment_right,color=(0,0,255),thickness=8,tipLength=0.5)
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
+
+            elif self.is_textPlayback:
+                self.frame_right_converted=frame_right
+                if self.handText is not None:
+                    cv2.putText(self.frame_right_converted,self.handText,(int(round(ECM_FRAME_WIDTH_DESIRED/2)),100),cv2.FONT_HERSHEY_SIMPLEX,
+                                fontScale=1.5,color=(0,255,0),thickness=4,lineType=cv2.LINE_AA)
+                #cv2.arrowedLine(self.frame_right_converted,self.start_segment_right,self.end_segment_right,color=(0,0,255),thickness=8,tipLength=0.5)
+                self.frame_right_converted=self.cvFrame2Gl(self.frame_right_converted)
             else:
-                self.frame_right_converted=self.cvFrame2Gl(self.frame_right)
+                self.frame_right_converted=self.cvFrame2Gl(frame_right)
 
 
 
@@ -1581,10 +2158,10 @@ class Renderer:
         
 
         ######Render Right Screen Instruments and Camera#######
-        if (self.virtual_overlay_on or self.playback_on) and self.is_psmerror_calib and self.inv_lc_T_s is not None: #and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
+        if (self.virtual_overlay_on or self.playback_on): #and self.aruco_tracker_right.calibrate_done and self.is_psmerror_calib:
             if self.is_kinematics_cam:
                 rc_T_s=opengl_T_opencv*self.inv_ecm_T_rc*inv_ecmi_T_ecm*self.ecm_T_rc*self.rci_T_si #Uncomment for Kinematics-Based ECM Motion
-            else:
+            elif self.rc_T_s is not None:
                 rc_T_s=opengl_T_opencv*self.rc_T_s #Uncomment for Visual-Based ECM Motion
 
             rc_T_s=utils.scaleGLMTranform(rc_T_s,METERS_TO_RENDER_SCALE)
@@ -1592,10 +2169,11 @@ class Renderer:
             self.camera_right.update(rc_T_s)
 
             #Render the instruments:
-            if self.PSM3_on:
-                self.scene_PSM3.render(self.ctx_right)
             if self.PSM1_on:
                 self.scene_PSM1.render(self.ctx_right)
+            if self.PSM3_on:
+                self.scene_PSM3.render(self.ctx_right)
+            
 
 
         ########Update GUI
