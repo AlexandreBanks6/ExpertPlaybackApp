@@ -9,7 +9,7 @@ import sys
 from include import utils
 
 
-TELEOPERATION_SCALE=0.25
+TELEOPERATION_SCALE=0.4
 START_ANGLE=20.0 #We start teleoperation when user grips both smaller than this
 
 

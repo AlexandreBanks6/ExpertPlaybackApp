@@ -56,7 +56,7 @@ from tkinter import ttk
 
 #################File Names#####################
 MOTIONS_ROOT='../resources/Motions/'
-RECORD_MOTIONS_ROOT='../resources/Motions/P_15/'    #Change this each recording
+RECORD_MOTIONS_ROOT='../resources/ThreeD_POG_Data_Fall2024/P_13/'    #Change this each recording
 
 
 ##################ROS Topics####################
