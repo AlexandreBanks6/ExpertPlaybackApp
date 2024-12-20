@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from sksurgerynditracker.nditracker import NDITracker
 
 PATH_TO_NDI_APPLE3='../resources/NDI_DRF_Models/APPLE03.rom' 
@@ -25,4 +26,33 @@ while(1):
 
 
 ndi_tracker.stop_tracking()
+=======
+from sksurgerynditracker.nditracker import NDITracker
+
+PATH_TO_NDI_APPLE3='../resources/NDI_DRF_Models/APPLE03.rom' 
+settings={
+                        "tracker type": "polaris",
+                        "romfiles": [PATH_TO_NDI_APPLE3]
+                    }
+ndi_tracker=NDITracker(settings)
+ndi_tracker.use_quaternions=True
+ndi_tracker.start_tracking()
+
+while(1):
+    input_str=input("Grab NDI Point (y/s)")
+    if input_str=='y' or input_str=='Y':
+        NDI_dat=ndi_tracker.get_frame()
+        dat_list=NDI_dat[3]
+        dat_list=dat_list[0][0].tolist()
+        print("Translation: "+str())
+
+
+
+    else:
+        break
+
+
+
+ndi_tracker.stop_tracking()
+>>>>>>> cb2dc77b51fe54e55eb17648b0794c2400e6f547
 ndi_tracker.close()

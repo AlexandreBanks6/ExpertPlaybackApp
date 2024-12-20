@@ -255,7 +255,12 @@ void loop() {
 
     //Sending Data Out over Serial
     
+<<<<<<< HEAD
     csv_data=String(sampleCount)+","+String(taskDuration)+","+String(curr_collision)+","+String(collisionCount)+","+String(collisionTime)+"\n";    
+=======
+    csv_data=String(sampleCount)+","+String(taskDuration)+","+String(curr_collision)+","+String(collisionCount)+","+String(collisionTime)+"\n";  
+    Serial.print(csv_data);  
+>>>>>>> cb2dc77b51fe54e55eb17648b0794c2400e6f547
     sampleCount++;
 
 
