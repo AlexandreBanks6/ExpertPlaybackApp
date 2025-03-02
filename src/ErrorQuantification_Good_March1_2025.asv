@@ -64,7 +64,9 @@ plotTranslationsXYZ(estim_mul_left_translation,NDI_mul_left_tanslation,'Translat
 plotEuler(estim_mul_left_euler,NDI_mul_left_euler,'Euler Angles Left Multiple',[figuresaveroot,'eulerplot_leftmultiple.svg']);
 
 %%%%%Plotting Abs Err Box Plots
-plotAbsErrorOfAll()
+plotAbsErrorOfAll([trans_err_abs_mul_left,sqrt(sum(trans_err_abs_mul_left.^2,2))],...
+    [trans_err_abs_mul_right,sqrt(sum(trans_err_abs_mul_right.^2,2))],{"Left Camera","Right Camera"},...
+    "Boxplot Scene Registration Translation Error Multiple",[figuresaveroot,'boxplot_translationerror_multiple.svg']);
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%Functions%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %Compares motions of NDI and Vision Estimation to "base frame"
@@ -288,16 +290,26 @@ function plotEuler(euler1,euler2,plotoveralltitle,savefile)
 end
 
 
-function plotAbsErrorOfAll(leftMul_err,rightMul_err)
+function plotAbsErrorOfAll(leftMul_err,rightMul_err,grouplabels,figuretitle,savefile)
 
 data=[leftMul_err,rightMul_err];
-positions = [1 2 3 4 6 7 8 9]; %Space (no 5)
+positions = [0.25 0.5 0.75 1 1.5 1.75 2 2.25]; %Space (no 5)
 
 figure;
+boxplot(data,'Positions',positions,'BoxStyle','filled','MedianStyle','target','Symbol','r+');
+%Formatting
 xticks([mean(positions(1:4)),mean(positions(5:end))]);
-boxplot(data,'Positions',positions,'BoxStyle','filled','MedianStyle','target');
+set(gca, 'FontSize', 12);
+xticklabels(grouplabels);
+ax=gca;
+ax.XAxis.FontSize=20;
+ax.XAxis.FontName='Times';
+ax.XAxis.FontWeight='bold';
 ylabel('|Translation Error| (mm)','FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
-xticklabels({'Left Camera', 'Right Camera'});
+title(figuretitle, 'FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
+
+
+saveas(gcf, savefile);
 
 
 end

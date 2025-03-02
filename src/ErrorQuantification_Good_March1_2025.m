@@ -34,8 +34,11 @@ estim_mul_left_translation=estim_mul_left_translation.*1000; %to mm
 [trans_err_abs_mul_left,trans_mean,trans_std]=translationStats(NDI_mul_left_tanslation,estim_mul_left_translation);
 [angle_error_abs_mul_left,angle_mean,angle_std]=angleStats(angle_err);
 disp(["*************"]);
-disp(["Multiple Left"]);
+disp(["Scene Registration Left"]);
 disp(["Trans Error Mean: ",num2str(trans_mean)," STD=",num2str(trans_std)," (mm)"]);
+disp(["|X| Error Mean: ",num2str(mean(trans_err_abs_mul_left(:,1)))," STD=",num2str(trans_std)," (mm)"]);
+disp(["|Y| Error Mean: ",num2str(mean(trans_err_abs_mul_left(:,2)))," STD=",num2str(trans_std)," (mm)"]);
+disp(["|Z| Error Mean: ",num2str(mean(trans_err_abs_mul_left(:,3)))," STD=",num2str(trans_std)," (mm)"]);
 disp(["Angle Error Mean: ",num2str(angle_mean)," STD=",num2str(angle_std)," (deg)"]);
 
 
@@ -52,19 +55,32 @@ estim_mul_right_translation=estim_mul_right_translation.*1000; %to mm
 [trans_err_abs_mul_right,trans_mean,trans_std]=translationStats(NDI_mul_right_tanslation,estim_mul_right_translation);
 [angle_error_abs_mul_right,angle_mean,angle_std]=angleStats(angle_err);
 disp(["*************"]);
-disp(["Multiple RIght"]);
+disp(["Scene Registration Right"]);
 disp(["Trans Error Mean: ",num2str(trans_mean)," STD=",num2str(trans_std)," (mm)"]);
+disp(["|X| Error Mean: ",num2str(mean(trans_err_abs_mul_right(:,1)))," STD=",num2str(trans_std)," (mm)"]);
+disp(["|Y| Error Mean: ",num2str(mean(trans_err_abs_mul_right(:,2)))," STD=",num2str(trans_std)," (mm)"]);
+disp(["|Z| Error Mean: ",num2str(mean(trans_err_abs_mul_right(:,3)))," STD=",num2str(trans_std)," (mm)"]);
 disp(["Angle Error Mean: ",num2str(angle_mean)," STD=",num2str(angle_std)," (deg)"]);
 
 
 %% Plotting scene registration results
 figuresaveroot='C:\Users\alexa\OneDrive\Documents\UBC_Thesis\Code\dvFlexAR_PaperFigures\';
 %%%%%%Left Multiple
-plotTranslationsXYZ(estim_mul_left_translation,NDI_mul_left_tanslation,'Translation Left Multiple',[figuresaveroot,'translationplot_leftmultiple.svg']);%Display translations
-plotEuler(estim_mul_left_euler,NDI_mul_left_euler,'Euler Angles Left Multiple',[figuresaveroot,'eulerplot_leftmultiple.svg']);
+plotTranslationsXYZ(estim_mul_left_translation,NDI_mul_left_tanslation,'Translation Left',[figuresaveroot,'translationplot_leftmultiple.svg']);%Display translations
+plotEuler(estim_mul_left_euler,NDI_mul_left_euler,'Euler Angles Left',[figuresaveroot,'eulerplot_leftmultiple.svg']);
 
-%%%%%Plotting Abs Err Box Plots
-plotAbsErrorOfAll([trans_err_abs_mul_left,sqrt(sum(trans_err_abs_mul_left.^2,2))],[trans_err_abs_mul_right,sqrt(sum(trans_err_abs_mul_right.^2,2))]);
+%%%%%%Right Multiple
+plotTranslationsXYZ(estim_mul_right_translation,NDI_mul_right_tanslation,'Translation Right',[figuresaveroot,'translationplot_rightmultiple.svg']);%Display translations
+plotEuler(estim_mul_right_euler,NDI_mul_right_euler,'Euler Angles Right',[figuresaveroot,'eulerplot_rightmultiple.svg']);
+
+%%%%%Plotting Abs Translation Err Box Plots
+plotAbsErrorOfAll([trans_err_abs_mul_left,sqrt(sum(trans_err_abs_mul_left.^2,2))],...
+    [trans_err_abs_mul_right,sqrt(sum(trans_err_abs_mul_right.^2,2))],{"Left Cam","Right Cam"},...
+    "Scene Registration Translation Error",[figuresaveroot,'boxplot_translationerror_multiple.svg']);
+
+%%%%%Plotting Abs Angle Error Box Plots
+plotAbsAngleErr(angle_error_abs_mul_left,angle_error_abs_mul_right,{"Left Cam","Right Cam"},...
+    "Scene Registration Angle Error",[figuresaveroot,'boxplot_angleerror_multiple.svg'])
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%Functions%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %Compares motions of NDI and Vision Estimation to "base frame"
@@ -206,24 +222,24 @@ function plotTranslationsXYZ(translation1,translation2,plotoveralltitle,savefile
 
     % X-axis translation
     subplot(3,1,1); 
-    p1 = plot(x_axis, translation1(:,1), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
-    p2 = plot(x_axis, translation2(:,1), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
+    p1 = plot(x_axis, translation2(:,1), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
+    p2 = plot(x_axis, translation1(:,1), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
     set(gca, 'FontSize', 12);
     xlim([1, row]);    
     ylabel('X (mm)', 'FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
 
     % Y-axis translation
     subplot(3,1,2); 
-    plot(x_axis, translation1(:,2), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
-    plot(x_axis, translation2(:,2), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
+    plot(x_axis, translation2(:,2), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
+    plot(x_axis, translation1(:,2), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
     set(gca, 'FontSize', 12);
     xlim([1, row]);
     ylabel('Y (mm)', 'FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
 
     % Z-axis translation
     ax3 = subplot(3,1,3); % Attach legend to this subplot
-    plot(x_axis, translation1(:,3), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
-    plot(x_axis, translation2(:,3), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
+    plot(x_axis, translation2(:,3), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
+    plot(x_axis, translation1(:,3), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
     set(gca, 'FontSize', 12);
     xlim([1, row]);
     ylabel('Z (mm)', 'FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
@@ -254,24 +270,24 @@ function plotEuler(euler1,euler2,plotoveralltitle,savefile)
 
     % X-axis translation
     subplot(3,1,1); 
-    p1 = plot(x_axis, euler1(:,1), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
-    p2 = plot(x_axis, euler2(:,1), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
+    p1 = plot(x_axis, euler2(:,1), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
+    p2 = plot(x_axis, euler1(:,1), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
     set(gca, 'FontSize', 12);
     xlim([1, row]);    
     ylabel('Roll (deg)', 'FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
 
     % Y-axis translation
     subplot(3,1,2); 
-    plot(x_axis, euler1(:,2), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
-    plot(x_axis, euler2(:,2), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
+    plot(x_axis, euler2(:,2), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
+    plot(x_axis, euler1(:,2), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
     set(gca, 'FontSize', 12);
     xlim([1, row]);
     ylabel('Pitch (deg)', 'FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
 
     % Z-axis translation
     ax3 = subplot(3,1,3); % Attach legend to this subplot
-    plot(x_axis, euler1(:,3), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
-    plot(x_axis, euler2(:,3), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
+    plot(x_axis, euler2(:,3), '.-', 'Color', dark_gray, 'LineWidth', 1.9, 'MarkerSize', 9); hold on;
+    plot(x_axis, euler1(:,3), '.--', 'Color', light_gray, 'LineWidth', 1.9, 'MarkerSize', 9);
     set(gca, 'FontSize', 12);
     xlim([1, row]);
     ylabel('Yaw (deg)', 'FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
@@ -288,16 +304,91 @@ function plotEuler(euler1,euler2,plotoveralltitle,savefile)
 end
 
 
-function plotAbsErrorOfAll(leftMul_err,rightMul_err)
+function plotAbsErrorOfAll(leftMul_err,rightMul_err,grouplabels,figuretitle,savefile)
 
 data=[leftMul_err,rightMul_err];
-positions = [1 2 3 4 6 7 8 9]; %Space (no 5)
+positions = [0.25 0.5 0.75 1 1.5 1.75 2 2.25]; %Space (no 5)
+
+%Different shades of grey
+gray4 = [0.2, 0.2, 0.2];
+gray3 = [0.4, 0.4, 0.4];
+gray2 = [0.6, 0.6, 0.6];
+gray1 = [0.8, 0.8, 0.8];
+color=[gray1;gray2;gray3;gray4;gray1;gray2;gray3;gray4];
 
 figure;
+set(gcf, 'Color', 'w');
+boxplot(data,'Positions',positions,'Colors',color,'BoxStyle','filled','MedianStyle','target','Symbol','r+');%'BoxStyle','filled','MedianStyle','target','Symbol','r+');
+
+%Formatting
 xticks([mean(positions(1:4)),mean(positions(5:end))]);
-boxplot(data,'Positions',positions,'BoxStyle','filled','MedianStyle','target');
+set(gca, 'FontSize', 12);
+xticklabels(grouplabels);
+ax=gca;
+ax.XAxis.FontSize=18;
+ax.XAxis.FontName='Times';
+ax.XAxis.FontWeight='bold';
 ylabel('|Translation Error| (mm)','FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
-xticklabels({'Left Camera', 'Right Camera'});
+title(figuretitle, 'FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
+
+%h = findobj(gca, 'Tag', 'Box');
+%h = flipud(h); % Flip to match ordering in the plot
+
+% Apply colors
+% for j = 1:length(h)
+%     boxX = get(h(j), 'XData');  
+%     boxY = get(h(j), 'YData'); 
+%     patch(boxX, boxY, color(j, :), 'FaceAlpha', 0.5, 'EdgeColor', 'k');
+% end
+% 
+%c = get(gca, 'Children');
+%legend(c(1:4), '|X|', '|Y|','|Z|','L2 Norm');
+set(gcf, 'Position', [100, 100, 450, 475]);  % (left, bottom, width, height in pixels)
+
+hold on;
+hLegend = gobjects(4,1); % Preallocate legend handles
+
+legend_labels = {'|X|', '|Y|', '|Z|', 'L2 Norm'}; % Legend names
+
+for j = 1:4 % Only 4 different colors, corresponding to each variable
+    hLegend(j) = plot(nan, nan, 's', 'MarkerFaceColor', color(j,:), 'MarkerEdgeColor', 'k');
+end
+
+legend(hLegend, legend_labels, 'Location', 'best');
+
+hold off;
 
 
+saveas(gcf, savefile);
+end
+
+function plotAbsAngleErr(left_angle_error,right_angle_error,grouplabels,figuretitle,savefile)
+
+data=[left_angle_error,right_angle_error];
+positions = [0.25 0.75]; %Space (no 5)
+
+%Different shades of grey
+dark_gray = [0.3, 0.3, 0.3];
+light_gray = [0.6, 0.6, 0.6];
+color=[light_gray;dark_gray];
+
+figure;
+set(gcf, 'Color', 'w');
+boxplot(data,'Positions',positions,'Colors',color,'BoxStyle','filled','MedianStyle','target','Symbol','r+');%'BoxStyle','filled','MedianStyle','target','Symbol','r+');
+
+%Formatting
+xticks(positions);
+set(gca, 'FontSize', 12);
+xticklabels(grouplabels);
+ax=gca;
+ax.XAxis.FontSize=18;
+ax.XAxis.FontName='Times';
+ax.XAxis.FontWeight='bold';
+ylabel('|Angle Error| (deg)','FontSize', 20, 'FontName', 'Times', 'FontWeight', 'bold');
+%title(figuretitle, 'FontSize', 20, 'FontName', 'Times', 'FontWeight',
+%'bold'); =>no title for now
+
+set(gcf, 'Position', [100, 100, 200, 300]);  % (left, bottom, width, height in pixels)
+
+saveas(gcf, savefile);
 end
