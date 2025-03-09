@@ -39,6 +39,7 @@ disp(["Trans Error Mean: ",num2str(trans_mean)," STD=",num2str(trans_std)," (mm)
 disp(["|X| Error Mean: ",num2str(mean(trans_err_abs_mul_left(:,1)))," STD=",num2str(std(trans_err_abs_mul_left(:,1)))," (mm)"]);
 disp(["|Y| Error Mean: ",num2str(mean(trans_err_abs_mul_left(:,2)))," STD=",num2str(std(trans_err_abs_mul_left(:,2)))," (mm)"]);
 disp(["|Z| Error Mean: ",num2str(mean(trans_err_abs_mul_left(:,3)))," STD=",num2str(std(trans_err_abs_mul_left(:,3)))," (mm)"]);
+
 disp(["Angle Error Mean: ",num2str(angle_mean)," STD=",num2str(angle_std)," (deg)"]);
 
 
@@ -164,6 +165,10 @@ disp(["Trans Error Mean: ",num2str(trans_mean)," STD=",num2str(trans_std)," (mm)
 disp(["|X| Error Mean: ",num2str(mean(trans_err_abs_psm1(:,1)))," STD=",num2str(std(trans_err_abs_psm1(:,1)))," (mm)"]);
 disp(["|Y| Error Mean: ",num2str(mean(trans_err_abs_psm1(:,2)))," STD=",num2str(std(trans_err_abs_psm1(:,2)))," (mm)"]);
 disp(["|Z| Error Mean: ",num2str(mean(trans_err_abs_psm1(:,3)))," STD=",num2str(std(trans_err_abs_psm1(:,3)))," (mm)"]);
+[comb_avg,comb_std]=combineAverages([mean(trans_err_abs_psm1(:,1)),mean(trans_err_abs_psm1(:,2)),mean(trans_err_abs_psm1(:,3))], ...
+    [std(trans_err_abs_psm1(:,1)),std(trans_err_abs_psm1(:,2)),std(trans_err_abs_psm1(:,3))], ...
+    [length(trans_err_abs_psm1(:,1)),length(trans_err_abs_psm1(:,2)),length(trans_err_abs_psm1(:,3))]);
+disp(["Combined Axis Avg: ",num2str(comb_avg)," STD=",num2str(comb_std)," (mm)"]);
 disp(["Angle Error Mean: ",num2str(angle_mean)," STD=",num2str(angle_std)," (deg)"]);
 
 %%%%%%%%%PSM3 
@@ -182,6 +187,11 @@ disp(["Trans Error Mean: ",num2str(trans_mean)," STD=",num2str(trans_std)," (mm)
 disp(["|X| Error Mean: ",num2str(mean(trans_err_abs_psm3(:,1)))," STD=",num2str(std(trans_err_abs_psm3(:,1)))," (mm)"]);
 disp(["|Y| Error Mean: ",num2str(mean(trans_err_abs_psm3(:,2)))," STD=",num2str(std(trans_err_abs_psm3(:,2)))," (mm)"]);
 disp(["|Z| Error Mean: ",num2str(mean(trans_err_abs_psm3(:,3)))," STD=",num2str(std(trans_err_abs_psm3(:,3)))," (mm)"]);
+[comb_avg,comb_std]=combineAverages([mean(trans_err_abs_psm3(:,1)),mean(trans_err_abs_psm3(:,2)),mean(trans_err_abs_psm3(:,3))], ...
+    [std(trans_err_abs_psm3(:,1)),std(trans_err_abs_psm3(:,2)),std(trans_err_abs_psm3(:,3))], ...
+    [length(trans_err_abs_psm3(:,1)),length(trans_err_abs_psm3(:,2)),length(trans_err_abs_psm3(:,3))]);
+disp(["Combined Axis Avg: ",num2str(comb_avg)," STD=",num2str(comb_std)," (mm)"]);
+
 disp(["Angle Error Mean: ",num2str(angle_mean)," STD=",num2str(angle_std)," (deg)"]);
 
 %% Plotting PSM1 Tracking Results
