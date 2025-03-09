@@ -98,9 +98,9 @@ data_PSM1_absolute(25,:)=[];
 data_PSM3_absolute=readmatrix([DATA_ROOT_PSM,'\lc_T_psm_PSM3__withErrCorr.csv']);
 
 %% Setting ARUCO_T_PSM transform
-theta = deg2rad(14); %Rigid rotations from the aruco to PSM
-theta2=deg2rad(7);
-theta3=deg2rad(3);
+theta = deg2rad(14.4); %Rigid rotations from the aruco to PSM
+theta2=deg2rad(8.5);
+theta3=deg2rad(3.3);
 Rx = [1  0           0          0;
       0  cos(theta3) -sin(theta3) 0;
       0  sin(theta3)  cos(theta3) 0;
@@ -124,9 +124,9 @@ ARUCO_T_PSM1_RIGID_TRANSFORM = [-1, 0, 0, 0.002286;
 ARUCO_T_PSM1_RIGID_TRANSFORM = Rz* Ry *Rx* ARUCO_T_PSM1_RIGID_TRANSFORM;
 
 
-theta = deg2rad(9); %Rigid rotations from the aruco to PSM
-theta2=deg2rad(0);
-theta3=deg2rad(-10);
+theta = deg2rad(7.9); %Rigid rotations from the aruco to PSM
+theta2=deg2rad(3.6);
+theta3=deg2rad(-7.9);
 Rx = [1  0           0          0;
       0  cos(theta3) -sin(theta3) 0;
       0  sin(theta3)  cos(theta3) 0;
