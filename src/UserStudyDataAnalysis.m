@@ -328,10 +328,12 @@ no_ar_indices=find(~(strcmp(study_order(:,2),'ARTrain')==1));
 %Gets TLX data for AR
 AR_onehanded_NASATLX=cell2mat(user_response_data((AR_train_indices-1)*2+1,3:8));
 AR_onehanded_NASATLX_ForCombined=[AR_onehanded_NASATLX(:,1:3),10-AR_onehanded_NASATLX(:,4),AR_onehanded_NASATLX(:,5:end)]; %Change performance to be "non-performance"
+%AR_onehanded_NASATLX_ForCombined=[AR_onehanded_NASATLX(:,1:3),AR_onehanded_NASATLX(:,5:end)];
 AR_onehanded_Combined_NASATLX=sum(AR_onehanded_NASATLX_ForCombined,2);
 
 AR_pickandplace_NASATLX=cell2mat(user_response_data((AR_train_indices-1)*2+2,3:8));
 AR_pickandplace_NASATLX_ForCombined=[AR_pickandplace_NASATLX(:,1:3),10-AR_pickandplace_NASATLX(:,4),AR_pickandplace_NASATLX(:,5:end)];
+%AR_pickandplace_NASATLX_ForCombined=[AR_pickandplace_NASATLX(:,1:3),AR_pickandplace_NASATLX(:,5:end)];
 AR_pickandplace_Combined_NASATLX=sum(AR_pickandplace_NASATLX_ForCombined,2);
 
 %UES Data for AR
@@ -341,10 +343,12 @@ AR_pickandplace_UES=cell2mat(user_response_data((AR_train_indices-1)*2+2,9:end))
 %Gets TLX data for No AR
 onehanded_NASATLX=cell2mat(user_response_data((no_ar_indices-1)*2+1,3:8));
 onehanded_NASATLX_ForCombined=[onehanded_NASATLX(:,1:3),10-onehanded_NASATLX(:,4),onehanded_NASATLX(:,5:end)];
+%onehanded_NASATLX_ForCombined=[onehanded_NASATLX(:,1:3),onehanded_NASATLX(:,5:end)];
 onehanded_Combined_NASATLX=sum(onehanded_NASATLX_ForCombined,2);
 
 pickandplace_NASATLX=cell2mat(user_response_data((no_ar_indices-1)*2+2,3:8));
 pickandplace_NASATLX_ForCombined=[pickandplace_NASATLX(:,1:3),10-pickandplace_NASATLX(:,4),pickandplace_NASATLX(:,5:end)];
+%pickandplace_NASATLX_ForCombined=[pickandplace_NASATLX(:,1:3),pickandplace_NASATLX(:,5:end)];
 pickandplace_Combined_NASATLX=sum(pickandplace_NASATLX_ForCombined,2);
 
 %UES Data for no AR
